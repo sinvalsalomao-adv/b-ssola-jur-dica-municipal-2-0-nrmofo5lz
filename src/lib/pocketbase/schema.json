@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-30T23:04:15.621Z",
+  "generatedAt": "2026-07-30T23:53:03.918Z",
   "collections": [
     {
       "name": "users",
@@ -1159,6 +1159,65 @@
         }
       ],
       "indexes": ["CREATE INDEX idx_document_templates_tenant ON document_templates (tenant)"]
+    },
+    {
+      "name": "quiz_perguntas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != '' && @request.auth.role = 'superadmin'",
+        "update": "@request.auth.id != '' && @request.auth.role = 'superadmin'",
+        "delete": "@request.auth.id != '' && @request.auth.role = 'superadmin'"
+      },
+      "fields": [
+        {
+          "name": "trilha_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "trilhas"
+        },
+        {
+          "name": "pergunta",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "opcoes",
+          "type": "json",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "resposta_correta",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "ordem",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_quiz_perguntas_trilha_id ON quiz_perguntas (trilha_id)"]
     }
   ]
 }

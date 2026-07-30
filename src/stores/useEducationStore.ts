@@ -11,9 +11,16 @@ import {
   createTrilha,
   updateTrilha,
   deleteTrilha,
+  createAula,
+  updateAula,
+  deleteAula,
+  getQuizPerguntas,
+  createQuizPergunta,
+  updateQuizPergunta,
+  deleteQuizPergunta,
 } from '@/services/education'
 import { QUIZ_DATA } from '@/data/quizData'
-import type { TrackWithLessons, QuizState } from '@/types/education'
+import type { TrackWithLessons, QuizState, QuizPergunta, QuizQuestion } from '@/types/education'
 
 function generateCertCode(): string {
   return (
@@ -24,9 +31,19 @@ function generateCertCode(): string {
   )
 }
 
+function perguntaToQuestion(p: QuizPergunta): QuizQuestion {
+  return {
+    id: p.id,
+    question: p.pergunta,
+    options: p.opcoes,
+    correctIndex: Math.max(0, p.opcoes.indexOf(p.respostaCorreta)),
+  }
+}
+
 export function useEducationStore() {
   const { user } = useAuth()
   const [tracks, setTracks] = useState<TrackWithLessons[]>([])
+  const [quizPerguntas, setQuizPerguntas] = useState<QuizPergunta[]>([])
   const [completedLessons, setCompletedLessons] = useState<Record<string, Set<string>>>({})
   const [quizStates, setQuizStates] = useState<Record<string, QuizState>>({})
   const [loading, setLoading] = useState(true)
@@ -39,18 +56,28 @@ export function useEducationStore() {
     }
     try {
       setLoading(true)
-      const [trilhas, allAulas, progresso, quizResults] = await Promise.all([
+      const [trilhas, allAulas, progresso, quizResults, perguntas] = await Promise.all([
         getTrilhas(),
         getAllAulas(),
         getProgresso(user.id),
         getQuizResults(user.id),
+        getQuizPerguntas().catch(() => []),
       ])
 
-      const tracksWithLessons: TrackWithLessons[] = trilhas.map((t) => ({
-        ...t,
-        lessons: allAulas.filter((a) => a.trilhaId === t.id),
-        quiz: QUIZ_DATA[t.titulo] || [],
-      }))
+      const tracksWithLessons: TrackWithLessons[] = trilhas.map((t) => {
+        const trackPerguntas = perguntas
+          .filter((p) => p.trilhaId === t.id)
+          .sort((a, b) => a.ordem - b.ordem)
+        const quiz =
+          trackPerguntas.length > 0
+            ? trackPerguntas.map(perguntaToQuestion)
+            : QUIZ_DATA[t.titulo] || []
+        return {
+          ...t,
+          lessons: allAulas.filter((a) => a.trilhaId === t.id),
+          quiz,
+        }
+      })
 
       const progressMap: Record<string, Set<string>> = {}
       const quizMap: Record<string, QuizState> = {}
@@ -78,6 +105,7 @@ export function useEducationStore() {
       })
 
       setTracks(tracksWithLessons)
+      setQuizPerguntas(perguntas)
       setCompletedLessons(progressMap)
       setQuizStates(quizMap)
       setError(null)
@@ -101,6 +129,13 @@ export function useEducationStore() {
   )
   useRealtime(
     'aulas',
+    () => {
+      loadData()
+    },
+    !!user,
+  )
+  useRealtime(
+    'quiz_perguntas',
     () => {
       loadData()
     },
@@ -169,7 +204,7 @@ export function useEducationStore() {
         const correct = Math.round((score / 100) * totalQuestions)
         await saveQuizResult(user.id, trackId, correct, totalQuestions, approved)
       } catch {
-        // silent fail — local state already updated
+        /* intentionally ignored */
       }
       return code
     },
@@ -223,6 +258,98 @@ export function useEducationStore() {
     [loadData],
   )
 
+  const createLesson = useCallback(
+    async (data: { trilhaId: string; titulo: string; urlVideo: string; ordem?: number }) => {
+      const aula = await createAula(data)
+      await loadData()
+      return aula
+    },
+    [loadData],
+  )
+
+  const updateLesson = useCallback(
+    async (
+      id: string,
+      data: Partial<{ trilhaId: string; titulo: string; urlVideo: string; ordem: number }>,
+    ) => {
+      const aula = await updateAula(id, data)
+      await loadData()
+      return aula
+    },
+    [loadData],
+  )
+
+  const deleteLesson = useCallback(
+    async (id: string) => {
+      await deleteAula(id)
+      await loadData()
+    },
+    [loadData],
+  )
+
+  const copyLessonToTrack = useCallback(
+    async (lessonId: string, targetTrackId: string) => {
+      const lesson = tracks.flatMap((t) => t.lessons).find((l) => l.id === lessonId)
+      if (!lesson) return
+      const targetTrack = tracks.find((t) => t.id === targetTrackId)
+      const nextOrdem = targetTrack ? targetTrack.lessons.length + 1 : 1
+      await createAula({
+        trilhaId: targetTrackId,
+        titulo: lesson.titulo,
+        urlVideo: lesson.urlVideo,
+        ordem: nextOrdem,
+      })
+      await loadData()
+    },
+    [tracks, loadData],
+  )
+
+  const createQuizQuestion = useCallback(
+    async (data: {
+      trilhaId: string
+      pergunta: string
+      opcoes: string[]
+      respostaCorreta: string
+      ordem?: number
+    }) => {
+      const result = await createQuizPergunta(data)
+      await loadData()
+      return result
+    },
+    [loadData],
+  )
+
+  const updateQuizQuestion = useCallback(
+    async (
+      id: string,
+      data: Partial<{
+        pergunta: string
+        opcoes: string[]
+        respostaCorreta: string
+        ordem: number
+      }>,
+    ) => {
+      const result = await updateQuizPergunta(id, data)
+      await loadData()
+      return result
+    },
+    [loadData],
+  )
+
+  const deleteQuizQuestion = useCallback(
+    async (id: string) => {
+      await deleteQuizPergunta(id)
+      await loadData()
+    },
+    [loadData],
+  )
+
+  const getQuizPerguntasForTrack = useCallback(
+    (trackId: string): QuizPergunta[] =>
+      quizPerguntas.filter((p) => p.trilhaId === trackId).sort((a, b) => a.ordem - b.ordem),
+    [quizPerguntas],
+  )
+
   return {
     tracks: tracks as readonly TrackWithLessons[],
     tracksWithProgress,
@@ -236,6 +363,14 @@ export function useEducationStore() {
     createTrack,
     updateTrack,
     deleteTrack,
+    createLesson,
+    updateLesson,
+    deleteLesson,
+    copyLessonToTrack,
+    createQuizQuestion,
+    updateQuizQuestion,
+    deleteQuizQuestion,
+    getQuizPerguntasForTrack,
     loading,
     error,
   }

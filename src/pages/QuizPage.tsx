@@ -72,7 +72,7 @@ export default function QuizPage() {
           <ArrowLeft className="w-4 h-4" />
         </Button>
         <div>
-          <h2 className="text-2xl font-bold text-[#1c2a3e]">Quiz: {track.title}</h2>
+          <h2 className="text-2xl font-bold text-[#1c2a3e]">Quiz: {track.titulo}</h2>
           <p className="text-sm text-gray-500">
             Responda às 5 questões. Aprovação a partir de 70%.
           </p>
@@ -182,7 +182,7 @@ export default function QuizPage() {
                   <p className="text-xs text-gray-400 uppercase tracking-wider pt-3">
                     pela conclusão da trilha de aprendizagem
                   </p>
-                  <p className="text-base font-semibold text-[#3b82f6]">{track.title}</p>
+                  <p className="text-base font-semibold text-[#3b82f6]">{track.titulo}</p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">

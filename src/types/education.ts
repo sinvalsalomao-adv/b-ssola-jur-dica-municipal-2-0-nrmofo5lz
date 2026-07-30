@@ -20,6 +20,15 @@ export interface AulaRecord {
   ordem: number
 }
 
+export interface QuizPergunta {
+  id: string
+  trilhaId: string
+  pergunta: string
+  opcoes: string[]
+  respostaCorreta: string
+  ordem: number
+}
+
 export interface FraseSalva {
   id: string
   texto: string

@@ -1,5 +1,5 @@
 import pb from '@/lib/pocketbase/client'
-import type { TrilhaRecord, AulaRecord } from '@/types/education'
+import type { TrilhaRecord, AulaRecord, QuizPergunta } from '@/types/education'
 
 export function normalizeTrilha(r: any): TrilhaRecord {
   return {
@@ -20,6 +20,26 @@ export function normalizeAula(r: any): AulaRecord {
   }
 }
 
+export function normalizeQuizPergunta(r: any): QuizPergunta {
+  let opcoes = r.opcoes
+  if (typeof opcoes === 'string') {
+    try {
+      opcoes = JSON.parse(opcoes)
+    } catch {
+      opcoes = []
+    }
+  }
+  if (!Array.isArray(opcoes)) opcoes = []
+  return {
+    id: r.id,
+    trilhaId: r.trilha_id || '',
+    pergunta: r.pergunta || '',
+    opcoes: opcoes as string[],
+    respostaCorreta: r.resposta_correta || '',
+    ordem: r.ordem || 0,
+  }
+}
+
 export const getTrilhas = async (): Promise<TrilhaRecord[]> => {
   const records = await pb.collection('trilhas').getFullList({ sort: 'ordem' })
   return records.map(normalizeTrilha)
@@ -30,11 +50,7 @@ export const createTrilha = async (data: {
   descricao: string
   ordem: number
 }): Promise<TrilhaRecord> => {
-  const record = await pb.collection('trilhas').create({
-    titulo: data.titulo,
-    descricao: data.descricao,
-    ordem: data.ordem,
-  })
+  const record = await pb.collection('trilhas').create(data)
   return normalizeTrilha(record)
 }
 
@@ -53,6 +69,38 @@ export const deleteTrilha = async (id: string): Promise<boolean> => {
 export const getAllAulas = async (): Promise<AulaRecord[]> => {
   const records = await pb.collection('aulas').getFullList({ sort: 'ordem' })
   return records.map(normalizeAula)
+}
+
+export const createAula = async (data: {
+  trilhaId: string
+  titulo: string
+  urlVideo: string
+  ordem?: number
+}): Promise<AulaRecord> => {
+  const record = await pb.collection('aulas').create({
+    trilha_id: data.trilhaId,
+    titulo: data.titulo,
+    url_video: data.urlVideo,
+    ordem: data.ordem ?? 1,
+  })
+  return normalizeAula(record)
+}
+
+export const updateAula = async (
+  id: string,
+  data: Partial<{ trilhaId: string; titulo: string; urlVideo: string; ordem: number }>,
+): Promise<AulaRecord> => {
+  const updateData: Record<string, any> = {}
+  if (data.trilhaId !== undefined) updateData.trilha_id = data.trilhaId
+  if (data.titulo !== undefined) updateData.titulo = data.titulo
+  if (data.urlVideo !== undefined) updateData.url_video = data.urlVideo
+  if (data.ordem !== undefined) updateData.ordem = data.ordem
+  const record = await pb.collection('aulas').update(id, updateData)
+  return normalizeAula(record)
+}
+
+export const deleteAula = async (id: string): Promise<boolean> => {
+  return pb.collection('aulas').delete(id)
 }
 
 export const getProgresso = async (usuarioId: string) => {
@@ -119,4 +167,43 @@ export const getQuizResults = async (usuarioId: string) => {
     aprovado: r.aprovado || false,
     data: r.data || '',
   }))
+}
+
+export const getQuizPerguntas = async (): Promise<QuizPergunta[]> => {
+  const records = await pb.collection('quiz_perguntas').getFullList({ sort: 'ordem' })
+  return records.map(normalizeQuizPergunta)
+}
+
+export const createQuizPergunta = async (data: {
+  trilhaId: string
+  pergunta: string
+  opcoes: string[]
+  respostaCorreta: string
+  ordem?: number
+}): Promise<QuizPergunta> => {
+  const record = await pb.collection('quiz_perguntas').create({
+    trilha_id: data.trilhaId,
+    pergunta: data.pergunta,
+    opcoes: data.opcoes,
+    resposta_correta: data.respostaCorreta,
+    ordem: data.ordem ?? 1,
+  })
+  return normalizeQuizPergunta(record)
+}
+
+export const updateQuizPergunta = async (
+  id: string,
+  data: Partial<{ pergunta: string; opcoes: string[]; respostaCorreta: string; ordem: number }>,
+): Promise<QuizPergunta> => {
+  const updateData: Record<string, any> = {}
+  if (data.pergunta !== undefined) updateData.pergunta = data.pergunta
+  if (data.opcoes !== undefined) updateData.opcoes = data.opcoes
+  if (data.respostaCorreta !== undefined) updateData.resposta_correta = data.respostaCorreta
+  if (data.ordem !== undefined) updateData.ordem = data.ordem
+  const record = await pb.collection('quiz_perguntas').update(id, updateData)
+  return normalizeQuizPergunta(record)
+}
+
+export const deleteQuizPergunta = async (id: string): Promise<boolean> => {
+  return pb.collection('quiz_perguntas').delete(id)
 }
