@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import pb from '@/lib/pocketbase/client'
 import { UserRole } from '@/types/superadmin'
-import { MOCK_GLOBAL_USERS } from '@/data/mockSuperadmin'
 
 export interface AuthUser {
   id: string
@@ -8,6 +8,7 @@ export interface AuthUser {
   email: string
   role: UserRole
   prefeitura: string | null
+  tenantId: string | null
 }
 
 interface AuthContextType {
@@ -26,37 +27,66 @@ export const useAuth = () => {
   return context
 }
 
-const SUPERADMIN_USER: AuthUser = {
-  id: 'user-11',
-  name: 'Dr. Silval Salomão',
-  email: 'sinvalsalomao@gmail.com',
-  role: 'superadmin',
-  prefeitura: null,
+function normalizeUser(record: any): AuthUser | null {
+  if (!record) return null
+  return {
+    id: record.id,
+    name: record.name || record.email || 'Usuário',
+    email: record.email || '',
+    role: (record.role || 'servidor') as UserRole,
+    prefeitura: record.expand?.tenant?.name || null,
+    tenantId: record.tenant || null,
+  }
 }
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<AuthUser | null>(SUPERADMIN_USER)
-  const [loading] = useState(false)
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [loading, setLoading] = useState(true)
 
-  const login = async (email: string, _password: string) => {
-    const mockUser = MOCK_GLOBAL_USERS.find((u) => u.email === email)
-    if (mockUser) {
-      setUser({
-        id: mockUser.id,
-        name: mockUser.name,
-        email: mockUser.email,
-        role: mockUser.role,
-        prefeitura: mockUser.prefeituraSlug ? mockUser.prefeituraName : null,
-      })
-      return { error: null }
+  useEffect(() => {
+    if (pb.authStore.isValid && pb.authStore.record) {
+      pb.collection('users')
+        .authRefresh()
+        .then(() => pb.collection('users').getOne(pb.authStore.record.id, { expand: 'tenant' }))
+        .then((record) => {
+          setUser(normalizeUser(record))
+          setIsAuthenticated(true)
+        })
+        .catch(() => {
+          pb.authStore.clear()
+          setUser(null)
+          setIsAuthenticated(false)
+        })
+        .finally(() => setLoading(false))
+    } else {
+      if (pb.authStore.record) pb.authStore.clear()
+      setLoading(false)
     }
-    return { error: { message: 'Usuário não encontrado' } }
+  }, [])
+
+  const login = async (email: string, password: string) => {
+    try {
+      await pb.collection('users').authWithPassword(email, password)
+      const record = await pb
+        .collection('users')
+        .getOne(pb.authStore.record.id, { expand: 'tenant' })
+      setUser(normalizeUser(record))
+      setIsAuthenticated(true)
+      return { error: null }
+    } catch (error) {
+      return { error }
+    }
   }
 
-  const logout = () => setUser(null)
+  const logout = () => {
+    pb.authStore.clear()
+    setUser(null)
+    setIsAuthenticated(false)
+  }
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, isAuthenticated, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   )
