@@ -25,6 +25,31 @@ export const getTrilhas = async (): Promise<TrilhaRecord[]> => {
   return records.map(normalizeTrilha)
 }
 
+export const createTrilha = async (data: {
+  titulo: string
+  descricao: string
+  ordem: number
+}): Promise<TrilhaRecord> => {
+  const record = await pb.collection('trilhas').create({
+    titulo: data.titulo,
+    descricao: data.descricao,
+    ordem: data.ordem,
+  })
+  return normalizeTrilha(record)
+}
+
+export const updateTrilha = async (
+  id: string,
+  data: Partial<{ titulo: string; descricao: string; ordem: number }>,
+): Promise<TrilhaRecord> => {
+  const record = await pb.collection('trilhas').update(id, data)
+  return normalizeTrilha(record)
+}
+
+export const deleteTrilha = async (id: string): Promise<boolean> => {
+  return pb.collection('trilhas').delete(id)
+}
+
 export const getAllAulas = async (): Promise<AulaRecord[]> => {
   const records = await pb.collection('aulas').getFullList({ sort: 'ordem' })
   return records.map(normalizeAula)

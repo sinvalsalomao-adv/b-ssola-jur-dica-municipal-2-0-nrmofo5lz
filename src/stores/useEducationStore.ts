@@ -8,6 +8,9 @@ import {
   toggleProgresso,
   saveQuizResult,
   getQuizResults,
+  createTrilha,
+  updateTrilha,
+  deleteTrilha,
 } from '@/services/education'
 import { QUIZ_DATA } from '@/data/quizData'
 import type { TrackWithLessons, QuizState } from '@/types/education'
@@ -194,6 +197,32 @@ export function useEducationStore() {
     })
   }, [tracks, getCompletedCount])
 
+  const createTrack = useCallback(
+    async (data: { titulo: string; descricao: string; ordem: number }) => {
+      const newTrack = await createTrilha(data)
+      await loadData()
+      return newTrack
+    },
+    [loadData],
+  )
+
+  const updateTrack = useCallback(
+    async (id: string, data: Partial<{ titulo: string; descricao: string; ordem: number }>) => {
+      const updated = await updateTrilha(id, data)
+      await loadData()
+      return updated
+    },
+    [loadData],
+  )
+
+  const deleteTrack = useCallback(
+    async (id: string) => {
+      await deleteTrilha(id)
+      await loadData()
+    },
+    [loadData],
+  )
+
   return {
     tracks: tracks as readonly TrackWithLessons[],
     tracksWithProgress,
@@ -204,6 +233,9 @@ export function useEducationStore() {
     setQuizResult,
     resetQuiz,
     getQuizState,
+    createTrack,
+    updateTrack,
+    deleteTrack,
     loading,
     error,
   }
