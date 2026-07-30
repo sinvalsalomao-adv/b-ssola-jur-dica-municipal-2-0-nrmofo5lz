@@ -80,10 +80,16 @@ export const getAuditLogsByProjectTitle = async (projectTitle: string, tenantId?
     if (tenantId) {
       filter += ` && tenant = "${tenantId}"`
     }
-    const records = await pb.collection('audit_logs').getFullList({
+    let records = await pb.collection('audit_logs').getFullList({
       filter,
       sort: '-created',
     })
+    if (records.length === 0 && tenantId) {
+      records = await pb.collection('audit_logs').getFullList({
+        filter: `project_title = "${projectTitle}"`,
+        sort: '-created',
+      })
+    }
     return records.map((r: any) => ({
       id: r.id,
       userName: r.user_name || 'Usuário',
@@ -94,6 +100,27 @@ export const getAuditLogsByProjectTitle = async (projectTitle: string, tenantId?
     }))
   } catch (err) {
     console.error('Erro ao buscar histórico de auditoria:', err)
+    return []
+  }
+}
+
+export const getAllAuditLogs = async (tenantId?: string) => {
+  try {
+    const options: Record<string, any> = { sort: '-created' }
+    if (tenantId) {
+      options.filter = `tenant = "${tenantId}"`
+    }
+    const records = await pb.collection('audit_logs').getFullList(options)
+    return records.map((r: any) => ({
+      id: r.id,
+      userName: r.user_name || 'Usuário',
+      actionType: r.action_type || 'Editou card',
+      description: r.description || '',
+      projectTitle: r.project_title || '',
+      dateTime: r.created || '',
+    }))
+  } catch (err) {
+    console.error('Erro ao buscar logs de auditoria:', err)
     return []
   }
 }

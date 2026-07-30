@@ -6,6 +6,8 @@ import {
   deleteDocumentTemplate,
   DocumentTemplateItem,
 } from '@/services/documentTemplates'
+import { getTenants } from '@/services/projects'
+import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -100,11 +102,22 @@ export const DocumentTemplatesSection: React.FC = () => {
         })
         toast.success('Modelo atualizado com sucesso!')
       } else {
+        let resolvedTenant = tenantId
+        if (!resolvedTenant) {
+          const loadedTenants = await getTenants()
+          if (loadedTenants.length > 0) {
+            resolvedTenant = loadedTenants[0].id
+          } else {
+            const first = await pb.collection('tenants').getFirstListItem('', { requestKey: null })
+            resolvedTenant = first.id
+          }
+        }
+
         await createDocumentTemplate({
           name: name.trim(),
           type,
           content: content.trim(),
-          tenant: tenantId || 'tenant_default',
+          tenant: resolvedTenant,
         })
         toast.success('Modelo criado com sucesso!')
       }

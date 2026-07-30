@@ -115,21 +115,73 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     setIsSidePanelOpen(true)
   }
 
-  const resolveTenantId = (inputTenantId?: string, prefeituraName?: string): string => {
-    if (inputTenantId) return inputTenantId
+  const resolveTenantId = async (
+    inputTenantId?: string,
+    prefeituraName?: string,
+  ): Promise<string> => {
+    if (inputTenantId && inputTenantId.trim() !== '') return inputTenantId
+    if (user?.tenantId && user.tenantId.trim() !== '') return user.tenantId
+
     if (prefeituraName) {
-      const found = tenants.find((t) => t.name.toLowerCase() === prefeituraName.toLowerCase())
+      const prefLower = prefeituraName.toLowerCase()
+      const found = tenants.find(
+        (t) =>
+          t.name.toLowerCase() === prefLower ||
+          t.name.toLowerCase().includes(prefLower) ||
+          prefLower.includes(t.name.toLowerCase()),
+      )
       if (found) return found.id
     }
-    if (user?.tenantId) return user.tenantId
+
     if (tenants.length > 0) return tenants[0].id
+
+    try {
+      const liveTenants = await getTenants()
+      if (liveTenants.length > 0) {
+        setTenants(liveTenants)
+        if (prefeituraName) {
+          const prefLower = prefeituraName.toLowerCase()
+          const match = liveTenants.find(
+            (t) =>
+              t.name.toLowerCase() === prefLower ||
+              t.name.toLowerCase().includes(prefLower) ||
+              prefLower.includes(t.name.toLowerCase()),
+          )
+          if (match) return match.id
+        }
+        return liveTenants[0].id
+      }
+    } catch (e) {
+      console.error('Erro ao buscar prefeituras:', e)
+    }
+
+    try {
+      const pbModule = await import('@/lib/pocketbase/client')
+      const pb = pbModule.default
+      const first = await pb.collection('tenants').getFirstListItem('', { requestKey: null })
+      if (first?.id) return first.id
+    } catch (e) {
+      try {
+        const pbModule = await import('@/lib/pocketbase/client')
+        const pb = pbModule.default
+        const created = await pb.collection('tenants').create({
+          name: prefeituraName || user?.prefeitura || 'Prefeitura de Florânia',
+          slug: 'florania',
+          status: 'ativa',
+        })
+        return created.id
+      } catch (createErr) {
+        console.error('Erro ao criar prefeitura padrão:', createErr)
+      }
+    }
+
     throw new Error('Prefeitura (tenant) não identificada. Por favor, tente novamente.')
   }
 
   const addProject = async (data: NewProjectData): Promise<Project> => {
     setSaving(true)
     try {
-      const tenantId = resolveTenantId(data.tenantId, data.prefeitura)
+      const tenantId = await resolveTenantId(data.tenantId, data.prefeitura)
       const pbData = {
         titulo: data.title,
         descricao: data.description || '',
@@ -163,7 +215,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     setSaving(true)
     try {
       const existing = projects.find((p) => p.id === id)
-      const tenantId = resolveTenantId(data.tenantId, data.prefeitura || existing?.prefeitura)
+      const tenantId = await resolveTenantId(data.tenantId, data.prefeitura || existing?.prefeitura)
 
       const pbData: Record<string, any> = {}
       if (data.title !== undefined) pbData.titulo = data.title
@@ -217,7 +269,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, column: targetColumn } : p)))
 
     try {
-      const tenantId = resolveTenantId(undefined, existing.prefeitura)
+      const tenantId = await resolveTenantId(undefined, existing.prefeitura)
       await updateProjectService(id, { coluna_kanban: targetColumn })
 
       await createAuditLog({

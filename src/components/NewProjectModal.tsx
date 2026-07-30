@@ -70,7 +70,7 @@ export const NewProjectModal: React.FC = () => {
     }
 
     try {
-      const selectedTenant = tenants.find((t) => t.name === prefeitura)
+      const selectedTenant = tenants.find((t) => t.name.toLowerCase() === prefeitura.toLowerCase())
       const resolvedTenantId =
         selectedTenant?.id || user?.tenantId || (tenants.length > 0 ? tenants[0].id : undefined)
 
@@ -177,7 +177,11 @@ export const NewProjectModal: React.FC = () => {
           <div className="grid grid-cols-3 gap-3">
             <div>
               <Label className="text-xs font-semibold text-gray-700">Prefeitura</Label>
-              <Select value={prefeitura} onValueChange={setPrefeitura} disabled={!isSuperadmin}>
+              <Select
+                value={prefeitura}
+                onValueChange={setPrefeitura}
+                disabled={!isSuperadmin && tenants.length <= 1}
+              >
                 <SelectTrigger className="mt-1 text-xs">
                   <SelectValue placeholder="Prefeitura" />
                 </SelectTrigger>
