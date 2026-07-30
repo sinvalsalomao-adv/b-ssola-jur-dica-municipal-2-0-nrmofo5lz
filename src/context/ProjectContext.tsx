@@ -122,38 +122,23 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (inputTenantId && inputTenantId.trim() !== '') return inputTenantId
     if (user?.tenantId && user.tenantId.trim() !== '') return user.tenantId
 
+    const currentTenants = tenants.length > 0 ? tenants : await getTenants().catch(() => [])
+    if (currentTenants.length > 0 && tenants.length === 0) {
+      setTenants(currentTenants)
+    }
+
     if (prefeituraName) {
-      const prefLower = prefeituraName.toLowerCase()
-      const found = tenants.find(
+      const prefLower = prefeituraName.toLowerCase().trim()
+      const found = currentTenants.find(
         (t) =>
-          t.name.toLowerCase() === prefLower ||
+          t.name.toLowerCase().trim() === prefLower ||
           t.name.toLowerCase().includes(prefLower) ||
           prefLower.includes(t.name.toLowerCase()),
       )
       if (found) return found.id
     }
 
-    if (tenants.length > 0) return tenants[0].id
-
-    try {
-      const liveTenants = await getTenants()
-      if (liveTenants.length > 0) {
-        setTenants(liveTenants)
-        if (prefeituraName) {
-          const prefLower = prefeituraName.toLowerCase()
-          const match = liveTenants.find(
-            (t) =>
-              t.name.toLowerCase() === prefLower ||
-              t.name.toLowerCase().includes(prefLower) ||
-              prefLower.includes(t.name.toLowerCase()),
-          )
-          if (match) return match.id
-        }
-        return liveTenants[0].id
-      }
-    } catch (e) {
-      console.error('Erro ao buscar prefeituras:', e)
-    }
+    if (currentTenants.length > 0) return currentTenants[0].id
 
     try {
       const pbModule = await import('@/lib/pocketbase/client')
@@ -161,40 +146,46 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       const first = await pb.collection('tenants').getFirstListItem('', { requestKey: null })
       if (first?.id) return first.id
     } catch (e) {
-      try {
-        const pbModule = await import('@/lib/pocketbase/client')
-        const pb = pbModule.default
-        const created = await pb.collection('tenants').create({
-          name: prefeituraName || user?.prefeitura || 'Prefeitura de Florânia',
-          slug: 'florania',
-          status: 'ativa',
-        })
-        return created.id
-      } catch (createErr) {
-        console.error('Erro ao criar prefeitura padrão:', createErr)
-      }
+      console.error('Nenhum tenant encontrado:', e)
     }
 
-    throw new Error('Prefeitura (tenant) não identificada. Por favor, tente novamente.')
+    throw new Error(
+      'Prefeitura (tenant) não identificada. Por favor, selecione uma Prefeitura válida.',
+    )
   }
 
   const addProject = async (data: NewProjectData): Promise<Project> => {
     setSaving(true)
     try {
       const tenantId = await resolveTenantId(data.tenantId, data.prefeitura)
-      const pbData = {
-        titulo: data.title,
-        descricao: data.description || '',
-        responsible_user: data.responsibleUserId || null,
+      if (!tenantId) {
+        throw new Error('Não foi possível identificar a Prefeitura (Tenant) correspondente.')
+      }
+
+      const pbData: Record<string, any> = {
+        titulo: data.title.trim(),
+        descricao: data.description?.trim() || '',
         prazo: data.deadline || null,
         coluna_kanban: data.column || 'Ideação',
         priority: data.priority || 'Média',
         tenant: tenantId,
-        objeto: data.objeto || '',
-        justificativa: data.justificativa || '',
+        objeto: data.objeto?.trim() || '',
+        justificativa: data.justificativa?.trim() || '',
+      }
+
+      if (
+        data.responsibleUserId &&
+        data.responsibleUserId !== 'none' &&
+        data.responsibleUserId.trim() !== ''
+      ) {
+        pbData.responsible_user = data.responsibleUserId
       }
 
       const created = await createProjectService(pbData)
+
+      if (!created || !created.id) {
+        throw new Error('Retorno inválido ao criar projeto.')
+      }
 
       await createAuditLog({
         userName: user?.name || 'Usuário',
@@ -204,8 +195,15 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
         tenantId: tenantId,
       })
 
-      setProjects((prev) => [created, ...prev])
+      setProjects((prev) => {
+        const cleaned = (prev || []).filter((p) => p && p.id && p.id !== created.id)
+        return [created, ...cleaned]
+      })
+
       return created
+    } catch (err) {
+      console.error('Erro em addProject:', err)
+      throw err
     } finally {
       setSaving(false)
     }

@@ -70,7 +70,12 @@ export const NewProjectModal: React.FC = () => {
     }
 
     try {
-      const selectedTenant = tenants.find((t) => t.name.toLowerCase() === prefeitura.toLowerCase())
+      const selectedTenant = tenants.find(
+        (t) =>
+          t.name.toLowerCase().trim() === prefeitura.toLowerCase().trim() ||
+          t.name.toLowerCase().includes(prefeitura.toLowerCase().trim()) ||
+          prefeitura.toLowerCase().includes(t.name.toLowerCase().trim()),
+      )
       const resolvedTenantId =
         selectedTenant?.id || user?.tenantId || (tenants.length > 0 ? tenants[0].id : undefined)
 

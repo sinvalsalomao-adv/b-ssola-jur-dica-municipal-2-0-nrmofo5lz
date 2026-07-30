@@ -2,20 +2,45 @@ import pb from '@/lib/pocketbase/client'
 import { Project, ColumnType, Priority } from '@/types/project'
 
 export function normalizeProject(r: any): Project {
+  if (!r || typeof r !== 'object') {
+    return {
+      id: '',
+      title: 'Projeto Sem Título',
+      description: '',
+      responsible: 'Não atribuído',
+      responsibleUserId: '',
+      deadline: '',
+      priority: 'Média',
+      column: 'Ideação',
+      prefeitura: '',
+      objeto: '',
+      justificativa: '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+  }
+
+  let formattedDeadline = ''
+  if (r.prazo && typeof r.prazo === 'string') {
+    formattedDeadline = r.prazo.split('T')[0]
+  } else if (r.deadline && typeof r.deadline === 'string') {
+    formattedDeadline = r.deadline.split('T')[0]
+  }
+
   return {
-    id: r.id,
-    title: r.titulo || '',
-    description: r.descricao || '',
-    responsible: r.expand?.responsible_user?.name || r.responsible || '',
-    responsibleUserId: r.responsible_user || '',
-    deadline: r.prazo ? r.prazo.split('T')[0] : '',
+    id: r.id || '',
+    title: r.titulo || r.title || 'Projeto Sem Título',
+    description: r.descricao || r.description || '',
+    responsible: r.expand?.responsible_user?.name || r.responsible || 'Não atribuído',
+    responsibleUserId: r.responsible_user || r.responsibleUserId || '',
+    deadline: formattedDeadline,
     priority: (r.priority as Priority) || 'Média',
-    column: (r.coluna_kanban as ColumnType) || 'Ideação',
-    prefeitura: r.expand?.tenant?.name || '',
+    column: (r.coluna_kanban as ColumnType) || (r.column as ColumnType) || 'Ideação',
+    prefeitura: r.expand?.tenant?.name || r.prefeitura || '',
     objeto: r.objeto || '',
     justificativa: r.justificativa || '',
-    createdAt: r.created || '',
-    updatedAt: r.updated || '',
+    createdAt: r.created || r.createdAt || new Date().toISOString(),
+    updatedAt: r.updated || r.updatedAt || new Date().toISOString(),
   }
 }
 
@@ -32,13 +57,25 @@ export const getProjects = async (tenantId?: string): Promise<Project[]> => {
 }
 
 export const createProject = async (data: Record<string, any>): Promise<Project> => {
-  const record = await pb.collection('projects').create(data, {
+  const payload: Record<string, any> = { ...data }
+  if (
+    !payload.responsible_user ||
+    payload.responsible_user === 'none' ||
+    String(payload.responsible_user).trim() === ''
+  ) {
+    delete payload.responsible_user
+  }
+  const record = await pb.collection('projects').create(payload, {
     expand: 'responsible_user,tenant',
   })
   return normalizeProject(record)
 }
 
 export const updateProject = async (id: string, data: Record<string, any>): Promise<Project> => {
+  const payload: Record<string, any> = { ...data }
+  if (payload.responsible_user === '' || payload.responsible_user === 'none') {
+    payload.responsible_user = null
+  }
   const record = await pb.collection('projects').update(id, data, {
     expand: 'responsible_user,tenant',
   })
@@ -62,11 +99,12 @@ export const createAuditLog = async (data: {
   tenantId: string
 }) => {
   try {
+    if (!data.tenantId) return
     await pb.collection('audit_logs').create({
-      user_name: data.userName,
+      user_name: data.userName || 'Usuário',
       action_type: data.actionType,
-      description: data.description,
-      project_title: data.projectTitle,
+      description: data.description || '',
+      project_title: data.projectTitle || '',
       tenant: data.tenantId,
     })
   } catch (err) {

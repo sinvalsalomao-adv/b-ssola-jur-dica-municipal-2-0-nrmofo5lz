@@ -57,8 +57,16 @@ export default function BussolaKanban() {
   }, [])
 
   const filteredProjects = useMemo(() => {
+    if (!Array.isArray(projects)) return []
     return projects.filter((p) => {
-      if (selectedCity !== 'Todas as Prefeituras' && p.prefeitura !== selectedCity) return false
+      if (!p) return false
+      if (selectedCity !== 'Todas as Prefeituras') {
+        const pCity = (p.prefeitura || '').toLowerCase().trim()
+        const sCity = selectedCity.toLowerCase().trim()
+        if (pCity && sCity && pCity !== sCity && !pCity.includes(sCity) && !sCity.includes(pCity)) {
+          return false
+        }
+      }
       if (responsibleFilter !== 'Todos' && p.responsibleUserId !== responsibleFilter) return false
       return true
     })
@@ -128,11 +136,19 @@ export default function BussolaKanban() {
     )
   }
 
-  if (error) {
+  if (error && projects.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-96 space-y-2">
-        <p className="text-red-500 text-sm">{error}</p>
-        <p className="text-gray-400 text-xs">Tente recarregar a página.</p>
+      <div className="flex flex-col items-center justify-center h-96 space-y-3 bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
+        <p className="text-red-500 text-sm font-medium">{error}</p>
+        <p className="text-gray-400 text-xs">Não foi possível carregar os projetos no momento.</p>
+        <Button
+          onClick={() => window.location.reload()}
+          variant="outline"
+          size="sm"
+          className="text-xs"
+        >
+          Tentar Novamente
+        </Button>
       </div>
     )
   }
