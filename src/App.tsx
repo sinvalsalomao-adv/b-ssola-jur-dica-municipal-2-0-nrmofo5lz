@@ -11,7 +11,9 @@ import SuperadminPage from '@/pages/SuperadminPage'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 import { MainLayout } from '@/components/MainLayout'
+import LoginPage from '@/pages/LoginPage'
 import Dashboard from '@/pages/Dashboard'
+
 import BussolaKanban from '@/pages/BussolaKanban'
 import ControlePage from '@/pages/ControlePage'
 import DfdsPage from '@/pages/DfdsPage'
@@ -34,6 +36,7 @@ const App = () => (
               <Toaster />
               <Sonner position="top-right" />
               <Routes>
+                <Route path="/login" element={<LoginPage />} />
                 <Route element={<MainLayout />}>
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
                   <Route path="/dashboard" element={<Dashboard />} />
