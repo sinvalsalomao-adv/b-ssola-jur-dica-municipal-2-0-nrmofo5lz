@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-30T18:38:32.902Z",
+  "generatedAt": "2026-07-30T18:46:29.246Z",
   "collections": [
     {
       "name": "users",
@@ -1105,6 +1105,60 @@
         "CREATE INDEX idx_quiz_respostas_trilha_id ON quiz_respostas (trilha_id)",
         "CREATE INDEX idx_quiz_respostas_data ON quiz_respostas (data)"
       ]
+    },
+    {
+      "name": "document_templates",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "view": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "create": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "update": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "delete": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "content",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Minuta", "Ofício", "Parecer", "Declaração", "Outro"]
+        },
+        {
+          "name": "tenant",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "tenants"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_document_templates_tenant ON document_templates (tenant)"]
     }
   ]
 }

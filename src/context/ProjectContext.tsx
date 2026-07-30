@@ -14,9 +14,11 @@ import {
   updateProject as updateProjectApi,
   deleteProject as deleteProjectApi,
   getTenants,
+  createAuditLog,
 } from '@/services/projects'
 import { useRealtime } from '@/hooks/use-realtime'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
+import pb from '@/lib/pocketbase/client'
 import { toast } from 'sonner'
 
 interface TenantInfo {
@@ -112,11 +114,32 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
   }
 
   const resolveTenantId = (prefeituraName: string): string => {
-    if (!isSuperadmin && user?.tenantId) return user.tenantId
-    const tenant = tenants.find((t) => t.name === prefeituraName)
-    if (tenant) return tenant.id
-    if (user?.tenantId) return user.tenantId
+    // 1. Check user auth record
+    const userTenant = pb.authStore.record?.tenant || user?.tenantId || user?.tenant
+    if (!isSuperadmin && userTenant) {
+      return typeof userTenant === 'string' ? userTenant : userTenant.id
+    }
+
+    // 2. Try finding by prefeituraName in loaded tenants list
+    if (prefeituraName) {
+      const tenant = tenants.find(
+        (t) =>
+          t.name.toLowerCase() === prefeituraName.toLowerCase() ||
+          t.name.toLowerCase().includes(prefeituraName.toLowerCase()) ||
+          prefeituraName.toLowerCase().includes(t.name.toLowerCase()) ||
+          t.id === prefeituraName,
+      )
+      if (tenant) return tenant.id
+    }
+
+    // 3. Fallback to auth record
+    if (userTenant) {
+      return typeof userTenant === 'string' ? userTenant : userTenant.id
+    }
+
+    // 4. Fallback to first tenant
     if (tenants.length > 0) return tenants[0].id
+
     return ''
   }
 
@@ -124,7 +147,27 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     setSaving(true)
     setError(null)
     try {
-      const tenantId = resolveTenantId(data.prefeitura)
+      let tenantId = resolveTenantId(data.prefeitura)
+
+      // Fallback: if tenants list was not loaded yet, fetch now
+      if (!tenantId) {
+        const fetchedTenants = await getTenants()
+        setTenants(fetchedTenants)
+        if (fetchedTenants.length > 0) {
+          const match = fetchedTenants.find(
+            (t) =>
+              t.name.toLowerCase().includes(data.prefeitura.toLowerCase()) ||
+              data.prefeitura.toLowerCase().includes(t.name.toLowerCase()),
+          )
+          tenantId = match ? match.id : fetchedTenants[0].id
+        }
+      }
+
+      const authTenant = pb.authStore.record?.tenant || user?.tenantId || user?.tenant
+      if (!tenantId && authTenant) {
+        tenantId = typeof authTenant === 'string' ? authTenant : authTenant.id
+      }
+
       if (!tenantId) {
         throw new Error('Prefeitura (tenant) não identificada. Por favor, tente novamente.')
       }
@@ -154,6 +197,16 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       const newProj = await createProjectApi(pbData)
       setProjects((prev) => [newProj, ...prev])
+
+      // Record Audit Log
+      await createAuditLog({
+        userName: user?.name || user?.email || 'Usuário',
+        actionType: 'Criou card',
+        description: `Criou o projeto na etapa '${data.column || 'Ideação'}' com prioridade ${data.priority || 'Média'}`,
+        projectTitle: data.title,
+        tenantId,
+      })
+
       return newProj
     } catch (err) {
       setError(getErrorMessage(err))
@@ -167,17 +220,34 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     setSaving(true)
     setError(null)
     try {
+      const existing = projects.find((p) => p.id === id)
       const pbData: Record<string, any> = {}
-      if (updates.title !== undefined) pbData.titulo = updates.title
-      if (updates.description !== undefined) pbData.descricao = updates.description
-      if (updates.deadline !== undefined)
+      const changes: string[] = []
+
+      if (updates.title !== undefined && updates.title !== existing?.title) {
+        pbData.titulo = updates.title
+        changes.push(`Título alterado para '${updates.title}'`)
+      }
+      if (updates.description !== undefined && updates.description !== existing?.description) {
+        pbData.descricao = updates.description
+        changes.push('Descrição atualizada')
+      }
+      if (updates.deadline !== undefined && updates.deadline !== existing?.deadline) {
         pbData.prazo = updates.deadline
           ? updates.deadline.includes('T') || updates.deadline.includes(' ')
             ? updates.deadline
             : `${updates.deadline} 12:00:00.000Z`
           : null
-      if (updates.priority !== undefined) pbData.priority = updates.priority
-      if (updates.column !== undefined) pbData.coluna_kanban = updates.column
+        changes.push(`Prazo alterado para ${updates.deadline}`)
+      }
+      if (updates.priority !== undefined && updates.priority !== existing?.priority) {
+        pbData.priority = updates.priority
+        changes.push(`Prioridade de ${existing?.priority} para ${updates.priority}`)
+      }
+      if (updates.column !== undefined && updates.column !== existing?.column) {
+        pbData.coluna_kanban = updates.column
+        changes.push(`Etapa de '${existing?.column}' para '${updates.column}'`)
+      }
       if (updates.objeto !== undefined) pbData.objeto = updates.objeto
       if (updates.justificativa !== undefined) pbData.justificativa = updates.justificativa
       if (updates.responsibleUserId !== undefined) {
@@ -187,11 +257,26 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
           updates.responsibleUserId !== 'none'
             ? updates.responsibleUserId.trim()
             : null
+        changes.push('Responsável atualizado')
       }
 
       const updated = await updateProjectApi(id, pbData)
       setProjects((prev) => prev.map((p) => (p.id === id ? updated : p)))
       if (selectedProject?.id === id) setSelectedProject(updated)
+
+      // Audit Log
+      const tenantId = resolveTenantId(updated.prefeitura) || pb.authStore.record?.tenant
+      if (tenantId && changes.length > 0) {
+        const resolvedId = typeof tenantId === 'string' ? tenantId : tenantId.id
+        await createAuditLog({
+          userName: user?.name || user?.email || 'Usuário',
+          actionType:
+            updates.column && updates.column !== existing?.column ? 'Moveu card' : 'Editou card',
+          description: changes.join(', '),
+          projectTitle: updated.title,
+          tenantId: resolvedId,
+        })
+      }
     } catch (err) {
       setError(getErrorMessage(err))
       throw err
@@ -219,9 +304,23 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
   }
 
   const moveProjectColumn = async (id: string, newColumn: ColumnType) => {
+    const existing = projects.find((p) => p.id === id)
+    const oldColumn = existing?.column || 'Ideação'
+
     setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, column: newColumn } : p)))
     try {
-      await updateProjectApi(id, { coluna_kanban: newColumn })
+      const updated = await updateProjectApi(id, { coluna_kanban: newColumn })
+      const tenantId = resolveTenantId(updated.prefeitura) || pb.authStore.record?.tenant
+      if (tenantId) {
+        const resolvedId = typeof tenantId === 'string' ? tenantId : tenantId.id
+        await createAuditLog({
+          userName: user?.name || user?.email || 'Usuário',
+          actionType: 'Moveu card',
+          description: `Moveu o card de '${oldColumn}' para '${newColumn}'`,
+          projectTitle: updated.title,
+          tenantId: resolvedId,
+        })
+      }
     } catch (err) {
       loadProjects()
       setError(getErrorMessage(err))

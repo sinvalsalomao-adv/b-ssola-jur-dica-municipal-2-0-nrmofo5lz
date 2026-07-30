@@ -26,7 +26,7 @@ import { toast } from 'sonner'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 
 export const NewProjectModal: React.FC = () => {
-  const { isNewModalOpen, setIsNewModalOpen, addProject, saving } = useProjects()
+  const { isNewModalOpen, setIsNewModalOpen, addProject, saving, tenants } = useProjects()
   const { user } = useAuth()
   const isSuperadmin = user?.role === 'superadmin'
 
@@ -49,9 +49,14 @@ export const NewProjectModal: React.FC = () => {
           setUsers(data.map((u) => ({ id: u.id, name: u.name })))
         })
         .catch(() => {})
-      if (user?.prefeitura) setPrefeitura(user.prefeitura)
+
+      if (user?.prefeitura) {
+        setPrefeitura(user.prefeitura)
+      } else if (tenants.length > 0) {
+        setPrefeitura(tenants[0].name)
+      }
     }
-  }, [isNewModalOpen, user])
+  }, [isNewModalOpen, user, tenants])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -72,7 +77,7 @@ export const NewProjectModal: React.FC = () => {
         responsibleUserId: responsibleUserId === 'none' ? '' : responsibleUserId,
         deadline,
         column,
-        prefeitura,
+        prefeitura: prefeitura || user?.prefeitura || 'Florânia',
         priority,
         objeto: objeto.trim(),
         justificativa: justificativa.trim(),
@@ -91,7 +96,7 @@ export const NewProjectModal: React.FC = () => {
     setResponsibleUserId('')
     setDeadline('')
     setColumn('Ideação')
-    setPrefeitura(user?.prefeitura || 'Florânia')
+    setPrefeitura(user?.prefeitura || (tenants.length > 0 ? tenants[0].name : 'Florânia'))
     setPriority('Média')
     setObjeto('')
     setJustificativa('')
@@ -171,11 +176,17 @@ export const NewProjectModal: React.FC = () => {
                   <SelectValue placeholder="Prefeitura" />
                 </SelectTrigger>
                 <SelectContent>
-                  {PREFEITURAS.map((pref) => (
-                    <SelectItem key={pref} value={pref}>
-                      {pref}
-                    </SelectItem>
-                  ))}
+                  {tenants.length > 0
+                    ? tenants.map((t) => (
+                        <SelectItem key={t.id} value={t.name}>
+                          {t.name}
+                        </SelectItem>
+                      ))
+                    : PREFEITURAS.map((pref) => (
+                        <SelectItem key={pref} value={pref}>
+                          {pref}
+                        </SelectItem>
+                      ))}
                 </SelectContent>
               </Select>
             </div>
