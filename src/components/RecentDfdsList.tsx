@@ -1,15 +1,56 @@
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { FileText, Clock, CheckCircle2, Pencil } from 'lucide-react'
+import { FileText, Clock, CheckCircle2, Pencil, Loader2 } from 'lucide-react'
 import { DfdRecord } from '@/types/dfd'
+import { getRecentDfds } from '@/services/dfds'
+import { useAuth } from '@/context/AuthContext'
+import { useRealtime } from '@/hooks/use-realtime'
+import { Skeleton } from '@/components/ui/skeleton'
 
 interface RecentDfdsListProps {
-  dfds: DfdRecord[]
+  dfds?: DfdRecord[]
   onEdit?: (dfd: DfdRecord) => void
   loading?: boolean
 }
 
-export const RecentDfdsList = ({ dfds, onEdit }: RecentDfdsListProps) => {
+export const RecentDfdsList = ({
+  dfds: propDfds,
+  onEdit,
+  loading: propLoading,
+}: RecentDfdsListProps) => {
+  const { user } = useAuth()
+  const tenantId = user?.tenant || ''
+  const isControlled = propDfds !== undefined
+
+  const [internalDfds, setInternalDfds] = useState<DfdRecord[]>([])
+  const [internalLoading, setInternalLoading] = useState(!isControlled)
+
+  const loadDfds = useCallback(async () => {
+    if (isControlled || !tenantId) return
+    try {
+      setInternalLoading(true)
+      const data = await getRecentDfds(tenantId)
+      setInternalDfds(data)
+    } catch {
+      setInternalDfds([])
+    } finally {
+      setInternalLoading(false)
+    }
+  }, [isControlled, tenantId])
+
+  useEffect(() => {
+    if (isControlled) return
+    loadDfds()
+  }, [loadDfds, isControlled])
+
+  useRealtime('dfds', () => {
+    if (!isControlled) loadDfds()
+  })
+
+  const dfds = isControlled ? (propDfds ?? []) : internalDfds
+  const loading = isControlled ? (propLoading ?? false) : internalLoading
+
   return (
     <Card className="bg-white border-0 shadow-subtle">
       <div className="p-5 border-b border-gray-100">
@@ -19,7 +60,20 @@ export const RecentDfdsList = ({ dfds, onEdit }: RecentDfdsListProps) => {
         </h3>
       </div>
       <CardContent className="p-0">
-        {dfds.length === 0 ? (
+        {loading ? (
+          <div className="p-4 space-y-3">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="flex items-center gap-3 p-2">
+                <Skeleton className="w-9 h-9 rounded-lg" />
+                <div className="flex-1 space-y-1.5">
+                  <Skeleton className="h-3.5 w-3/4" />
+                  <Skeleton className="h-2.5 w-1/3" />
+                </div>
+                <Skeleton className="h-5 w-16 rounded-full" />
+              </div>
+            ))}
+          </div>
+        ) : !dfds || dfds.length === 0 ? (
           <div className="p-8 text-center text-sm text-gray-400">
             Nenhum DFD encontrado. Crie seu primeiro documento acima.
           </div>
