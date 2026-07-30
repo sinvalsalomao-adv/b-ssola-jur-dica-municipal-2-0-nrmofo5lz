@@ -38,6 +38,7 @@ import { getUsers } from '@/services/users'
 import { getAuditLogsByProjectTitle } from '@/services/projects'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
+import { formatDate, normalizeDateForInput } from '@/lib/dateUtils'
 
 interface AuditEntry {
   id: string
@@ -88,7 +89,7 @@ export const ProjectSidePanel: React.FC = () => {
       setTitle(selectedProject.title)
       setDescription(selectedProject.description || '')
       setResponsibleUserId(selectedProject.responsibleUserId || '')
-      setDeadline(selectedProject.deadline)
+      setDeadline(normalizeDateForInput(selectedProject.deadline))
       setPriority(selectedProject.priority)
       setPrefeitura(selectedProject.prefeitura)
       setColumn(selectedProject.column)
@@ -147,12 +148,8 @@ export const ProjectSidePanel: React.FC = () => {
     }
   }
 
-  const formattedCreated = selectedProject.createdAt
-    ? new Date(selectedProject.createdAt).toLocaleDateString('pt-BR')
-    : '-'
-  const formattedUpdated = selectedProject.updatedAt
-    ? new Date(selectedProject.updatedAt).toLocaleDateString('pt-BR')
-    : '-'
+  const formattedCreated = formatDate(selectedProject.createdAt, '-')
+  const formattedUpdated = formatDate(selectedProject.updatedAt, '-')
 
   const getActionBadge = (actionType: string) => {
     switch (actionType) {

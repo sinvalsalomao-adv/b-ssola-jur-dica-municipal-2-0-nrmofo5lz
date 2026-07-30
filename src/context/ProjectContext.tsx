@@ -165,7 +165,11 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       const pbData: Record<string, any> = {
         titulo: data.title.trim(),
         descricao: data.description?.trim() || '',
-        prazo: data.deadline || null,
+        prazo: data.deadline
+          ? data.deadline.includes(' ') || data.deadline.includes('T')
+            ? data.deadline
+            : `${data.deadline} 00:00:00.000Z`
+          : null,
         coluna_kanban: data.column || 'Ideação',
         priority: data.priority || 'Média',
         tenant: tenantId,
@@ -220,7 +224,13 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       if (data.description !== undefined) pbData.descricao = data.description
       if (data.responsibleUserId !== undefined)
         pbData.responsible_user = data.responsibleUserId || null
-      if (data.deadline !== undefined) pbData.prazo = data.deadline || null
+      if (data.deadline !== undefined) {
+        pbData.prazo = data.deadline
+          ? data.deadline.includes(' ') || data.deadline.includes('T')
+            ? data.deadline
+            : `${data.deadline} 00:00:00.000Z`
+          : null
+      }
       if (data.column !== undefined) pbData.coluna_kanban = data.column
       if (data.priority !== undefined) pbData.priority = data.priority
       if (data.objeto !== undefined) pbData.objeto = data.objeto

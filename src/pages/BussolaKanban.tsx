@@ -13,6 +13,7 @@ import {
   FileText,
 } from 'lucide-react'
 import { exportProjectsToPdf } from '@/lib/pdfExporter'
+import { formatDate } from '@/lib/dateUtils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -75,16 +76,27 @@ export default function BussolaKanban() {
   const sortProjects = (list: Project[]) => {
     return [...list].sort((a, b) => {
       if (sortBy === 'prazo') {
-        if (!a.deadline) return 1
-        if (!b.deadline) return -1
-        return new Date(a.deadline).getTime() - new Date(b.deadline).getTime()
+        const timeA = a.deadline
+          ? new Date(a.deadline.substring(0, 10) + 'T00:00:00').getTime()
+          : NaN
+        const timeB = b.deadline
+          ? new Date(b.deadline.substring(0, 10) + 'T00:00:00').getTime()
+          : NaN
+        const isValidA = !isNaN(timeA)
+        const isValidB = !isNaN(timeB)
+        if (!isValidA && !isValidB) return 0
+        if (!isValidA) return 1
+        if (!isValidB) return -1
+        return timeA - timeB
       }
       if (sortBy === 'priority') {
         const priorityWeight: Record<string, number> = { Alta: 1, Média: 2, Baixa: 3 }
         return (priorityWeight[a.priority] || 2) - (priorityWeight[b.priority] || 2)
       }
       if (sortBy === 'recentes') {
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0
+        return (isNaN(timeB) ? 0 : timeB) - (isNaN(timeA) ? 0 : timeA)
       }
       return 0
     })
@@ -268,12 +280,7 @@ export default function BussolaKanban() {
 
                 <div className="flex-1 space-y-2.5 overflow-y-auto pr-0.5">
                   {columnProjects.map((project) => {
-                    const formattedDate = project.deadline
-                      ? new Date(project.deadline + 'T12:00:00').toLocaleDateString('pt-BR', {
-                          day: '2-digit',
-                          month: '2-digit',
-                        })
-                      : 'Sem prazo'
+                    const formattedDate = formatDate(project.deadline, 'Sem prazo')
                     return (
                       <Card
                         key={project.id}

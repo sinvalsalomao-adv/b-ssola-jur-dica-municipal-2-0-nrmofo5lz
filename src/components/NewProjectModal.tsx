@@ -24,6 +24,7 @@ import { getUsers } from '@/services/users'
 import { Loader2, ChevronDown, ChevronUp } from 'lucide-react'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
+import { normalizeDateForInput } from '@/lib/dateUtils'
 
 export const NewProjectModal: React.FC = () => {
   const { isNewModalOpen, setIsNewModalOpen, addProject, saving, tenants } = useProjects()
