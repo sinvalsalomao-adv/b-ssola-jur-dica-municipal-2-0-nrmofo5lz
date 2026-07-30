@@ -1,28 +1,36 @@
-/* Main App Component - Handles routing (using react-router-dom), query client and other providers - use this file to add all routes */
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from '@/components/ui/toaster'
 import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import Index from './pages/Index'
-import NotFound from './pages/NotFound'
-import Layout from './components/Layout'
+import { ProjectProvider } from '@/context/ProjectContext'
 
-// ONLY IMPORT AND RENDER WORKING PAGES, NEVER ADD PLACEHOLDER COMPONENTS OR PAGES IN THIS FILE
-// AVOID REMOVING ANY CONTEXT PROVIDERS FROM THIS FILE (e.g. TooltipProvider, Toaster, Sonner)
+import { MainLayout } from '@/components/MainLayout'
+import Dashboard from '@/pages/Dashboard'
+import BussolaKanban from '@/pages/BussolaKanban'
+import DfdsPage from '@/pages/DfdsPage'
+import EducacaoPage from '@/pages/EducacaoPage'
+import UsuariosPage from '@/pages/UsuariosPage'
+import NotFound from '@/pages/NotFound'
 
 const App = () => (
   <BrowserRouter>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <Routes>
-        <Route element={<Layout />}>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES MUST BE ADDED HERE */}
-        </Route>
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </TooltipProvider>
+    <ProjectProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner position="top-right" />
+        <Routes>
+          <Route element={<MainLayout />}>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/bussola" element={<BussolaKanban />} />
+            <Route path="/dfds" element={<DfdsPage />} />
+            <Route path="/educacao" element={<EducacaoPage />} />
+            <Route path="/usuarios" element={<UsuariosPage />} />
+          </Route>
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </TooltipProvider>
+    </ProjectProvider>
   </BrowserRouter>
 )
 
