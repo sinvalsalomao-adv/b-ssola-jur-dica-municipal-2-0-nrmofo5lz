@@ -7,9 +7,11 @@ export interface DfdRecord {
   descricao: string
   justificativa: string
   responsible: string
+  responsibleUserId: string
   deadline: string
   status: DfdStatus
   createdAt: string
+  projetoId: string
 }
 
 export const INITIAL_SAVED_PHRASES = [

@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { Sparkles, Loader2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useProjects } from '@/context/ProjectContext'
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
@@ -16,41 +17,63 @@ import {
 } from '@/components/ui/select'
 import { SavedPhrasesDropdown } from '@/components/SavedPhrasesDropdown'
 import { generateJustificativa } from '@/lib/dfd-generator'
-import { DFD_RESPONSIBLES, DfdRecord } from '@/types/dfd'
-import { getFrases, createFrase, incrementFraseUso } from '@/services/frases'
-import type { FraseSalva } from '@/types/education'
+import { DfdRecord } from '@/types/dfd'
+import { Priority, ColumnType } from '@/types/project'
+import { getUsersByTenant } from '@/services/users'
+import { createDfd, updateDfd } from '@/services/dfds'
+import { getFrasesAsStrings, saveOrIncrementFrase } from '@/services/frases'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 
 interface DfdFormProps {
-  onDfdCreated: (dfd: DfdRecord) => void
+  dfd?: DfdRecord | null
+  onDfdSaved?: () => void
 }
 
-export const DfdForm: React.FC<DfdFormProps> = ({ onDfdCreated }) => {
-  const { addProject } = useProjects()
+export const DfdForm = ({ dfd, onDfdSaved }: DfdFormProps) => {
+  const { addProject, updateProject } = useProjects()
+  const { user } = useAuth()
+  const navigate = useNavigate()
 
-  const [title, setTitle] = useState('')
-  const [objeto, setObjeto] = useState('')
-  const [descricao, setDescricao] = useState('')
-  const [justificativa, setJustificativa] = useState('')
-  const [responsible, setResponsible] = useState(DFD_RESPONSIBLES[0])
-  const [deadline, setDeadline] = useState('')
-  const [objetoPhrases, setObjetoPhrases] = useState<string[]>(INITIAL_SAVED_PHRASES)
-  const [descricaoPhrases, setDescricaoPhrases] = useState<string[]>(INITIAL_SAVED_PHRASES)
+  const tenantId = user?.tenantId || ''
+  const isEditing = !!dfd
+
+  const [title, setTitle] = useState(dfd?.title || '')
+  const [objeto, setObjeto] = useState(dfd?.objeto || '')
+  const [descricao, setDescricao] = useState(dfd?.descricao || '')
+  const [justificativa, setJustificativa] = useState(dfd?.justificativa || '')
+  const [responsibleUserId, setResponsibleUserId] = useState(dfd?.responsibleUserId || '')
+  const [deadline, setDeadline] = useState(dfd?.deadline || '')
+  const [users, setUsers] = useState<{ id: string; name: string }[]>([])
+  const [objetoPhrases, setObjetoPhrases] = useState<string[]>([])
+  const [descricaoPhrases, setDescricaoPhrases] = useState<string[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
 
-  const addPhraseIfNew = (text: string) => {
-    const trimmed = text.trim()
-    if (trimmed && !objetoPhrases.some((p) => p.toLowerCase() === trimmed.toLowerCase())) {
-      setObjetoPhrases((prev) => [...prev, trimmed])
-    }
-  }
+  useEffect(() => {
+    if (!tenantId) return
+    getUsersByTenant(tenantId)
+      .then((data) => {
+        const mapped = data.map((u) => ({ id: u.id, name: u.name }))
+        setUsers(mapped)
+        if (!responsibleUserId && mapped.length > 0) setResponsibleUserId(mapped[0].id)
+      })
+      .catch(() => {})
+    getFrasesAsStrings(tenantId, 'objeto')
+      .then(setObjetoPhrases)
+      .catch(() => {})
+    getFrasesAsStrings(tenantId, 'descricao')
+      .then(setDescricaoPhrases)
+      .catch(() => {})
+  }, [tenantId])
 
-  const addDescricaoPhraseIfNew = (text: string) => {
+  const addPhraseIfNew = (text: string, type: 'objeto' | 'descricao') => {
     const trimmed = text.trim()
-    if (trimmed && !descricaoPhrases.some((p) => p.toLowerCase() === trimmed.toLowerCase())) {
-      setDescricaoPhrases((prev) => [...prev, trimmed])
-    }
+    if (!trimmed) return
+    const setter = type === 'objeto' ? setObjetoPhrases : setDescricaoPhrases
+    setter((prev) =>
+      prev.some((p) => p.toLowerCase() === trimmed.toLowerCase()) ? prev : [...prev, trimmed],
+    )
   }
 
   const handleGenerateIA = () => {
@@ -60,8 +83,7 @@ export const DfdForm: React.FC<DfdFormProps> = ({ onDfdCreated }) => {
     }
     setIsGenerating(true)
     setTimeout(() => {
-      const generated = generateJustificativa(title, objeto, descricao)
-      setJustificativa(generated)
+      setJustificativa(generateJustificativa(title, objeto, descricao))
       setIsGenerating(false)
       toast.success('Justificativa gerada com sucesso!')
     }, 1500)
@@ -72,66 +94,87 @@ export const DfdForm: React.FC<DfdFormProps> = ({ onDfdCreated }) => {
     setObjeto('')
     setDescricao('')
     setJustificativa('')
-    setResponsible(DFD_RESPONSIBLES[0])
     setDeadline('')
   }
 
-  const handleSaveDraft = () => {
-    const dfd: DfdRecord = {
-      id: `dfd-${Date.now()}`,
-      title: title.trim() || 'Sem título',
-      objeto,
-      descricao,
-      justificativa,
-      responsible,
-      deadline,
-      status: 'Rascunho',
-      createdAt: new Date().toISOString(),
+  const handleSave = async (isDraft: boolean) => {
+    if (!isDraft) {
+      if (!title.trim()) {
+        toast.error('O título do projeto é obrigatório.')
+        return
+      }
+      if (!objeto.trim()) {
+        toast.error('O objeto é obrigatório.')
+        return
+      }
+      if (!deadline) {
+        toast.error('O prazo para conclusão é obrigatório.')
+        return
+      }
     }
-    onDfdCreated(dfd)
-    toast.success('Rascunho salvo com sucesso!')
-    resetForm()
-  }
+    setSubmitting(true)
+    try {
+      if (objeto.trim()) await saveOrIncrementFrase(objeto, 'objeto', tenantId)
+      if (descricao.trim()) await saveOrIncrementFrase(descricao, 'descricao', tenantId)
 
-  const handleFinalize = () => {
-    if (!title.trim()) {
-      toast.error('O título do projeto é obrigatório.')
-      return
-    }
-    if (!objeto.trim()) {
-      toast.error('O objeto é obrigatório.')
-      return
-    }
-    if (!deadline) {
-      toast.error('O prazo para conclusão é obrigatório.')
-      return
-    }
+      const projTitle = title.trim() || 'Sem título'
+      if (isEditing && dfd?.projetoId) {
+        await updateProject(dfd.projetoId, {
+          title: projTitle,
+          description: descricao,
+          deadline,
+          objeto,
+          justificativa,
+          responsibleUserId,
+        })
+        await updateDfd(dfd.id, {
+          titulo: projTitle,
+          objeto,
+          descricao,
+          justificativa,
+          responsible_user: responsibleUserId,
+          prazo: deadline,
+          status: isDraft ? 'Rascunho' : 'Finalizado',
+        })
+      } else {
+        const newProject = await addProject({
+          title: projTitle,
+          description: descricao,
+          responsible: '',
+          responsibleUserId,
+          deadline,
+          priority: 'Média' as Priority,
+          column: (isDraft ? 'Ideação' : 'Elaborar DFD') as ColumnType,
+          prefeitura: user?.prefeitura || '',
+          objeto,
+          justificativa,
+        })
+        await createDfd({
+          titulo: projTitle,
+          objeto,
+          descricao,
+          justificativa,
+          responsible_user: responsibleUserId,
+          prazo: deadline,
+          status: isDraft ? 'Rascunho' : 'Finalizado',
+          tenant: tenantId,
+          projeto_id: newProject.id,
+        })
+      }
 
-    const dfd: DfdRecord = {
-      id: `dfd-${Date.now()}`,
-      title: title.trim(),
-      objeto,
-      descricao,
-      justificativa,
-      responsible,
-      deadline,
-      status: 'Finalizado',
-      createdAt: new Date().toISOString(),
+      if (isDraft) {
+        toast.success('Rascunho salvo com sucesso!')
+        onDfdSaved?.()
+        resetForm()
+      } else {
+        toast.success('DFD finalizado! Card criado na coluna "Elaborar DFD" do Kanban.')
+        navigate('/bussola')
+      }
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
+      setSubmitting(false)
     }
-
-    addProject({
-      title: title.trim(),
-      description: `DFD #${dfd.id} — Objeto: ${objeto}. ${justificativa.substring(0, 200)}`,
-      responsible,
-      deadline,
-      priority: 'Média',
-      column: 'Elaborar DFD',
-      prefeitura: 'Florânia',
-    })
-
-    onDfdCreated(dfd)
-    toast.success('DFD finalizado! Card criado na coluna "Elaborar DFD" do Kanban.')
-    resetForm()
   }
 
   return (
@@ -162,7 +205,7 @@ export const DfdForm: React.FC<DfdFormProps> = ({ onDfdCreated }) => {
             placeholder="Descreva o objeto da contratação..."
             value={objeto}
             onChange={(e) => setObjeto(e.target.value)}
-            onBlur={() => addPhraseIfNew(objeto)}
+            onBlur={() => addPhraseIfNew(objeto, 'objeto')}
             className="mt-1 min-h-[80px]"
           />
         </div>
@@ -179,7 +222,7 @@ export const DfdForm: React.FC<DfdFormProps> = ({ onDfdCreated }) => {
             placeholder="Detalhe a descrição do objeto..."
             value={descricao}
             onChange={(e) => setDescricao(e.target.value)}
-            onBlur={() => addDescricaoPhraseIfNew(descricao)}
+            onBlur={() => addPhraseIfNew(descricao, 'descricao')}
             className="mt-1 min-h-[80px]"
           />
         </div>
@@ -217,14 +260,14 @@ export const DfdForm: React.FC<DfdFormProps> = ({ onDfdCreated }) => {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <Label className="text-xs font-semibold text-gray-700">Responsável pelo DFD</Label>
-            <Select value={responsible} onValueChange={setResponsible}>
+            <Select value={responsibleUserId} onValueChange={setResponsibleUserId}>
               <SelectTrigger className="mt-1">
                 <SelectValue placeholder="Selecione..." />
               </SelectTrigger>
               <SelectContent>
-                {DFD_RESPONSIBLES.map((r) => (
-                  <SelectItem key={r} value={r}>
-                    {r}
+                {users.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -245,17 +288,19 @@ export const DfdForm: React.FC<DfdFormProps> = ({ onDfdCreated }) => {
           <Button
             type="button"
             variant="outline"
-            onClick={handleSaveDraft}
+            onClick={() => handleSave(true)}
+            disabled={submitting}
             className="flex-1 border-[#4a6fa5] text-[#4a6fa5] hover:bg-[#4a6fa5] hover:text-white"
           >
-            Salvar Rascunho
+            {submitting ? 'Salvando...' : 'Salvar Rascunho'}
           </Button>
           <Button
             type="button"
-            onClick={handleFinalize}
+            onClick={() => handleSave(false)}
+            disabled={submitting}
             className="flex-1 bg-[#2e7d32] hover:bg-[#1b5e20] text-white"
           >
-            Finalizar DFD
+            {submitting ? 'Finalizando...' : 'Finalizar DFD'}
           </Button>
         </div>
       </CardContent>

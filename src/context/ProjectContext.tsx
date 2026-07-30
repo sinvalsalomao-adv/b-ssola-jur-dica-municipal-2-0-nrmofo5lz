@@ -37,7 +37,7 @@ interface ProjectContextType {
   setIsSidePanelOpen: (open: boolean) => void
   isNewModalOpen: boolean
   setIsNewModalOpen: (open: boolean) => void
-  addProject: (project: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>
+  addProject: (project: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Project>
   updateProject: (id: string, updates: Partial<Project>) => Promise<void>
   deleteProject: (id: string) => Promise<void>
   moveProjectColumn: (id: string, newColumn: ColumnType) => Promise<void>
@@ -134,6 +134,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
       const newProj = await createProjectApi(pbData)
       setProjects((prev) => [newProj, ...prev])
+      return newProj
     } catch (err) {
       setError(getErrorMessage(err))
       throw err
