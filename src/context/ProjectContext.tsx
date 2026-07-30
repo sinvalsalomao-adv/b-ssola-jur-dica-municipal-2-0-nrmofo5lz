@@ -83,12 +83,12 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [loadProjects])
 
   useEffect(() => {
-    if (isSuperadmin) {
+    if (isAuthenticated) {
       getTenants()
         .then(setTenants)
         .catch(() => {})
     }
-  }, [isSuperadmin])
+  }, [isAuthenticated])
 
   useEffect(() => {
     if (!isSuperadmin && user?.prefeitura) {
@@ -114,7 +114,10 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
   const resolveTenantId = (prefeituraName: string): string => {
     if (!isSuperadmin && user?.tenantId) return user.tenantId
     const tenant = tenants.find((t) => t.name === prefeituraName)
-    return tenant?.id || user?.tenantId || ''
+    if (tenant) return tenant.id
+    if (user?.tenantId) return user.tenantId
+    if (tenants.length > 0) return tenants[0].id
+    return ''
   }
 
   const addProject = async (data: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -122,17 +125,33 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     setError(null)
     try {
       const tenantId = resolveTenantId(data.prefeitura)
+      if (!tenantId) {
+        throw new Error('Prefeitura (tenant) não identificada. Por favor, tente novamente.')
+      }
+
       const pbData: Record<string, any> = {
         titulo: data.title,
-        descricao: data.description,
-        prazo: data.deadline,
-        priority: data.priority,
-        coluna_kanban: data.column,
+        descricao: data.description || '',
+        prazo: data.deadline
+          ? data.deadline.includes('T') || data.deadline.includes(' ')
+            ? data.deadline
+            : `${data.deadline} 12:00:00.000Z`
+          : null,
+        priority: data.priority || 'Média',
+        coluna_kanban: data.column || 'Ideação',
         objeto: data.objeto || '',
         justificativa: data.justificativa || '',
         tenant: tenantId,
-        responsible_user: data.responsibleUserId || '',
       }
+
+      if (
+        data.responsibleUserId &&
+        data.responsibleUserId.trim() !== '' &&
+        data.responsibleUserId !== 'none'
+      ) {
+        pbData.responsible_user = data.responsibleUserId.trim()
+      }
+
       const newProj = await createProjectApi(pbData)
       setProjects((prev) => [newProj, ...prev])
       return newProj
@@ -151,13 +170,24 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       const pbData: Record<string, any> = {}
       if (updates.title !== undefined) pbData.titulo = updates.title
       if (updates.description !== undefined) pbData.descricao = updates.description
-      if (updates.deadline !== undefined) pbData.prazo = updates.deadline
+      if (updates.deadline !== undefined)
+        pbData.prazo = updates.deadline
+          ? updates.deadline.includes('T') || updates.deadline.includes(' ')
+            ? updates.deadline
+            : `${updates.deadline} 12:00:00.000Z`
+          : null
       if (updates.priority !== undefined) pbData.priority = updates.priority
       if (updates.column !== undefined) pbData.coluna_kanban = updates.column
       if (updates.objeto !== undefined) pbData.objeto = updates.objeto
       if (updates.justificativa !== undefined) pbData.justificativa = updates.justificativa
-      if (updates.responsibleUserId !== undefined)
-        pbData.responsible_user = updates.responsibleUserId
+      if (updates.responsibleUserId !== undefined) {
+        pbData.responsible_user =
+          updates.responsibleUserId &&
+          updates.responsibleUserId.trim() !== '' &&
+          updates.responsibleUserId !== 'none'
+            ? updates.responsibleUserId.trim()
+            : null
+      }
 
       const updated = await updateProjectApi(id, pbData)
       setProjects((prev) => prev.map((p) => (p.id === id ? updated : p)))

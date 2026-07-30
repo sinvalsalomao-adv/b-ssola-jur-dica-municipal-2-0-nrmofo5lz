@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { getUsers } from '@/services/users'
-import { Loader2 } from 'lucide-react'
+import { Loader2, ChevronDown, ChevronUp } from 'lucide-react'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 
@@ -38,13 +38,15 @@ export const NewProjectModal: React.FC = () => {
   const [column, setColumn] = useState<ColumnType>('Ideação')
   const [prefeitura, setPrefeitura] = useState('Florânia')
   const [priority, setPriority] = useState<Priority>('Média')
+  const [objeto, setObjeto] = useState('')
+  const [justificativa, setJustificativa] = useState('')
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   useEffect(() => {
     if (isNewModalOpen) {
       getUsers()
         .then((data) => {
           setUsers(data.map((u) => ({ id: u.id, name: u.name })))
-          if (data.length > 0) setResponsibleUserId(data[0].id)
         })
         .catch(() => {})
       if (user?.prefeitura) setPrefeitura(user.prefeitura)
@@ -61,16 +63,19 @@ export const NewProjectModal: React.FC = () => {
       toast.error('Informe a data limite para o prazo.')
       return
     }
+
     try {
       await addProject({
         title: title.trim(),
-        description,
+        description: description.trim(),
         responsible: '',
-        responsibleUserId,
+        responsibleUserId: responsibleUserId === 'none' ? '' : responsibleUserId,
         deadline,
         column,
         prefeitura,
         priority,
+        objeto: objeto.trim(),
+        justificativa: justificativa.trim(),
       })
       toast.success('Projeto criado com sucesso!')
       setIsNewModalOpen(false)
@@ -88,11 +93,14 @@ export const NewProjectModal: React.FC = () => {
     setColumn('Ideação')
     setPrefeitura(user?.prefeitura || 'Florânia')
     setPriority('Média')
+    setObjeto('')
+    setJustificativa('')
+    setShowAdvanced(false)
   }
 
   return (
     <Dialog open={isNewModalOpen} onOpenChange={setIsNewModalOpen}>
-      <DialogContent className="sm:max-w-[540px] bg-white rounded-xl shadow-xl">
+      <DialogContent className="sm:max-w-[560px] bg-white rounded-xl shadow-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold text-[#1c2a3e]">Criar Novo Projeto</DialogTitle>
         </DialogHeader>
@@ -107,7 +115,8 @@ export const NewProjectModal: React.FC = () => {
               placeholder="Ex: Reforma da Praça Municipal"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="mt-1"
+              className="mt-1 text-sm"
+              required
             />
           </div>
 
@@ -120,7 +129,7 @@ export const NewProjectModal: React.FC = () => {
               placeholder="Detalhes e escopo do projeto..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="mt-1 min-h-[80px]"
+              className="mt-1 min-h-[70px] text-sm"
             />
           </div>
 
@@ -128,10 +137,11 @@ export const NewProjectModal: React.FC = () => {
             <div>
               <Label className="text-xs font-semibold text-gray-700">Responsável</Label>
               <Select value={responsibleUserId} onValueChange={setResponsibleUserId}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="Selecione..." />
+                <SelectTrigger className="mt-1 text-xs">
+                  <SelectValue placeholder="Selecione um responsável..." />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">Nenhum Responsável</SelectItem>
                   {users.map((u) => (
                     <SelectItem key={u.id} value={u.id}>
                       {u.name}
@@ -147,7 +157,8 @@ export const NewProjectModal: React.FC = () => {
                 type="date"
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
-                className="mt-1"
+                className="mt-1 text-xs"
+                required
               />
             </div>
           </div>
@@ -156,7 +167,7 @@ export const NewProjectModal: React.FC = () => {
             <div>
               <Label className="text-xs font-semibold text-gray-700">Prefeitura</Label>
               <Select value={prefeitura} onValueChange={setPrefeitura} disabled={!isSuperadmin}>
-                <SelectTrigger className="mt-1">
+                <SelectTrigger className="mt-1 text-xs">
                   <SelectValue placeholder="Prefeitura" />
                 </SelectTrigger>
                 <SelectContent>
@@ -172,7 +183,7 @@ export const NewProjectModal: React.FC = () => {
             <div>
               <Label className="text-xs font-semibold text-gray-700">Coluna Inicial</Label>
               <Select value={column} onValueChange={(v) => setColumn(v as ColumnType)}>
-                <SelectTrigger className="mt-1">
+                <SelectTrigger className="mt-1 text-xs">
                   <SelectValue placeholder="Coluna" />
                 </SelectTrigger>
                 <SelectContent>
@@ -188,7 +199,7 @@ export const NewProjectModal: React.FC = () => {
             <div>
               <Label className="text-xs font-semibold text-gray-700">Prioridade</Label>
               <Select value={priority} onValueChange={(v) => setPriority(v as Priority)}>
-                <SelectTrigger className="mt-1">
+                <SelectTrigger className="mt-1 text-xs">
                   <SelectValue placeholder="Prioridade" />
                 </SelectTrigger>
                 <SelectContent>
@@ -198,6 +209,53 @@ export const NewProjectModal: React.FC = () => {
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="flex items-center gap-1 text-xs text-[#3b82f6] hover:underline font-medium pt-1"
+            >
+              {showAdvanced ? (
+                <ChevronUp className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5" />
+              )}
+              {showAdvanced
+                ? 'Ocultar campos avançados (Objeto e Justificativa)'
+                : 'Adicionar Objeto e Justificativa (Opcional)'}
+            </button>
+
+            {showAdvanced && (
+              <div className="space-y-3 mt-3 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                <div>
+                  <Label htmlFor="objeto" className="text-xs font-semibold text-gray-700">
+                    Objeto do Projeto
+                  </Label>
+                  <Textarea
+                    id="objeto"
+                    placeholder="Detalhamento do objeto de contratação ou parecer..."
+                    value={objeto}
+                    onChange={(e) => setObjeto(e.target.value)}
+                    className="mt-1 min-h-[60px] text-xs bg-white"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="justificativa" className="text-xs font-semibold text-gray-700">
+                    Justificativa
+                  </Label>
+                  <Textarea
+                    id="justificativa"
+                    placeholder="Justificativa de interesse público..."
+                    value={justificativa}
+                    onChange={(e) => setJustificativa(e.target.value)}
+                    className="mt-1 min-h-[60px] text-xs bg-white"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           <DialogFooter className="pt-4 border-t flex justify-end space-x-2">

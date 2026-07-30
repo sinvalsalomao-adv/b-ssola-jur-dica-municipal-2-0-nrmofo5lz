@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useProjects } from '@/context/ProjectContext'
-import { COLUMNS, PREFEITURAS, ColumnType } from '@/types/project'
-import { Plus, Filter, Calendar, User, MoreHorizontal, Loader2 } from 'lucide-react'
+import { COLUMNS, PREFEITURAS, ColumnType, Project } from '@/types/project'
+import { Plus, Filter, Calendar, User, MoreHorizontal, Loader2, ArrowUpDown, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -20,6 +20,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { getUsers } from '@/services/users'
 
+type SortOption = 'prazo' | 'priority' | 'recentes'
+
 export default function BussolaKanban() {
   const {
     projects,
@@ -34,6 +36,7 @@ export default function BussolaKanban() {
 
   const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null)
   const [responsibleFilter, setResponsibleFilter] = useState('Todos')
+  const [sortBy, setSortBy] = useState<SortOption>('prazo')
   const [users, setUsers] = useState<{ id: string; name: string }[]>([])
 
   useEffect(() => {
@@ -42,13 +45,36 @@ export default function BussolaKanban() {
       .catch(() => {})
   }, [])
 
-  const filteredProjects = projects.filter((p) => {
-    if (selectedCity !== 'Todas as Prefeituras' && p.prefeitura !== selectedCity) return false
-    if (responsibleFilter !== 'Todos' && p.responsibleUserId !== responsibleFilter) return false
-    return true
-  })
+  const filteredProjects = useMemo(() => {
+    return projects.filter((p) => {
+      if (selectedCity !== 'Todas as Prefeituras' && p.prefeitura !== selectedCity) return false
+      if (responsibleFilter !== 'Todos' && p.responsibleUserId !== responsibleFilter) return false
+      return true
+    })
+  }, [projects, selectedCity, responsibleFilter])
 
-  const getProjectsByColumn = (col: ColumnType) => filteredProjects.filter((p) => p.column === col)
+  const sortProjects = (list: Project[]) => {
+    return [...list].sort((a, b) => {
+      if (sortBy === 'prazo') {
+        if (!a.deadline) return 1
+        if (!b.deadline) return -1
+        return new Date(a.deadline).getTime() - new Date(b.deadline).getTime()
+      }
+      if (sortBy === 'priority') {
+        const priorityWeight: Record<string, number> = { Alta: 1, Média: 2, Baixa: 3 }
+        return (priorityWeight[a.priority] || 2) - (priorityWeight[b.priority] || 2)
+      }
+      if (sortBy === 'recentes') {
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      }
+      return 0
+    })
+  }
+
+  const getProjectsByColumn = (col: ColumnType) => {
+    const colProjects = filteredProjects.filter((p) => p.column === col)
+    return sortProjects(colProjects)
+  }
 
   const handleDragStart = (e: React.DragEvent, id: string) => {
     setDraggedProjectId(id)
@@ -102,7 +128,7 @@ export default function BussolaKanban() {
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
         <div>
           <h2 className="text-lg font-bold text-[#1c2a3e]">Bússola de Projetos</h2>
           <p className="text-xs text-gray-500">
@@ -111,10 +137,11 @@ export default function BussolaKanban() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          {/* Filter by Prefeitura */}
           <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-gray-500" />
+            <Filter className="w-4 h-4 text-gray-500 shrink-0" />
             <Select value={selectedCity} onValueChange={setSelectedCity}>
-              <SelectTrigger className="w-[190px] h-9 text-xs font-medium">
+              <SelectTrigger className="w-[180px] h-9 text-xs font-medium">
                 <SelectValue placeholder="Selecione a Prefeitura" />
               </SelectTrigger>
               <SelectContent>
@@ -128,23 +155,52 @@ export default function BussolaKanban() {
             </Select>
           </div>
 
-          <Select value={responsibleFilter} onValueChange={setResponsibleFilter}>
-            <SelectTrigger className="w-[170px] h-9 text-xs font-medium">
-              <SelectValue placeholder="Responsável" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Todos">Todos Responsáveis</SelectItem>
-              {users.map((u) => (
-                <SelectItem key={u.id} value={u.id}>
-                  {u.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Filter by Responsible */}
+          <div className="flex items-center gap-1.5">
+            <Select value={responsibleFilter} onValueChange={setResponsibleFilter}>
+              <SelectTrigger className="w-[190px] h-9 text-xs font-medium">
+                <SelectValue placeholder="Filtrar por Responsável" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Todos">Todos Responsáveis</SelectItem>
+                {users.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {responsibleFilter !== 'Todos' && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setResponsibleFilter('Todos')}
+                title="Limpar Filtro"
+                className="h-9 w-9 text-gray-400 hover:text-gray-700"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
+
+          {/* Sort Control */}
+          <div className="flex items-center gap-2">
+            <ArrowUpDown className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+            <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+              <SelectTrigger className="w-[180px] h-9 text-xs font-medium">
+                <SelectValue placeholder="Ordenar por" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="prazo">Prazo (Mais Próximo)</SelectItem>
+                <SelectItem value="priority">Prioridade (Alta &gt; Baixa)</SelectItem>
+                <SelectItem value="recentes">Mais Recentes</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
           <Button
             onClick={() => setIsNewModalOpen(true)}
-            className="bg-[#3b82f6] hover:bg-[#2563eb] text-white h-9 px-3 text-xs gap-1.5 shadow-sm"
+            className="bg-[#3b82f6] hover:bg-[#2563eb] text-white h-9 px-3 text-xs gap-1.5 shadow-sm ml-auto sm:ml-0"
           >
             <Plus className="w-4 h-4" />
             Novo Projeto
@@ -174,9 +230,12 @@ export default function BussolaKanban() {
 
                 <div className="flex-1 space-y-2.5 overflow-y-auto pr-0.5">
                   {columnProjects.map((project) => {
-                    const formattedDate = new Date(
-                      project.deadline + 'T12:00:00',
-                    ).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+                    const formattedDate = project.deadline
+                      ? new Date(project.deadline + 'T12:00:00').toLocaleDateString('pt-BR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                        })
+                      : 'Sem prazo'
                     return (
                       <Card
                         key={project.id}
@@ -191,11 +250,13 @@ export default function BussolaKanban() {
                               variant="outline"
                               className="text-[10px] font-semibold text-slate-600 bg-slate-50 border-slate-200 py-0"
                             >
-                              {project.prefeitura}
+                              {project.prefeitura || 'Prefeitura'}
                             </Badge>
                             <div className="flex items-center gap-1">
                               <span
-                                className={`w-2.5 h-2.5 rounded-full ${getPriorityColor(project.priority)}`}
+                                className={`w-2.5 h-2.5 rounded-full ${getPriorityColor(
+                                  project.priority,
+                                )}`}
                                 title={`Prioridade: ${project.priority}`}
                               />
                               <span className="text-[10px] text-gray-500 font-medium">
@@ -238,7 +299,9 @@ export default function BussolaKanban() {
                           <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-xs text-gray-500">
                             <div className="flex items-center gap-1">
                               <User className="w-3.5 h-3.5 text-gray-400" />
-                              <span className="truncate max-w-[100px]">{project.responsible}</span>
+                              <span className="truncate max-w-[100px]">
+                                {project.responsible || 'Sem responsável'}
+                              </span>
                             </div>
                             <div className="flex items-center gap-1 font-medium text-slate-700">
                               <Calendar className="w-3.5 h-3.5 text-gray-400" />
@@ -253,7 +316,11 @@ export default function BussolaKanban() {
                   {columnProjects.length === 0 && (
                     <div className="h-28 border-2 border-dashed border-gray-300/70 rounded-lg flex flex-col items-center justify-center text-gray-400 text-xs">
                       <span>Nenhum projeto</span>
-                      <span className="text-[10px] mt-0.5">Arraste um card aqui</span>
+                      <span className="text-[10px] mt-0.5">
+                        {responsibleFilter !== 'Todos'
+                          ? 'Com os filtros atuais'
+                          : 'Arraste um card aqui'}
+                      </span>
                     </div>
                   )}
                 </div>

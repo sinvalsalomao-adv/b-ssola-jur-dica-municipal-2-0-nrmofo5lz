@@ -4,13 +4,18 @@ import type { Project, ColumnType, Priority } from '@/types/project'
 const EXPAND = 'tenant,responsible_user'
 
 export function normalizeProject(r: any): Project {
+  let cleanDeadline = ''
+  if (r.prazo) {
+    cleanDeadline = r.prazo.split('T')[0].split(' ')[0]
+  }
+
   return {
     id: r.id,
     title: r.titulo || '',
     description: r.descricao || '',
     responsible: r.expand?.responsible_user?.name || '',
     responsibleUserId: r.responsible_user || '',
-    deadline: r.prazo || '',
+    deadline: cleanDeadline,
     priority: (r.priority || 'Média') as Priority,
     column: (r.coluna_kanban || 'Ideação') as ColumnType,
     prefeitura: r.expand?.tenant?.name || '',
