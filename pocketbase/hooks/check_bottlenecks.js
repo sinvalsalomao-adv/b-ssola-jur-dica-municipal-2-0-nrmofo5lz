@@ -1,4 +1,41 @@
 cronAdd('check_bottlenecks', '0 6 * * *', () => {
+  function trySendAlertEmail(smtpCfg, email, tipo, titulo, coluna, daysStalled, daysToDeadline) {
+    if (!smtpCfg || !smtpCfg.server || !email) return
+    try {
+      var port = parseInt(smtpCfg.port) || 587
+      var client = $app.newMailClient({
+        host: smtpCfg.server,
+        port: port,
+        username: smtpCfg.username || '',
+        password: smtpCfg.password || '',
+        authMethod: 'LOGIN',
+        tls: true,
+      })
+      var subject = '[Bússola Jurídica] Alerta: ' + tipo + ' - ' + titulo
+      var html = '<h2>Alerta: ' + tipo + '</h2>'
+      html += '<p><strong>Projeto:</strong> ' + titulo + '</p>'
+      html += '<p><strong>Etapa atual:</strong> ' + coluna + '</p>'
+      if (tipo === 'Gargalo') {
+        html += '<p><strong>Dias parado:</strong> ' + daysStalled + '</p>'
+      } else {
+        html += '<p><strong>Dias restantes para o prazo:</strong> ' + daysToDeadline + '</p>'
+      }
+      html += '<p><strong>Tipo de alerta:</strong> ' + tipo + '</p>'
+      html += '<br><p>Acesse o sistema Bússola Jurídica para mais detalhes.</p>'
+      client.send({
+        from: {
+          address: smtpCfg.senderEmail || smtpCfg.username || '',
+          name: smtpCfg.senderName || 'Bússola Jurídica',
+        },
+        to: [{ address: email }],
+        subject: subject,
+        html: html,
+      })
+    } catch (err) {
+      $app.logger().error('email send failed', 'error', String(err), 'project', titulo)
+    }
+  }
+
   var tenants = $app.findRecordsByFilter('tenants', "status = 'ativa'", 'name', 0, 0)
   var now = new Date()
   var todayStr = now.toISOString().split('T')[0]
@@ -10,6 +47,7 @@ cronAdd('check_bottlenecks', '0 6 * * *', () => {
 
     var stallLimits = null
     var proximityDays = 3
+    var smtpConfig = null
 
     try {
       var tsRecords = $app.findRecordsByFilter(
@@ -29,6 +67,12 @@ cronAdd('check_bottlenecks', '0 6 * * *', () => {
         }
         var pd = ts.getInt('proximity_days')
         if (pd > 0) proximityDays = pd
+        var smtpStr = ts.getString('smtp_config')
+        if (smtpStr) {
+          try {
+            smtpConfig = JSON.parse(smtpStr)
+          } catch (_) {}
+        }
       }
     } catch (_) {}
 
@@ -45,6 +89,14 @@ cronAdd('check_bottlenecks', '0 6 * * *', () => {
           }
           var pd2 = ps.getInt('proximity_days')
           if (pd2 > 0) proximityDays = pd2
+          if (!smtpConfig) {
+            var smtpStr2 = ps.getString('smtp_config')
+            if (smtpStr2) {
+              try {
+                smtpConfig = JSON.parse(smtpStr2)
+              } catch (_) {}
+            }
+          }
         }
       } catch (_) {}
     }
@@ -66,11 +118,13 @@ cronAdd('check_bottlenecks', '0 6 * * *', () => {
       var updatedStr = project.getString('updated')
 
       var responsibleName = ''
+      var responsibleEmail = ''
       var responsibleId = project.getString('responsible_user')
       if (responsibleId) {
         try {
           var userRec = $app.findRecordById('users', responsibleId)
           responsibleName = userRec.getString('name') || ''
+          responsibleEmail = userRec.getString('email') || ''
         } catch (_) {}
       }
 
@@ -111,6 +165,8 @@ cronAdd('check_bottlenecks', '0 6 * * *', () => {
             notif1.set('tipo', 'Gargalo')
             $app.save(notif1)
           }
+
+          trySendAlertEmail(smtpConfig, responsibleEmail, 'Gargalo', titulo, coluna, diffDays, 0)
         }
       }
 
@@ -147,6 +203,16 @@ cronAdd('check_bottlenecks', '0 6 * * *', () => {
             notif2.set('tipo', 'Prazo Fatal')
             $app.save(notif2)
           }
+
+          trySendAlertEmail(
+            smtpConfig,
+            responsibleEmail,
+            'Prazo Fatal',
+            titulo,
+            coluna,
+            0,
+            diffDays2,
+          )
         }
       }
     }

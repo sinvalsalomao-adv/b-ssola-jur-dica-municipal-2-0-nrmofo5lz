@@ -15,6 +15,7 @@ import {
   Search,
   Shield,
   BarChart3,
+  Settings,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
@@ -42,6 +43,9 @@ export const MainLayout: React.FC = () => {
     ...(isSuperadmin ? [{ label: 'Superadmin', path: '/superadmin', icon: Shield }] : []),
     ...(isSuperadmin ? [{ label: 'Relatórios', path: '/relatorios', icon: BarChart3 }] : []),
     { label: 'Notificações', path: '/notificacoes', icon: Bell },
+    ...(user?.role === 'admin' || isSuperadmin
+      ? [{ label: 'Configurações', path: '/configuracoes', icon: Settings }]
+      : []),
   ]
 
   const pageTitles: Record<string, string> = {
@@ -56,6 +60,7 @@ export const MainLayout: React.FC = () => {
     '/superadmin': 'Painel do Superadministrador',
     '/relatorios': 'Relatórios Comparativos',
     '/notificacoes': 'Notificações',
+    '/configuracoes': 'Configurações',
   }
 
   const currentTitle = pageTitles[location.pathname] || 'Bússola Jurídica Municipal'

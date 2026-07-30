@@ -45,11 +45,20 @@ export function parseStallLimits(json: any): StallLimits {
 }
 
 export function parseSmtpConfig(json: any) {
-  if (!json) return { server: '', port: '', username: '', password: '', senderEmail: '' }
+  if (!json)
+    return { server: '', port: '', username: '', password: '', senderEmail: '', senderName: '' }
   try {
     const obj = typeof json === 'string' ? JSON.parse(json) : json
-    return { server: '', port: '', username: '', password: '', senderEmail: '', ...obj }
+    return {
+      server: '',
+      port: '',
+      username: '',
+      password: '',
+      senderEmail: '',
+      senderName: '',
+      ...obj,
+    }
   } catch {
-    return { server: '', port: '', username: '', password: '', senderEmail: '' }
+    return { server: '', port: '', username: '', password: '', senderEmail: '', senderName: '' }
   }
 }

@@ -41,6 +41,13 @@ export const getNotificationsPaginated = async (
   }
 }
 
+export const getUnreadNotificationsCount = async (tenantId: string): Promise<number> => {
+  const result = await pb.collection('notifications').getList(1, 1, {
+    filter: `tenant = "${tenantId}" && lida = false`,
+  })
+  return result.totalItems
+}
+
 export const markNotificationAsRead = async (id: string) =>
   pb.collection('notifications').update(id, { lida: true })
 

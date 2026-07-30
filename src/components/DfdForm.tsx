@@ -49,6 +49,7 @@ export const DfdForm = ({ dfd, onDfdSaved }: DfdFormProps) => {
   const [descricaoPhrases, setDescricaoPhrases] = useState<string[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
 
   useEffect(() => {
     if (!tenantId) return
@@ -95,6 +96,7 @@ export const DfdForm = ({ dfd, onDfdSaved }: DfdFormProps) => {
     setDescricao('')
     setJustificativa('')
     setDeadline('')
+    setPendingFiles([])
   }
 
   const handleSave = async (isDraft: boolean) => {
@@ -118,7 +120,10 @@ export const DfdForm = ({ dfd, onDfdSaved }: DfdFormProps) => {
       if (descricao.trim()) await saveOrIncrementFrase(descricao, 'descricao', tenantId)
 
       const projTitle = title.trim() || 'Sem título'
+      let savedProjectId = ''
+
       if (isEditing && dfd?.projetoId) {
+        savedProjectId = dfd.projetoId
         await updateProject(dfd.projetoId, {
           title: projTitle,
           description: descricao,
@@ -149,6 +154,7 @@ export const DfdForm = ({ dfd, onDfdSaved }: DfdFormProps) => {
           objeto,
           justificativa,
         })
+        savedProjectId = newProject.id
         await createDfd({
           titulo: projTitle,
           objeto,
@@ -160,6 +166,17 @@ export const DfdForm = ({ dfd, onDfdSaved }: DfdFormProps) => {
           tenant: tenantId,
           projeto_id: newProject.id,
         })
+      }
+
+      if (savedProjectId && pendingFiles.length > 0) {
+        for (const file of pendingFiles) {
+          try {
+            await uploadDocument(file, savedProjectId, tenantId, user?.name || 'Usuário', projTitle)
+          } catch {
+            // ignore individual file upload errors
+          }
+        }
+        setPendingFiles([])
       }
 
       if (isDraft) {
