@@ -1,14 +1,23 @@
-import React from 'react'
-import { GraduationCap, ArrowLeft, BookOpen } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { GraduationCap, ArrowLeft, Clock, PlayCircle, CheckCircle2 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { useNavigate } from 'react-router-dom'
+import { Progress } from '@/components/ui/progress'
+import { Badge } from '@/components/ui/badge'
+import { useEducation } from '@/context/EducationContext'
 
 export default function EducacaoPage() {
   const navigate = useNavigate()
+  const { tracksWithProgress } = useEducation()
+
+  const cardColors = [
+    { bg: 'bg-blue-50', text: 'text-[#3b82f6]', ring: 'ring-blue-100' },
+    { bg: 'bg-emerald-50', text: 'text-emerald-600', ring: 'ring-emerald-100' },
+    { bg: 'bg-violet-50', text: 'text-violet-600', ring: 'ring-violet-100' },
+  ]
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in">
       <div className="flex items-center gap-4">
         <Button variant="outline" size="icon" onClick={() => navigate('/dashboard')}>
           <ArrowLeft className="w-4 h-4" />
@@ -16,26 +25,70 @@ export default function EducacaoPage() {
         <div>
           <h2 className="text-2xl font-bold text-[#1c2a3e]">Módulo de Educação e Capacitação</h2>
           <p className="text-sm text-gray-500">
-            Treinamentos jurídicos e licitatórios para servidores públicos municipais.
+            Trilhas de aprendizagem jurídicas e administrativas para servidores municipais.
           </p>
         </div>
       </div>
 
-      <Card className="bg-white border-0 shadow-subtle p-12 text-center">
-        <CardContent className="space-y-4 flex flex-col items-center justify-center">
-          <div className="w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-            <GraduationCap className="w-8 h-8" />
-          </div>
-          <h3 className="text-lg font-bold text-[#1c2a3e]">Módulo de Treinamento em Construção</h3>
-          <p className="text-sm text-gray-500 max-w-md">
-            Cursos sobre a Nova Lei de Licitações (Lei 14.133/21), REURB e gestão pública estarão
-            disponíveis aqui em breve.
-          </p>
-          <Button onClick={() => navigate('/dashboard')} className="bg-[#3b82f6] text-white mt-2">
-            Voltar ao Dashboard
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {tracksWithProgress.map((track, index) => {
+          const colors = cardColors[index % cardColors.length]
+          return (
+            <Card
+              key={track.id}
+              className="bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-300 overflow-hidden"
+            >
+              <CardContent className="p-0">
+                <div className={`h-28 ${colors.bg} flex items-center justify-center relative`}>
+                  <GraduationCap className={`w-12 h-12 ${colors.text}`} />
+                  {track.progress === 100 && (
+                    <Badge className="absolute top-3 right-3 bg-emerald-500 text-white border-0">
+                      <CheckCircle2 className="w-3 h-3 mr-1" /> Concluída
+                    </Badge>
+                  )}
+                </div>
+
+                <div className="p-5 space-y-4">
+                  <div>
+                    <h3 className="font-bold text-base text-[#1c2a3e] leading-snug min-h-[3rem]">
+                      {track.title}
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-1 line-clamp-2">{track.description}</p>
+                  </div>
+
+                  <div className="flex items-center gap-4 text-xs text-gray-500">
+                    <span className="flex items-center gap-1">
+                      <PlayCircle className="w-3.5 h-3.5" />
+                      {track.totalLessons} aulas
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5" />~{track.totalLessons * 15} min
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-500 font-medium">Progresso</span>
+                      <span className="font-bold text-[#1c2a3e]">{track.progress}%</span>
+                    </div>
+                    <Progress value={track.progress} className="h-2 bg-gray-100" />
+                    <p className="text-[11px] text-gray-400">
+                      {track.completedCount} de {track.totalLessons} aulas concluídas
+                    </p>
+                  </div>
+
+                  <Button
+                    onClick={() => navigate(`/educacao/trilha/${track.id}`)}
+                    className="w-full bg-[#3b82f6] hover:bg-[#2563eb] text-white gap-2"
+                  >
+                    Acessar
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })}
+      </div>
     </div>
   )
 }
