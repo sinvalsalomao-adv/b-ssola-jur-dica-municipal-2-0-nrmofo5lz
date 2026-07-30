@@ -12,6 +12,10 @@ export interface DfdRecord {
   status: DfdStatus
   createdAt: string
   projetoId: string
+  projectColumn?: string
+  projectPriority?: string
+  projectDeadline?: string
+  tenantId?: string
 }
 
 export const INITIAL_SAVED_PHRASES = [

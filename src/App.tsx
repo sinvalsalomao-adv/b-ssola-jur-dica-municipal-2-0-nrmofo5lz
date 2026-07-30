@@ -14,9 +14,12 @@ import Dashboard from '@/pages/Dashboard'
 import BussolaKanban from '@/pages/BussolaKanban'
 import ControlePage from '@/pages/ControlePage'
 import DfdsPage from '@/pages/DfdsPage'
+import DfdDetailPage from '@/pages/DfdDetailPage'
 import NovoDfdPage from '@/pages/NovoDfdPage'
 import EducacaoPage from '@/pages/EducacaoPage'
 import UsuariosPage from '@/pages/UsuariosPage'
+import RelatoriosPage from '@/pages/RelatoriosPage'
+import NotificacoesPage from '@/pages/NotificacoesPage'
 import NotFound from '@/pages/NotFound'
 
 const App = () => (
@@ -34,11 +37,14 @@ const App = () => (
                 <Route path="/bussola" element={<BussolaKanban />} />
                 <Route path="/controle" element={<ControlePage />} />
                 <Route path="/dfds" element={<DfdsPage />} />
+                <Route path="/dfds/:id" element={<DfdDetailPage />} />
                 <Route path="/novo-dfd" element={<NovoDfdPage />} />
                 <Route path="/educacao" element={<EducacaoPage />} />
                 <Route path="/educacao/trilha/:id" element={<TrackDetailPage />} />
                 <Route path="/educacao/trilha/:id/quiz" element={<QuizPage />} />
                 <Route path="/usuarios" element={<UsuariosPage />} />
+                <Route path="/relatorios" element={<RelatoriosPage />} />
+                <Route path="/notificacoes" element={<NotificacoesPage />} />
                 <Route path="/superadmin" element={<SuperadminPage />} />
               </Route>
               <Route path="*" element={<NotFound />} />

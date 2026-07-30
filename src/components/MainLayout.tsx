@@ -14,6 +14,7 @@ import {
   Bell,
   Search,
   Shield,
+  BarChart3,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
@@ -22,6 +23,7 @@ import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { ProjectSidePanel } from '@/components/ProjectSidePanel'
 import { NewProjectModal } from '@/components/NewProjectModal'
+import { NotificationBell } from '@/components/NotificationBell'
 
 export const MainLayout: React.FC = () => {
   const location = useLocation()
@@ -38,6 +40,8 @@ export const MainLayout: React.FC = () => {
     { label: 'Educação', path: '/educacao', icon: GraduationCap },
     { label: 'Usuários', path: '/usuarios', icon: Users },
     ...(isSuperadmin ? [{ label: 'Superadmin', path: '/superadmin', icon: Shield }] : []),
+    ...(isSuperadmin ? [{ label: 'Relatórios', path: '/relatorios', icon: BarChart3 }] : []),
+    { label: 'Notificações', path: '/notificacoes', icon: Bell },
   ]
 
   const pageTitles: Record<string, string> = {
@@ -50,6 +54,8 @@ export const MainLayout: React.FC = () => {
     '/usuarios': 'Gestão de Usuários',
     '/novo-dfd': 'Novo DFD',
     '/superadmin': 'Painel do Superadministrador',
+    '/relatorios': 'Relatórios Comparativos',
+    '/notificacoes': 'Notificações',
   }
 
   const currentTitle = pageTitles[location.pathname] || 'Bússola Jurídica Municipal'
@@ -177,14 +183,7 @@ export const MainLayout: React.FC = () => {
 
             {/* Right side actions */}
             <div className="flex items-center gap-3">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-gray-500 hover:text-gray-700 relative"
-              >
-                <Bell className="w-5 h-5" />
-                <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full" />
-              </Button>
+              <NotificationBell />
 
               <div className="h-8 w-px bg-gray-200 hidden sm:block" />
 

@@ -18,6 +18,9 @@ export function normalizeNotification(r: any): NotificationItem {
     alertDate: r.alert_date || '',
     alertType: r.tipo as any,
     prefeitura: r.expand?.tenant?.name || '',
+    mensagem: r.mensagem || '',
+    lida: r.lida || false,
+    projetoId: r.projeto_id || '',
   }
 }
 

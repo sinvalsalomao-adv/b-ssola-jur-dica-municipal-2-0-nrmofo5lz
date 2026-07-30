@@ -16,6 +16,10 @@ export function normalizeDfd(r: any): DfdRecord {
     status: (r.status || 'Rascunho') as 'Rascunho' | 'Finalizado',
     createdAt: r.created || '',
     projetoId: r.projeto_id || '',
+    projectColumn: r.expand?.projeto_id?.coluna_kanban || '',
+    projectPriority: r.expand?.projeto_id?.priority || '',
+    projectDeadline: r.expand?.projeto_id?.prazo || '',
+    tenantId: r.tenant || '',
   }
 }
 

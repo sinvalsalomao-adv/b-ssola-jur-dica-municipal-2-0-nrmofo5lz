@@ -11,6 +11,9 @@ export interface NotificationItem {
   alertDate: string
   alertType: AlertType
   prefeitura: string
+  mensagem?: string
+  lida?: boolean
+  projetoId?: string
 }
 
 export interface CalendarEvent {
