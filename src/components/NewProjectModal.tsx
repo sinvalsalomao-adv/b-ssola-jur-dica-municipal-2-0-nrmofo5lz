@@ -70,6 +70,10 @@ export const NewProjectModal: React.FC = () => {
     }
 
     try {
+      const selectedTenant = tenants.find((t) => t.name === prefeitura)
+      const resolvedTenantId =
+        selectedTenant?.id || user?.tenantId || (tenants.length > 0 ? tenants[0].id : undefined)
+
       await addProject({
         title: title.trim(),
         description: description.trim(),
@@ -77,7 +81,9 @@ export const NewProjectModal: React.FC = () => {
         responsibleUserId: responsibleUserId === 'none' ? '' : responsibleUserId,
         deadline,
         column,
-        prefeitura: prefeitura || user?.prefeitura || 'Florânia',
+        prefeitura:
+          prefeitura || user?.prefeitura || (tenants.length > 0 ? tenants[0].name : 'Florânia'),
+        tenantId: resolvedTenantId,
         priority,
         objeto: objeto.trim(),
         justificativa: justificativa.trim(),

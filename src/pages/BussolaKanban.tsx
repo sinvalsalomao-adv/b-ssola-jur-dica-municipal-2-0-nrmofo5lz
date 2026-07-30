@@ -1,7 +1,18 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useProjects } from '@/context/ProjectContext'
 import { COLUMNS, PREFEITURAS, ColumnType, Project } from '@/types/project'
-import { Plus, Filter, Calendar, User, MoreHorizontal, Loader2, ArrowUpDown, X } from 'lucide-react'
+import {
+  Plus,
+  Filter,
+  Calendar,
+  User,
+  MoreHorizontal,
+  Loader2,
+  ArrowUpDown,
+  X,
+  FileText,
+} from 'lucide-react'
+import { exportProjectsToPdf } from '@/lib/pdfExporter'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -199,8 +210,19 @@ export default function BussolaKanban() {
           </div>
 
           <Button
+            variant="outline"
+            onClick={() =>
+              exportProjectsToPdf(filteredProjects, 'Relatório de Projetos - Bússola', selectedCity)
+            }
+            className="h-9 px-3 text-xs gap-1.5 border-slate-300 hover:bg-slate-50 text-[#1c2a3e] font-medium ml-auto sm:ml-0"
+          >
+            <FileText className="w-4 h-4 text-red-600" />
+            Exportar PDF
+          </Button>
+
+          <Button
             onClick={() => setIsNewModalOpen(true)}
-            className="bg-[#3b82f6] hover:bg-[#2563eb] text-white h-9 px-3 text-xs gap-1.5 shadow-sm ml-auto sm:ml-0"
+            className="bg-[#3b82f6] hover:bg-[#2563eb] text-white h-9 px-3 text-xs gap-1.5 shadow-sm"
           >
             <Plus className="w-4 h-4" />
             Novo Projeto

@@ -1,27 +1,26 @@
 import pb from '@/lib/pocketbase/client'
-import type { DocumentItem } from '@/types/controle'
 
-export function normalizeDocument(r: any): DocumentItem {
-  let fileUrl = ''
-  if (r.file && typeof r.file === 'string') {
-    fileUrl = pb.files.getUrl(r, r.file) as string
-  } else if (r.url) {
-    fileUrl = r.url
-  }
+export function normalizeDocument(r: any) {
   return {
     id: r.id,
-    fileName: r.nome_arquivo || '',
+    projectName: r.project_name || '',
+    fileName: r.nome_arquivo || r.file || 'Documento',
+    fileUrl: r.url || (r.file ? pb.files.getURL(r, r.file) : ''),
     fileSize: r.tamanho || 0,
-    projectTitle: r.project_name || '',
     uploadDate: r.upload_em || r.created || '',
-    uploader: r.upload_por || '',
-    pdfUrl: fileUrl,
+    uploadedBy: r.upload_por || 'Sistema',
+    projectId: r.projeto_id || '',
+    tenantId: r.tenant || '',
   }
 }
 
-export const getDocumentsByProject = async (projectId: string): Promise<DocumentItem[]> => {
+export const getDocumentsByProject = async (projectId: string, tenantId?: string) => {
+  let filter = `projeto_id = "${projectId}"`
+  if (tenantId) {
+    filter += ` && tenant = "${tenantId}"`
+  }
   const records = await pb.collection('documents').getFullList({
-    filter: `projeto_id = "${projectId}"`,
+    filter,
     sort: '-created',
   })
   return records.map(normalizeDocument)
@@ -30,19 +29,20 @@ export const getDocumentsByProject = async (projectId: string): Promise<Document
 export const uploadDocument = async (
   file: File,
   projectId: string,
-  tenantId: string,
-  uploaderName: string,
   projectName: string,
-): Promise<DocumentItem> => {
+  tenantId: string,
+  userName: string,
+) => {
   const formData = new FormData()
   formData.append('file', file)
+  formData.append('nome_arquivo', file.name)
+  formData.append('tamanho', file.size.toString())
+  formData.append('project_name', projectName)
   formData.append('projeto_id', projectId)
   formData.append('tenant', tenantId)
-  formData.append('nome_arquivo', file.name)
-  formData.append('tamanho', String(file.size))
-  formData.append('upload_em', new Date().toISOString().split('T')[0])
-  formData.append('upload_por', uploaderName)
-  formData.append('project_name', projectName)
+  formData.append('upload_por', userName)
+  formData.append('upload_em', new Date().toISOString())
+
   const record = await pb.collection('documents').create(formData)
   return normalizeDocument(record)
 }
@@ -61,37 +61,32 @@ export const generateDocument = async (
     responsavel: string
   },
   docType: string,
-  customType: string,
-): Promise<{ content: string }> => {
+  customType?: string,
+  templateContent?: string,
+) => {
   return pb.send('/backend/v1/generate-document', {
     method: 'POST',
-    body: JSON.stringify({ dfdData, docType, customType }),
+    body: JSON.stringify({
+      dfdData,
+      docType,
+      customType,
+      templateContent,
+    }),
     headers: { 'Content-Type': 'application/json' },
   })
 }
 
 export const saveGeneratedDocument = async (
   content: string,
-  docType: string,
-  projectTitle: string,
+  typeLabel: string,
+  title: string,
   projectId: string,
   tenantId: string,
-  uploaderName: string,
-): Promise<DocumentItem> => {
-  const fileName = `${docType}_${projectTitle}.txt`
-  const blob = new Blob([content], { type: 'text/plain' })
+  userName: string,
+) => {
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+  const fileName = `${typeLabel}_${title}.txt`
   const file = new File([blob], fileName, { type: 'text/plain' })
 
-  const formData = new FormData()
-  formData.append('file', file)
-  formData.append('projeto_id', projectId)
-  formData.append('tenant', tenantId)
-  formData.append('nome_arquivo', fileName)
-  formData.append('tamanho', String(blob.size))
-  formData.append('upload_em', new Date().toISOString().split('T')[0])
-  formData.append('upload_por', uploaderName)
-  formData.append('project_name', projectTitle)
-
-  const record = await pb.collection('documents').create(formData)
-  return normalizeDocument(record)
+  return uploadDocument(file, projectId, title, tenantId, userName)
 }

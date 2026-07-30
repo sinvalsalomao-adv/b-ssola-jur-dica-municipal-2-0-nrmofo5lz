@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Sparkles, Save, Loader2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Sparkles, Save, Loader2, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { generateDocument, saveGeneratedDocument } from '@/services/documents'
+import { getDocumentTemplates, DocumentTemplateItem } from '@/services/documentTemplates'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { toast } from 'sonner'
 import type { DfdRecord } from '@/types/dfd'
@@ -49,14 +50,25 @@ export function GenerateDocumentModal({
 }: GenerateDocumentModalProps) {
   const [docType, setDocType] = useState('')
   const [customType, setCustomType] = useState('')
+  const [templates, setTemplates] = useState<DocumentTemplateItem[]>([])
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('none')
   const [generatedContent, setGeneratedContent] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [hasGenerated, setHasGenerated] = useState(false)
 
+  useEffect(() => {
+    if (open) {
+      getDocumentTemplates(tenantId)
+        .then(setTemplates)
+        .catch(() => {})
+    }
+  }, [open, tenantId])
+
   const resetState = () => {
     setDocType('')
     setCustomType('')
+    setSelectedTemplateId('none')
     setGeneratedContent('')
     setHasGenerated(false)
   }
@@ -64,6 +76,21 @@ export function GenerateDocumentModal({
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) resetState()
     onOpenChange(nextOpen)
+  }
+
+  const handleTemplateSelect = (val: string) => {
+    setSelectedTemplateId(val)
+    if (val !== 'none') {
+      const tpl = templates.find((t) => t.id === val)
+      if (tpl) {
+        if (DOC_TYPES.includes(tpl.type)) {
+          setDocType(tpl.type)
+        } else {
+          setDocType('Outro')
+          setCustomType(tpl.type)
+        }
+      }
+    }
   }
 
   const handleGenerate = async () => {
@@ -75,6 +102,10 @@ export function GenerateDocumentModal({
       toast.error('Especifique o tipo de documento.')
       return
     }
+
+    const selectedTpl = templates.find((t) => t.id === selectedTemplateId)
+    const templateContent = selectedTpl ? selectedTpl.content : undefined
+
     setIsGenerating(true)
     try {
       const result = await generateDocument(
@@ -88,6 +119,7 @@ export function GenerateDocumentModal({
         },
         docType,
         customType,
+        templateContent,
       )
       setGeneratedContent(result.content)
       setHasGenerated(true)
@@ -131,10 +163,10 @@ export function GenerateDocumentModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-[#3b82f6]" />
-            Gerar Documento com IA
+            Gerar Documento Oficial com IA
           </DialogTitle>
           <DialogDescription>
-            Gere documentos oficiais automaticamente a partir dos dados do DFD.
+            Gere documentos institucionais a partir dos dados do DFD e modelos cadastrados.
           </DialogDescription>
         </DialogHeader>
 
@@ -144,7 +176,7 @@ export function GenerateDocumentModal({
               <Label className="text-xs font-semibold text-gray-700">Tipo de Documento *</Label>
               <Select value={docType} onValueChange={setDocType}>
                 <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="Selecione..." />
+                  <SelectValue placeholder="Selecione o tipo..." />
                 </SelectTrigger>
                 <SelectContent>
                   {DOC_TYPES.map((t) => (
@@ -155,13 +187,34 @@ export function GenerateDocumentModal({
                 </SelectContent>
               </Select>
             </div>
+
+            <div>
+              <Label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                <FileText className="w-3.5 h-3.5 text-blue-500" />
+                Modelo / Template (Opcional)
+              </Label>
+              <Select value={selectedTemplateId} onValueChange={handleTemplateSelect}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Selecione um modelo..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Nenhum modelo (Usar padrão IA)</SelectItem>
+                  {templates.map((tpl) => (
+                    <SelectItem key={tpl.id} value={tpl.id}>
+                      {tpl.name} ({tpl.type})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {docType === 'Outro' && (
-              <div>
+              <div className="sm:col-span-2">
                 <Label className="text-xs font-semibold text-gray-700">Especifique o tipo *</Label>
                 <Input
                   value={customType}
                   onChange={(e) => setCustomType(e.target.value)}
-                  placeholder="Ex: Requerimento"
+                  placeholder="Ex: Requerimento Administrativo"
                   className="mt-1"
                 />
               </div>
@@ -169,10 +222,13 @@ export function GenerateDocumentModal({
           </div>
 
           {!hasGenerated ? (
-            <div className="flex flex-col items-center justify-center py-10 gap-3">
-              <p className="text-sm text-gray-500 text-center max-w-md">
-                O documento será gerado usando os dados do DFD: título, objeto, descrição,
-                justificativa, prazo e responsável.
+            <div className="flex flex-col items-center justify-center py-8 gap-3 bg-slate-50 rounded-xl border border-slate-100 p-4">
+              <p className="text-xs text-gray-600 text-center max-w-md leading-relaxed">
+                O documento será redigido utilizando os dados do DFD (Título, Objeto, Justificativa
+                e Responsável)
+                {selectedTemplateId !== 'none'
+                  ? ' seguindo rigorosamente a estrutura do modelo selecionado.'
+                  : '.'}
               </p>
               <Button
                 onClick={handleGenerate}
@@ -182,7 +238,7 @@ export function GenerateDocumentModal({
                 {isGenerating ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Gerando documento...
+                    Gerando documento com IA...
                   </>
                 ) : (
                   <>
@@ -216,7 +272,7 @@ export function GenerateDocumentModal({
               <Textarea
                 value={generatedContent}
                 onChange={(e) => setGeneratedContent(e.target.value)}
-                className="min-h-[320px] text-sm font-mono leading-relaxed"
+                className="min-h-[320px] text-xs font-mono leading-relaxed"
               />
             </div>
           )}

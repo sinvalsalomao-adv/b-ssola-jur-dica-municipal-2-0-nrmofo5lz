@@ -24,9 +24,9 @@ export function exportProjectsToPdf(
     .map(
       (p, idx) => `
     <tr class="${idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}">
-      <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #1e293b;">
+      <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #1e293b; max-width: 220px;">
         ${p.title}
-        ${p.description ? `<br/><span style="font-size: 11px; font-weight: normal; color: #64748b;">${p.description.slice(0, 100)}${p.description.length > 100 ? '...' : ''}</span>` : ''}
+        ${p.objeto ? `<br/><span style="font-size: 11px; font-weight: normal; color: #475569;"><strong>Objeto:</strong> ${p.objeto.slice(0, 120)}${p.objeto.length > 120 ? '...' : ''}</span>` : p.description ? `<br/><span style="font-size: 11px; font-weight: normal; color: #64748b;">${p.description.slice(0, 100)}${p.description.length > 100 ? '...' : ''}</span>` : ''}
       </td>
       <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #475569;">
         ${p.prefeitura || '-'}
@@ -213,7 +213,7 @@ export function exportProjectsToPdf(
       <table>
         <thead>
           <tr>
-            <th>Projeto / Descrição</th>
+            <th>Projeto / Objeto</th>
             <th>Prefeitura</th>
             <th>Responsável</th>
             <th>Prioridade</th>
@@ -222,7 +222,7 @@ export function exportProjectsToPdf(
           </tr>
         </thead>
         <tbody>
-          ${rowsHtml || '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #94a3b8;">Nenhum projeto encontrado.</td></tr>'}
+          ${rowsHtml || '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #94a3b8;">Nenhum projeto encontrado com os filtros selecionados.</td></tr>'}
         </tbody>
       </table>
 
