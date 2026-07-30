@@ -32,6 +32,7 @@ import { useRealtime } from '@/hooks/use-realtime'
 import { getDfd, updateDfd } from '@/services/dfds'
 import { getUsersByTenant } from '@/services/users'
 import { saveOrIncrementFrase } from '@/services/frases'
+import { GenerateDocumentModal } from '@/components/GenerateDocumentModal'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { toast } from 'sonner'
 import type { DfdRecord } from '@/types/dfd'
@@ -54,6 +55,7 @@ export default function DfdDetailPage() {
   const [justificativa, setJustificativa] = useState('')
   const [deadline, setDeadline] = useState('')
   const [responsibleUserId, setResponsibleUserId] = useState('')
+  const [showDocModal, setShowDocModal] = useState(false)
 
   const loadDfd = useCallback(async () => {
     if (!id) return
@@ -294,18 +296,41 @@ export default function DfdDetailPage() {
               <FieldBlock label="Objeto" value={dfd.objeto} />
               <FieldBlock label="Descrição" value={dfd.descricao} />
               <FieldBlock label="Justificativa Técnica" value={dfd.justificativa} />
-              <div className="flex justify-end pt-4 border-t border-gray-100">
-                <Button
-                  onClick={() => setEditMode(true)}
-                  className="bg-[#3b82f6] hover:bg-[#2563eb] text-white gap-2"
-                >
-                  <Edit3 className="w-4 h-4" /> Editar
-                </Button>
+              <div className="flex flex-col items-end gap-1 pt-4 border-t border-gray-100">
+                {!dfd.projetoId && (
+                  <p className="text-xs text-amber-600">
+                    Geração de documento indisponível: DFD sem projeto vinculado.
+                  </p>
+                )}
+                <div className="flex justify-end gap-2">
+                  <Button
+                    onClick={() => setShowDocModal(true)}
+                    disabled={!dfd.projetoId}
+                    className="bg-[#7c3aed] hover:bg-[#6d28d9] text-white gap-2"
+                  >
+                    <FileText className="w-4 h-4" /> Gerar Documento
+                  </Button>
+                  <Button
+                    onClick={() => setEditMode(true)}
+                    className="bg-[#3b82f6] hover:bg-[#2563eb] text-white gap-2"
+                  >
+                    <Edit3 className="w-4 h-4" /> Editar
+                  </Button>
+                </div>
               </div>
             </>
           )}
         </CardContent>
       </Card>
+
+      <GenerateDocumentModal
+        open={showDocModal}
+        onOpenChange={setShowDocModal}
+        dfd={dfd}
+        projectId={dfd.projetoId}
+        tenantId={user?.tenantId || ''}
+        userName={user?.name || 'Usuário'}
+      />
     </div>
   )
 }

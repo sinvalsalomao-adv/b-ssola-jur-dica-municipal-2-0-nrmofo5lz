@@ -17,6 +17,7 @@ import {
 } from '@/services/projects'
 import { useRealtime } from '@/hooks/use-realtime'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
+import { toast } from 'sonner'
 
 interface TenantInfo {
   id: string
@@ -194,6 +195,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     } catch (err) {
       loadProjects()
       setError(getErrorMessage(err))
+      toast.error('Erro ao mover card: ' + getErrorMessage(err))
     }
   }
 
