@@ -40,6 +40,7 @@ export const MainLayout: React.FC = () => {
     '/dfds': 'Diagramas de Fluxo de Dados (DFDs)',
     '/educacao': 'Módulo de Educação',
     '/usuarios': 'Gestão de Usuários',
+    '/novo-dfd': 'Novo DFD',
   }
 
   const currentTitle = pageTitles[location.pathname] || 'Bússola Jurídica Municipal'
@@ -50,7 +51,8 @@ export const MainLayout: React.FC = () => {
         const Icon = item.icon
         const isActive =
           location.pathname === item.path ||
-          (item.path === '/dashboard' && location.pathname === '/')
+          (item.path === '/dashboard' && location.pathname === '/') ||
+          (item.path === '/dfds' && location.pathname === '/novo-dfd')
 
         const linkContent = (
           <Link

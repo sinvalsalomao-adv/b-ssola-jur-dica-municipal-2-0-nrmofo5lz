@@ -1,5 +1,5 @@
 import React from 'react'
-import { FileText, ArrowLeft } from 'lucide-react'
+import { FileText, ArrowLeft, Plus } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useNavigate } from 'react-router-dom'
@@ -31,9 +31,22 @@ export default function DfdsPage() {
             Em breve você poderá visualizar, criar e exportar os fluxogramas técnicos e documentais
             exigidos nos procedimentos municipais.
           </p>
-          <Button onClick={() => navigate('/bussola')} className="bg-[#3b82f6] text-white mt-2">
-            Ir para a Bússola de Projetos
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-3 mt-2">
+            <Button
+              onClick={() => navigate('/novo-dfd')}
+              className="bg-[#3b82f6] hover:bg-[#2563eb] text-white gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Criar Novo DFD
+            </Button>
+            <Button
+              onClick={() => navigate('/bussola')}
+              variant="outline"
+              className="border-gray-200 text-[#1c2a3e] hover:bg-slate-50"
+            >
+              Ir para a Bússola de Projetos
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

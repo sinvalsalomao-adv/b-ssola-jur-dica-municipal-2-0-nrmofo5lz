@@ -8,6 +8,7 @@ import { MainLayout } from '@/components/MainLayout'
 import Dashboard from '@/pages/Dashboard'
 import BussolaKanban from '@/pages/BussolaKanban'
 import DfdsPage from '@/pages/DfdsPage'
+import NovoDfdPage from '@/pages/NovoDfdPage'
 import EducacaoPage from '@/pages/EducacaoPage'
 import UsuariosPage from '@/pages/UsuariosPage'
 import NotFound from '@/pages/NotFound'
@@ -24,6 +25,7 @@ const App = () => (
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/bussola" element={<BussolaKanban />} />
             <Route path="/dfds" element={<DfdsPage />} />
+            <Route path="/novo-dfd" element={<NovoDfdPage />} />
             <Route path="/educacao" element={<EducacaoPage />} />
             <Route path="/usuarios" element={<UsuariosPage />} />
           </Route>
