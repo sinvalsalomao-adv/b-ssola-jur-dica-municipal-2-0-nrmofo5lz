@@ -1,6 +1,7 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useProjects } from '@/context/ProjectContext'
-import { COLUMNS, PREFEITURAS, USERS, ColumnType, Prefecture, Priority } from '@/types/project'
+import { useAuth } from '@/context/AuthContext'
+import { COLUMNS, PREFEITURAS, ColumnType, Priority } from '@/types/project'
 import {
   Dialog,
   DialogContent,
@@ -19,20 +20,38 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { getUsers } from '@/services/users'
+import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { getErrorMessage } from '@/lib/pocketbase/errors'
 
 export const NewProjectModal: React.FC = () => {
-  const { isNewModalOpen, setIsNewModalOpen, addProject } = useProjects()
+  const { isNewModalOpen, setIsNewModalOpen, addProject, saving } = useProjects()
+  const { user } = useAuth()
+  const isSuperadmin = user?.role === 'superadmin'
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [responsible, setResponsible] = useState(USERS[0])
+  const [responsibleUserId, setResponsibleUserId] = useState('')
+  const [users, setUsers] = useState<{ id: string; name: string }[]>([])
   const [deadline, setDeadline] = useState('')
   const [column, setColumn] = useState<ColumnType>('Ideação')
-  const [prefeitura, setPrefeitura] = useState<Prefecture>('Florânia')
+  const [prefeitura, setPrefeitura] = useState('Florânia')
   const [priority, setPriority] = useState<Priority>('Média')
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    if (isNewModalOpen) {
+      getUsers()
+        .then((data) => {
+          setUsers(data.map((u) => ({ id: u.id, name: u.name })))
+          if (data.length > 0) setResponsibleUserId(data[0].id)
+        })
+        .catch(() => {})
+      if (user?.prefeitura) setPrefeitura(user.prefeitura)
+    }
+  }, [isNewModalOpen, user])
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) {
       toast.error('O título do projeto é obrigatório.')
@@ -42,29 +61,32 @@ export const NewProjectModal: React.FC = () => {
       toast.error('Informe a data limite para o prazo.')
       return
     }
-
-    addProject({
-      title: title.trim(),
-      description,
-      responsible,
-      deadline,
-      column,
-      prefeitura,
-      priority,
-    })
-
-    toast.success('Projeto criado com sucesso!')
-    setIsNewModalOpen(false)
-    resetForm()
+    try {
+      await addProject({
+        title: title.trim(),
+        description,
+        responsible: '',
+        responsibleUserId,
+        deadline,
+        column,
+        prefeitura,
+        priority,
+      })
+      toast.success('Projeto criado com sucesso!')
+      setIsNewModalOpen(false)
+      resetForm()
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
   }
 
   const resetForm = () => {
     setTitle('')
     setDescription('')
-    setResponsible(USERS[0])
+    setResponsibleUserId('')
     setDeadline('')
     setColumn('Ideação')
-    setPrefeitura('Florânia')
+    setPrefeitura(user?.prefeitura || 'Florânia')
     setPriority('Média')
   }
 
@@ -80,7 +102,6 @@ export const NewProjectModal: React.FC = () => {
             <Label htmlFor="title" className="text-xs font-semibold text-gray-700">
               Título do Projeto *
             </Label>
-
             <Input
               id="title"
               placeholder="Ex: Reforma da Praça Municipal"
@@ -106,14 +127,14 @@ export const NewProjectModal: React.FC = () => {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="text-xs font-semibold text-gray-700">Responsável</Label>
-              <Select value={responsible} onValueChange={setResponsible}>
+              <Select value={responsibleUserId} onValueChange={setResponsibleUserId}>
                 <SelectTrigger className="mt-1">
                   <SelectValue placeholder="Selecione..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {USERS.map((u) => (
-                    <SelectItem key={u} value={u}>
-                      {u}
+                  {users.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -134,7 +155,7 @@ export const NewProjectModal: React.FC = () => {
           <div className="grid grid-cols-3 gap-3">
             <div>
               <Label className="text-xs font-semibold text-gray-700">Prefeitura</Label>
-              <Select value={prefeitura} onValueChange={(v) => setPrefeitura(v as Prefecture)}>
+              <Select value={prefeitura} onValueChange={setPrefeitura} disabled={!isSuperadmin}>
                 <SelectTrigger className="mt-1">
                   <SelectValue placeholder="Prefeitura" />
                 </SelectTrigger>
@@ -190,7 +211,12 @@ export const NewProjectModal: React.FC = () => {
             >
               Cancelar
             </Button>
-            <Button type="submit" className="bg-[#3b82f6] hover:bg-[#2563eb] text-white">
+            <Button
+              type="submit"
+              disabled={saving}
+              className="bg-[#3b82f6] hover:bg-[#2563eb] text-white"
+            >
+              {saving && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
               Criar Projeto
             </Button>
           </DialogFooter>

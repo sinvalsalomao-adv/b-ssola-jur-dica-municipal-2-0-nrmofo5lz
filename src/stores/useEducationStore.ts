@@ -1,83 +1,177 @@
-import { useState, useCallback, useMemo } from 'react'
-import { MOCK_TRACKS, type Track } from '@/data/mockEducation'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useAuth } from '@/context/AuthContext'
+import { useRealtime } from '@/hooks/use-realtime'
+import {
+  getTrilhas,
+  getAllAulas,
+  getProgresso,
+  toggleProgresso,
+  saveQuizResult,
+  getQuizResults,
+} from '@/services/education'
+import { QUIZ_DATA } from '@/data/quizData'
+import type { TrackWithLessons, QuizState } from '@/types/education'
 
-export type QuizResult = 'pending' | 'approved' | 'failed'
-
-export interface QuizState {
-  result: QuizResult
-  score: number
-  certificateCode: string | null
+function generateCertCode(): string {
+  return (
+    'BRZ-' +
+    Math.random().toString(36).substring(2, 6).toUpperCase() +
+    '-' +
+    Math.random().toString(36).substring(2, 6).toUpperCase()
+  )
 }
 
 export function useEducationStore() {
-  const [completedLessons, setCompletedLessons] = useState<Record<string, Set<string>>>(() => ({
-    'trilha-1': new Set(['l1-1', 'l1-2']),
-    'trilha-2': new Set<string>(),
-    'trilha-3': new Set<string>(),
-  }))
+  const { user } = useAuth()
+  const [tracks, setTracks] = useState<TrackWithLessons[]>([])
+  const [completedLessons, setCompletedLessons] = useState<Record<string, Set<string>>>({})
+  const [quizStates, setQuizStates] = useState<Record<string, QuizState>>({})
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const [quizStates, setQuizStates] = useState<Record<string, QuizState>>({
-    'trilha-1': { result: 'pending', score: 0, certificateCode: null },
-    'trilha-2': { result: 'pending', score: 0, certificateCode: null },
-    'trilha-3': { result: 'pending', score: 0, certificateCode: null },
-  })
+  const loadData = useCallback(async () => {
+    if (!user) {
+      setLoading(false)
+      return
+    }
+    try {
+      setLoading(true)
+      const [trilhas, allAulas, progresso, quizResults] = await Promise.all([
+        getTrilhas(),
+        getAllAulas(),
+        getProgresso(user.id),
+        getQuizResults(user.id),
+      ])
 
-  const toggleLesson = useCallback((trackId: string, lessonId: string) => {
-    setCompletedLessons((prev) => {
-      const trackSet = new Set(prev[trackId] || [])
-      if (trackSet.has(lessonId)) {
-        trackSet.delete(lessonId)
-      } else {
-        trackSet.add(lessonId)
-      }
-      return { ...prev, [trackId]: trackSet }
-    })
-  }, [])
+      const tracksWithLessons: TrackWithLessons[] = trilhas.map((t) => ({
+        ...t,
+        lessons: allAulas.filter((a) => a.trilhaId === t.id),
+        quiz: QUIZ_DATA[t.titulo] || [],
+      }))
 
-  const isLessonCompleted = useCallback(
-    (trackId: string, lessonId: string) => {
-      return (completedLessons[trackId] || new Set<string>()).has(lessonId)
+      const progressMap: Record<string, Set<string>> = {}
+      const quizMap: Record<string, QuizState> = {}
+      trilhas.forEach((t) => {
+        progressMap[t.id] = new Set<string>()
+        quizMap[t.id] = { result: 'pending', score: 0, certificateCode: null }
+      })
+
+      progresso.forEach((p) => {
+        const aula = allAulas.find((a) => a.id === p.aulaId)
+        if (aula && p.concluido) {
+          if (!progressMap[aula.trilhaId]) progressMap[aula.trilhaId] = new Set()
+          progressMap[aula.trilhaId].add(p.aulaId)
+        }
+      })
+
+      quizResults.forEach((q) => {
+        if (quizMap[q.trilhaId]) {
+          quizMap[q.trilhaId] = {
+            result: q.aprovado ? 'approved' : 'failed',
+            score: q.total > 0 ? Math.round((q.acertos / q.total) * 100) : 0,
+            certificateCode: q.aprovado ? generateCertCode() : null,
+          }
+        }
+      })
+
+      setTracks(tracksWithLessons)
+      setCompletedLessons(progressMap)
+      setQuizStates(quizMap)
+      setError(null)
+    } catch (err) {
+      setError('Erro ao carregar dados educacionais')
+    } finally {
+      setLoading(false)
+    }
+  }, [user])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  useRealtime(
+    'trilhas',
+    () => {
+      loadData()
     },
-    [completedLessons],
+    !!user,
+  )
+  useRealtime(
+    'aulas',
+    () => {
+      loadData()
+    },
+    !!user,
   )
 
-  const getTrackProgress = useCallback(
-    (trackId: string) => {
-      const track = MOCK_TRACKS.find((t) => t.id === trackId)
-      if (!track) return 0
-      const completed = completedLessons[trackId] || new Set<string>()
-      return Math.round((completed.size / track.lessons.length) * 100)
+  const toggleLesson = useCallback(
+    async (trackId: string, lessonId: string) => {
+      if (!user) return
+      const isCompleted = (completedLessons[trackId] || new Set<string>()).has(lessonId)
+      setCompletedLessons((prev) => {
+        const trackSet = new Set(prev[trackId] || [])
+        if (trackSet.has(lessonId)) trackSet.delete(lessonId)
+        else trackSet.add(lessonId)
+        return { ...prev, [trackId]: trackSet }
+      })
+      try {
+        await toggleProgresso(user.id, trackId, lessonId, !isCompleted)
+      } catch {
+        setCompletedLessons((prev) => {
+          const trackSet = new Set(prev[trackId] || [])
+          if (isCompleted) trackSet.add(lessonId)
+          else trackSet.delete(lessonId)
+          return { ...prev, [trackId]: trackSet }
+        })
+      }
     },
+    [user, completedLessons],
+  )
+
+  const isLessonCompleted = useCallback(
+    (trackId: string, lessonId: string) =>
+      (completedLessons[trackId] || new Set<string>()).has(lessonId),
     [completedLessons],
   )
 
   const getCompletedCount = useCallback(
     (trackId: string) => {
-      const track = MOCK_TRACKS.find((t) => t.id === trackId)
+      const track = tracks.find((t) => t.id === trackId)
       if (!track) return { completed: 0, total: 0 }
       const completed = completedLessons[trackId] || new Set<string>()
       return { completed: completed.size, total: track.lessons.length }
     },
-    [completedLessons],
+    [tracks, completedLessons],
   )
 
-  const setQuizResult = useCallback((trackId: string, score: number, approved: boolean) => {
-    const code = approved
-      ? 'BRZ-' +
-        Math.random().toString(36).substring(2, 6).toUpperCase() +
-        '-' +
-        Math.random().toString(36).substring(2, 6).toUpperCase()
-      : null
-    setQuizStates((prev) => ({
-      ...prev,
-      [trackId]: {
-        result: approved ? 'approved' : 'failed',
-        score,
-        certificateCode: code,
-      },
-    }))
-    return code
-  }, [])
+  const getTrackProgress = useCallback(
+    (trackId: string) => {
+      const { completed, total } = getCompletedCount(trackId)
+      return total > 0 ? Math.round((completed / total) * 100) : 0
+    },
+    [getCompletedCount],
+  )
+
+  const setQuizResult = useCallback(
+    async (trackId: string, score: number, approved: boolean): Promise<string | null> => {
+      if (!user) return null
+      const code = approved ? generateCertCode() : null
+      setQuizStates((prev) => ({
+        ...prev,
+        [trackId]: { result: approved ? 'approved' : 'failed', score, certificateCode: code },
+      }))
+      try {
+        const track = tracks.find((t) => t.id === trackId)
+        const totalQuestions = track?.quiz.length || 5
+        const correct = Math.round((score / 100) * totalQuestions)
+        await saveQuizResult(user.id, trackId, correct, totalQuestions, approved)
+      } catch {
+        // silent fail — local state already updated
+      }
+      return code
+    },
+    [user, tracks],
+  )
 
   const resetQuiz = useCallback((trackId: string) => {
     setQuizStates((prev) => ({
@@ -93,15 +187,15 @@ export function useEducationStore() {
   )
 
   const tracksWithProgress = useMemo(() => {
-    return MOCK_TRACKS.map((track) => {
+    return tracks.map((track) => {
       const { completed, total } = getCompletedCount(track.id)
       const progress = total > 0 ? Math.round((completed / total) * 100) : 0
       return { ...track, completedCount: completed, totalLessons: total, progress }
     })
-  }, [completedLessons, getCompletedCount])
+  }, [tracks, getCompletedCount])
 
   return {
-    tracks: MOCK_TRACKS as readonly Track[],
+    tracks: tracks as readonly TrackWithLessons[],
     tracksWithProgress,
     toggleLesson,
     isLessonCompleted,
@@ -110,5 +204,7 @@ export function useEducationStore() {
     setQuizResult,
     resetQuiz,
     getQuizState,
+    loading,
+    error,
   }
 }

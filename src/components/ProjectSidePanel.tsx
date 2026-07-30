@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useProjects } from '@/context/ProjectContext'
-import { COLUMNS, PREFEITURAS, USERS, ColumnType, Prefecture, Priority } from '@/types/project'
+import { useAuth } from '@/context/AuthContext'
+import { COLUMNS, PREFEITURAS, ColumnType, Priority } from '@/types/project'
 import {
   Sheet,
   SheetContent,
@@ -21,26 +22,45 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import { Trash2, Save, Calendar, User, Building2, Flag } from 'lucide-react'
+import { Trash2, Save, Calendar, User, Building2, Flag, Loader2 } from 'lucide-react'
+import { getUsers } from '@/services/users'
 import { toast } from 'sonner'
+import { getErrorMessage } from '@/lib/pocketbase/errors'
 
 export const ProjectSidePanel: React.FC = () => {
-  const { selectedProject, isSidePanelOpen, setIsSidePanelOpen, updateProject, deleteProject } =
-    useProjects()
+  const {
+    selectedProject,
+    isSidePanelOpen,
+    setIsSidePanelOpen,
+    updateProject,
+    deleteProject,
+    saving,
+  } = useProjects()
+  const { user } = useAuth()
+  const isSuperadmin = user?.role === 'superadmin'
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [responsible, setResponsible] = useState('')
+  const [responsibleUserId, setResponsibleUserId] = useState('')
+  const [users, setUsers] = useState<{ id: string; name: string }[]>([])
   const [deadline, setDeadline] = useState('')
   const [priority, setPriority] = useState<Priority>('Média')
-  const [prefeitura, setPrefeitura] = useState<Prefecture>('Florânia')
+  const [prefeitura, setPrefeitura] = useState('Florânia')
   const [column, setColumn] = useState<ColumnType>('Ideação')
+
+  useEffect(() => {
+    if (isSidePanelOpen) {
+      getUsers()
+        .then((data) => setUsers(data.map((u) => ({ id: u.id, name: u.name }))))
+        .catch(() => {})
+    }
+  }, [isSidePanelOpen])
 
   useEffect(() => {
     if (selectedProject) {
       setTitle(selectedProject.title)
       setDescription(selectedProject.description || '')
-      setResponsible(selectedProject.responsible)
+      setResponsibleUserId(selectedProject.responsibleUserId || '')
       setDeadline(selectedProject.deadline)
       setPriority(selectedProject.priority)
       setPrefeitura(selectedProject.prefeitura)
@@ -50,30 +70,35 @@ export const ProjectSidePanel: React.FC = () => {
 
   if (!selectedProject) return null
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!title.trim()) {
       toast.error('O título do projeto não pode ficar em branco.')
       return
     }
-
-    updateProject(selectedProject.id, {
-      title: title.trim(),
-      description,
-      responsible,
-      deadline,
-      priority,
-      prefeitura,
-      column,
-    })
-
-    toast.success('Projeto atualizado!')
-    setIsSidePanelOpen(false)
+    try {
+      await updateProject(selectedProject.id, {
+        title: title.trim(),
+        description,
+        responsibleUserId,
+        deadline,
+        priority,
+        prefeitura,
+        column,
+      })
+      toast.success('Projeto atualizado!')
+      setIsSidePanelOpen(false)
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
   }
 
-  const handleDelete = () => {
-    if (confirm('Tem certeza que deseja excluir este projeto?')) {
-      deleteProject(selectedProject.id)
+  const handleDelete = async () => {
+    if (!confirm('Tem certeza que deseja excluir este projeto?')) return
+    try {
+      await deleteProject(selectedProject.id)
       toast.success('Projeto removido.')
+    } catch (err) {
+      toast.error(getErrorMessage(err))
     }
   }
 
@@ -131,27 +156,24 @@ export const ProjectSidePanel: React.FC = () => {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
-                  <User className="w-3.5 h-3.5 text-gray-500" />
-                  Responsável
+                  <User className="w-3.5 h-3.5 text-gray-500" /> Responsável
                 </Label>
-                <Select value={responsible} onValueChange={setResponsible}>
+                <Select value={responsibleUserId} onValueChange={setResponsibleUserId}>
                   <SelectTrigger className="mt-1">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {USERS.map((u) => (
-                      <SelectItem key={u} value={u}>
-                        {u}
+                    {users.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-
               <div>
                 <Label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 text-gray-500" />
-                  Prazo
+                  <Calendar className="w-3.5 h-3.5 text-gray-500" /> Prazo
                 </Label>
                 <Input
                   type="date"
@@ -165,10 +187,9 @@ export const ProjectSidePanel: React.FC = () => {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
-                  <Building2 className="w-3.5 h-3.5 text-gray-500" />
-                  Prefeitura
+                  <Building2 className="w-3.5 h-3.5 text-gray-500" /> Prefeitura
                 </Label>
-                <Select value={prefeitura} onValueChange={(v) => setPrefeitura(v as Prefecture)}>
+                <Select value={prefeitura} onValueChange={setPrefeitura} disabled={!isSuperadmin}>
                   <SelectTrigger className="mt-1">
                     <SelectValue />
                   </SelectTrigger>
@@ -181,11 +202,9 @@ export const ProjectSidePanel: React.FC = () => {
                   </SelectContent>
                 </Select>
               </div>
-
               <div>
                 <Label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
-                  <Flag className="w-3.5 h-3.5 text-gray-500" />
-                  Prioridade
+                  <Flag className="w-3.5 h-3.5 text-gray-500" /> Prioridade
                 </Label>
                 <Select value={priority} onValueChange={(v) => setPriority(v as Priority)}>
                   <SelectTrigger className="mt-1">
@@ -226,21 +245,22 @@ export const ProjectSidePanel: React.FC = () => {
             variant="ghost"
             size="icon"
             onClick={handleDelete}
+            disabled={saving}
             className="text-red-500 hover:text-red-700 hover:bg-red-50"
             title="Excluir projeto"
           >
-            <Trash2 className="w-5 h-5" />
+            {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Trash2 className="w-5 h-5" />}
           </Button>
-
           <div className="flex space-x-2">
             <Button variant="outline" onClick={() => setIsSidePanelOpen(false)}>
               Fechar
             </Button>
             <Button
               onClick={handleSave}
+              disabled={saving}
               className="bg-[#3b82f6] hover:bg-[#2563eb] text-white gap-1.5"
             >
-              <Save className="w-4 h-4" />
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               Salvar
             </Button>
           </div>

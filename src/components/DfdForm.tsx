@@ -1,6 +1,7 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Sparkles, Loader2 } from 'lucide-react'
 import { useProjects } from '@/context/ProjectContext'
+import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -15,8 +16,11 @@ import {
 } from '@/components/ui/select'
 import { SavedPhrasesDropdown } from '@/components/SavedPhrasesDropdown'
 import { generateJustificativa } from '@/lib/dfd-generator'
-import { INITIAL_SAVED_PHRASES, DFD_RESPONSIBLES, DfdRecord } from '@/types/dfd'
+import { DFD_RESPONSIBLES, DfdRecord } from '@/types/dfd'
+import { getFrases, createFrase, incrementFraseUso } from '@/services/frases'
+import type { FraseSalva } from '@/types/education'
 import { toast } from 'sonner'
+import { getErrorMessage } from '@/lib/pocketbase/errors'
 
 interface DfdFormProps {
   onDfdCreated: (dfd: DfdRecord) => void

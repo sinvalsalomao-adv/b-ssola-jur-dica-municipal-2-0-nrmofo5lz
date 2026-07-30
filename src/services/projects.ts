@@ -1,16 +1,21 @@
 import pb from '@/lib/pocketbase/client'
 import type { Project, ColumnType, Priority } from '@/types/project'
 
+const EXPAND = 'tenant,responsible_user'
+
 export function normalizeProject(r: any): Project {
   return {
     id: r.id,
     title: r.title || '',
     description: r.description || '',
-    responsible: r.responsible || '',
+    responsible: r.expand?.responsible_user?.name || r.responsible || '',
+    responsibleUserId: r.responsible_user || '',
     deadline: r.deadline || '',
     priority: (r.priority || 'Média') as Priority,
     column: (r.column || 'Ideação') as ColumnType,
     prefeitura: r.expand?.tenant?.name || '',
+    objeto: r.objeto || '',
+    justificativa: r.justificativa || '',
     createdAt: r.created || '',
     updatedAt: r.updated || '',
   }
@@ -20,19 +25,24 @@ export const getProjects = async (tenantId?: string): Promise<Project[]> => {
   const filter = tenantId ? `tenant = "${tenantId}"` : ''
   const records = await pb.collection('projects').getFullList({
     sort: '-created',
-    expand: 'tenant',
+    expand: EXPAND,
     filter,
   })
   return records.map(normalizeProject)
 }
 
 export const createProject = async (data: Record<string, any>) =>
-  normalizeProject(await pb.collection('projects').create(data, { expand: 'tenant' }))
+  normalizeProject(await pb.collection('projects').create(data, { expand: EXPAND }))
 
 export const updateProject = async (id: string, data: Record<string, any>) =>
-  normalizeProject(await pb.collection('projects').update(id, data, { expand: 'tenant' }))
+  normalizeProject(await pb.collection('projects').update(id, data, { expand: EXPAND }))
 
 export const deleteProject = async (id: string) => pb.collection('projects').delete(id)
+
+export const getTenants = async () => {
+  const records = await pb.collection('tenants').getFullList({ sort: 'name' })
+  return records.map((r) => ({ id: r.id, name: r.name, slug: r.slug }))
+}
 
 export const createAuditLog = async (data: {
   action_type: string

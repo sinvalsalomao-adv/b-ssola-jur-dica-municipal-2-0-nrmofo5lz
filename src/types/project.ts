@@ -16,10 +16,13 @@ export interface Project {
   title: string
   description: string
   responsible: string
-  deadline: string // YYYY-MM-DD
+  responsibleUserId: string
+  deadline: string
   priority: Priority
   column: ColumnType
-  prefeitura: Prefecture
+  prefeitura: string
+  objeto?: string
+  justificativa?: string
   createdAt: string
   updatedAt: string
 }

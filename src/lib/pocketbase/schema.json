@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-30T01:18:56.356Z",
+  "generatedAt": "2026-07-30T01:35:11.357Z",
   "collections": [
     {
       "name": "users",
@@ -43,7 +43,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["superadmin", "admin", "servidor"]
+          "selectValues": ["superadmin", "admin", "servidor", "gestor", "secretario", "procurador"]
         },
         {
           "name": "tenant",
@@ -260,9 +260,31 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "objeto",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "justificativa",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "responsible_user",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
         }
       ],
-      "indexes": ["CREATE INDEX idx_projects_tenant ON projects (tenant)"]
+      "indexes": [
+        "CREATE INDEX idx_projects_tenant ON projects (tenant)",
+        "CREATE INDEX `idx_projects_responsible_user` ON `projects` (responsible_user)"
+      ]
     },
     {
       "name": "notifications",
@@ -332,9 +354,39 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "projeto_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "projects"
+        },
+        {
+          "name": "mensagem",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "enviada_em",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "lida",
+          "type": "bool",
+          "required": false,
+          "system": false
         }
       ],
-      "indexes": ["CREATE INDEX idx_notifications_tenant ON notifications (tenant)"]
+      "indexes": [
+        "CREATE INDEX idx_notifications_tenant ON notifications (tenant)",
+        "CREATE INDEX `idx_notifications_projeto_id` ON `notifications` (projeto_id)",
+        "CREATE INDEX `idx_notifications_lida` ON `notifications` (lida)"
+      ]
     },
     {
       "name": "agenda_events",
@@ -481,9 +533,19 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "projeto_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "projects"
         }
       ],
-      "indexes": ["CREATE INDEX idx_documents_tenant ON documents (tenant)"]
+      "indexes": [
+        "CREATE INDEX idx_documents_tenant ON documents (tenant)",
+        "CREATE INDEX `idx_documents_projeto_id` ON `documents` (projeto_id)"
+      ]
     },
     {
       "name": "audit_logs",
@@ -745,9 +807,316 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "projeto_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "projects"
+        },
+        {
+          "name": "responsible_user",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
         }
       ],
-      "indexes": ["CREATE INDEX idx_dfds_tenant ON dfds (tenant)"]
+      "indexes": [
+        "CREATE INDEX idx_dfds_tenant ON dfds (tenant)",
+        "CREATE INDEX `idx_dfds_projeto_id` ON `dfds` (projeto_id)",
+        "CREATE INDEX `idx_dfds_responsible_user` ON `dfds` (responsible_user)"
+      ]
+    },
+    {
+      "name": "frases_salvas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "view": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "create": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "update": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "delete": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')"
+      },
+      "fields": [
+        {
+          "name": "texto",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "tipo",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["objeto", "descricao"]
+        },
+        {
+          "name": "tenant",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "tenants"
+        },
+        {
+          "name": "contador_uso",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_frases_salvas_tenant ON frases_salvas (tenant)",
+        "CREATE INDEX idx_frases_salvas_tipo ON frases_salvas (tipo)"
+      ]
+    },
+    {
+      "name": "trilhas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != '' && @request.auth.role = 'superadmin'",
+        "update": "@request.auth.id != '' && @request.auth.role = 'superadmin'",
+        "delete": "@request.auth.id != '' && @request.auth.role = 'superadmin'"
+      },
+      "fields": [
+        {
+          "name": "titulo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "ordem",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_trilhas_ordem ON trilhas (ordem)"]
+    },
+    {
+      "name": "aulas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != '' && @request.auth.role = 'superadmin'",
+        "update": "@request.auth.id != '' && @request.auth.role = 'superadmin'",
+        "delete": "@request.auth.id != '' && @request.auth.role = 'superadmin'"
+      },
+      "fields": [
+        {
+          "name": "trilha_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "trilhas"
+        },
+        {
+          "name": "titulo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "url_video",
+          "type": "url",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "ordem",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_aulas_trilha_id ON aulas (trilha_id)",
+        "CREATE INDEX idx_aulas_ordem ON aulas (ordem)"
+      ]
+    },
+    {
+      "name": "progresso_usuario",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && usuario_id = @request.auth.id",
+        "view": "@request.auth.id != '' && usuario_id = @request.auth.id",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != '' && usuario_id = @request.auth.id",
+        "delete": "@request.auth.id != '' && usuario_id = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "usuario_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "trilha_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "trilhas"
+        },
+        {
+          "name": "aula_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "aulas"
+        },
+        {
+          "name": "concluido",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_progresso_usuario_id ON progresso_usuario (usuario_id)",
+        "CREATE INDEX idx_progresso_trilha_id ON progresso_usuario (trilha_id)",
+        "CREATE INDEX idx_progresso_aula_id ON progresso_usuario (aula_id)",
+        "CREATE UNIQUE INDEX idx_progresso_usuario_aula ON progresso_usuario (usuario_id, aula_id)"
+      ]
+    },
+    {
+      "name": "quiz_respostas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && usuario_id = @request.auth.id",
+        "view": "@request.auth.id != '' && usuario_id = @request.auth.id",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != '' && usuario_id = @request.auth.id",
+        "delete": "@request.auth.id != '' && usuario_id = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "usuario_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "trilha_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "trilhas"
+        },
+        {
+          "name": "acertos",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "total",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "aprovado",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_quiz_respostas_usuario_id ON quiz_respostas (usuario_id)",
+        "CREATE INDEX idx_quiz_respostas_trilha_id ON quiz_respostas (trilha_id)",
+        "CREATE INDEX idx_quiz_respostas_data ON quiz_respostas (data)"
+      ]
     }
   ]
 }
