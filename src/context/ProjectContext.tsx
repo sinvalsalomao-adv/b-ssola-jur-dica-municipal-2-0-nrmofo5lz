@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { Project, ColumnType, Prefecture } from '@/types/project'
 import { INITIAL_PROJECTS } from '@/data/mockProjects'
+import { useAuth } from '@/context/AuthContext'
 
 interface ProjectContextType {
   projects: Project[]
@@ -22,11 +23,28 @@ interface ProjectContextType {
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined)
 
 export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { user } = useAuth()
+  const isSuperadmin = user?.role === 'superadmin'
+  const userPrefeitura = user?.prefeitura
+
   const [projects, setProjects] = useState<Project[]>(INITIAL_PROJECTS)
-  const [selectedCity, setSelectedCity] = useState<string>('Todas as Prefeituras')
+  const [selectedCity, setSelectedCityRaw] = useState<string>(
+    isSuperadmin ? 'Todas as Prefeituras' : userPrefeitura || 'Todas as Prefeituras',
+  )
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
   const [isSidePanelOpen, setIsSidePanelOpen] = useState(false)
   const [isNewModalOpen, setIsNewModalOpen] = useState(false)
+
+  useEffect(() => {
+    if (!isSuperadmin && userPrefeitura) {
+      setSelectedCityRaw(userPrefeitura)
+    }
+  }, [isSuperadmin, userPrefeitura])
+
+  const setSelectedCity = (city: string) => {
+    if (!isSuperadmin) return
+    setSelectedCityRaw(city)
+  }
 
   const addProject = (data: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>) => {
     const now = new Date().toISOString()

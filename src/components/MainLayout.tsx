@@ -13,7 +13,9 @@ import {
   ChevronRight,
   Bell,
   Search,
+  Shield,
 } from 'lucide-react'
+import { useAuth } from '@/context/AuthContext'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
@@ -25,6 +27,8 @@ export const MainLayout: React.FC = () => {
   const location = useLocation()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const { user } = useAuth()
+  const isSuperadmin = user?.role === 'superadmin'
 
   const navItems = [
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
@@ -33,6 +37,7 @@ export const MainLayout: React.FC = () => {
     { label: 'DFDs', path: '/dfds', icon: FileText },
     { label: 'Educação', path: '/educacao', icon: GraduationCap },
     { label: 'Usuários', path: '/usuarios', icon: Users },
+    ...(isSuperadmin ? [{ label: 'Superadmin', path: '/superadmin', icon: Shield }] : []),
   ]
 
   const pageTitles: Record<string, string> = {
@@ -44,6 +49,7 @@ export const MainLayout: React.FC = () => {
     '/educacao': 'Módulo de Educação',
     '/usuarios': 'Gestão de Usuários',
     '/novo-dfd': 'Novo DFD',
+    '/superadmin': 'Painel do Superadministrador',
   }
 
   const currentTitle = pageTitles[location.pathname] || 'Bússola Jurídica Municipal'
