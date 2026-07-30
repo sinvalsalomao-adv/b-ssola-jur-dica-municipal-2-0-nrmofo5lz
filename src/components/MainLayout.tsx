@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   KanbanSquare,
   FileText,
+  Gauge,
   GraduationCap,
   Users,
   Compass,
@@ -28,6 +29,7 @@ export const MainLayout: React.FC = () => {
   const navItems = [
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { label: 'Bússola', path: '/bussola', icon: KanbanSquare },
+    { label: 'Central de Controle', path: '/controle', icon: Gauge },
     { label: 'DFDs', path: '/dfds', icon: FileText },
     { label: 'Educação', path: '/educacao', icon: GraduationCap },
     { label: 'Usuários', path: '/usuarios', icon: Users },
@@ -37,6 +39,7 @@ export const MainLayout: React.FC = () => {
     '/': 'Dashboard',
     '/dashboard': 'Dashboard',
     '/bussola': 'Bússola',
+    '/controle': 'Central de Controle',
     '/dfds': 'Diagramas de Fluxo de Dados (DFDs)',
     '/educacao': 'Módulo de Educação',
     '/usuarios': 'Gestão de Usuários',

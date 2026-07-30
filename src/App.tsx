@@ -10,6 +10,7 @@ import QuizPage from '@/pages/QuizPage'
 import { MainLayout } from '@/components/MainLayout'
 import Dashboard from '@/pages/Dashboard'
 import BussolaKanban from '@/pages/BussolaKanban'
+import ControlePage from '@/pages/ControlePage'
 import DfdsPage from '@/pages/DfdsPage'
 import NovoDfdPage from '@/pages/NovoDfdPage'
 import EducacaoPage from '@/pages/EducacaoPage'
@@ -28,6 +29,7 @@ const App = () => (
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/bussola" element={<BussolaKanban />} />
+              <Route path="/controle" element={<ControlePage />} />
               <Route path="/dfds" element={<DfdsPage />} />
               <Route path="/novo-dfd" element={<NovoDfdPage />} />
               <Route path="/educacao" element={<EducacaoPage />} />
