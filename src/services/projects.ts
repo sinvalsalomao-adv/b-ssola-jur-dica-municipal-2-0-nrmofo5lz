@@ -6,13 +6,13 @@ const EXPAND = 'tenant,responsible_user'
 export function normalizeProject(r: any): Project {
   return {
     id: r.id,
-    title: r.title || '',
-    description: r.description || '',
-    responsible: r.expand?.responsible_user?.name || r.responsible || '',
+    title: r.titulo || '',
+    description: r.descricao || '',
+    responsible: r.expand?.responsible_user?.name || '',
     responsibleUserId: r.responsible_user || '',
-    deadline: r.deadline || '',
+    deadline: r.prazo || '',
     priority: (r.priority || 'Média') as Priority,
-    column: (r.column || 'Ideação') as ColumnType,
+    column: (r.coluna_kanban || 'Ideação') as ColumnType,
     prefeitura: r.expand?.tenant?.name || '',
     objeto: r.objeto || '',
     justificativa: r.justificativa || '',

@@ -122,11 +122,11 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     try {
       const tenantId = resolveTenantId(data.prefeitura)
       const pbData: Record<string, any> = {
-        title: data.title,
-        description: data.description,
-        deadline: data.deadline,
+        titulo: data.title,
+        descricao: data.description,
+        prazo: data.deadline,
         priority: data.priority,
-        column: data.column,
+        coluna_kanban: data.column,
         objeto: data.objeto || '',
         justificativa: data.justificativa || '',
         tenant: tenantId,
@@ -147,11 +147,11 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     setError(null)
     try {
       const pbData: Record<string, any> = {}
-      if (updates.title !== undefined) pbData.title = updates.title
-      if (updates.description !== undefined) pbData.description = updates.description
-      if (updates.deadline !== undefined) pbData.deadline = updates.deadline
+      if (updates.title !== undefined) pbData.titulo = updates.title
+      if (updates.description !== undefined) pbData.descricao = updates.description
+      if (updates.deadline !== undefined) pbData.prazo = updates.deadline
       if (updates.priority !== undefined) pbData.priority = updates.priority
-      if (updates.column !== undefined) pbData.column = updates.column
+      if (updates.column !== undefined) pbData.coluna_kanban = updates.column
       if (updates.objeto !== undefined) pbData.objeto = updates.objeto
       if (updates.justificativa !== undefined) pbData.justificativa = updates.justificativa
       if (updates.responsibleUserId !== undefined)
@@ -189,7 +189,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
   const moveProjectColumn = async (id: string, newColumn: ColumnType) => {
     setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, column: newColumn } : p)))
     try {
-      await updateProjectApi(id, { column: newColumn })
+      await updateProjectApi(id, { coluna_kanban: newColumn })
     } catch (err) {
       loadProjects()
       setError(getErrorMessage(err))

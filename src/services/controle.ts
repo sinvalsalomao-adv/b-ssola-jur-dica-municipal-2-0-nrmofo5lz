@@ -16,7 +16,7 @@ export function normalizeNotification(r: any): NotificationItem {
     daysIdle: r.days_stalled || 0,
     responsible: r.person_responsible || '',
     alertDate: r.alert_date || '',
-    alertType: r.alert_type as any,
+    alertType: r.tipo as any,
     prefeitura: r.expand?.tenant?.name || '',
   }
 }
@@ -34,12 +34,12 @@ export function normalizeEvent(r: any): CalendarEvent {
 export function normalizeDocument(r: any): DocumentItem {
   return {
     id: r.id,
-    fileName: r.file_name || '',
-    fileSize: r.file_size || 0,
+    fileName: r.nome_arquivo || '',
+    fileSize: r.tamanho || 0,
     projectTitle: r.project_name || '',
-    uploadDate: r.upload_date || '',
-    uploader: r.uploaded_by || '',
-    pdfUrl: r.pdf_url || (r.file ? pb.files.getURL(r, r.file) : ''),
+    uploadDate: r.upload_em || '',
+    uploader: r.upload_por || '',
+    pdfUrl: r.url || (r.file ? pb.files.getURL(r, r.file) : ''),
   }
 }
 
@@ -67,7 +67,7 @@ export const getAgendaEvents = async () => {
 }
 
 export const getDocuments = async () => {
-  const records = await pb.collection('documents').getFullList({ sort: '-upload_date' })
+  const records = await pb.collection('documents').getFullList({ sort: '-upload_em' })
   return records.map(normalizeDocument)
 }
 
