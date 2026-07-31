@@ -1,4 +1,4 @@
-export type UserRole = 'superadmin' | 'admin' | 'servidor'
+export type UserRole = 'superadmin' | 'admin' | 'servidor' | 'gestor' | 'secretario' | 'procurador'
 export type PrefeituraStatus = 'ativa' | 'inativa'
 export type UserStatus = 'ativo' | 'inativo'
 

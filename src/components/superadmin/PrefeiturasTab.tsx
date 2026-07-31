@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Plus, Settings2, Building } from 'lucide-react'
+import { Plus, Settings2, Building, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -16,9 +16,17 @@ import { ManagePrefeituraModal } from '@/components/superadmin/ManagePrefeituraM
 import { Prefeitura } from '@/types/superadmin'
 
 export const PrefeiturasTab: React.FC = () => {
-  const { prefeituras, globalUsers } = useSuperadmin()
+  const { prefeituras, globalUsers, loading } = useSuperadmin()
   const [newModalOpen, setNewModalOpen] = useState(false)
   const [manageTarget, setManageTarget] = useState<Prefeitura | null>(null)
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin text-[#3b82f6]" />
+      </div>
+    )
+  }
 
   const getActiveUserCount = (slug: string) =>
     globalUsers.filter((u) => u.prefeituraSlug === slug && u.status === 'ativo').length
@@ -59,8 +67,16 @@ export const PrefeiturasTab: React.FC = () => {
               <TableRow key={pref.id} className="hover:bg-slate-50/50">
                 <TableCell className="font-medium text-[#1c2a3e]">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-[#1c2a3e] flex items-center justify-center shrink-0">
-                      <Building className="w-4 h-4 text-white" />
+                    <div className="w-8 h-8 rounded-lg bg-[#1c2a3e] flex items-center justify-center shrink-0 overflow-hidden">
+                      {pref.logo ? (
+                        <img
+                          src={`${pb.baseUrl.replace(/\/$/, '')}/api/files/tenants/${pref.id}/${pref.logo}`}
+                          alt={pref.name}
+                          className="w-full h-full object-contain"
+                        />
+                      ) : (
+                        <Building className="w-4 h-4 text-white" />
+                      )}
                     </div>
                     {pref.name}
                   </div>

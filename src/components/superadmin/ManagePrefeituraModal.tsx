@@ -31,7 +31,8 @@ function getLogoUrl(pref: Prefeitura): string | null {
 }
 
 export const ManagePrefeituraModal: React.FC<Props> = ({ prefeitura, open, onOpenChange }) => {
-  const { updatePrefeitura, togglePrefeituraStatus, globalUsers, updateUser } = useSuperadmin()
+  const { updatePrefeitura, togglePrefeituraStatus, globalUsers, updateUser, refreshTenant } =
+    useSuperadmin()
   const [adminName, setAdminName] = useState(prefeitura.adminName)
   const [cidade, setCidade] = useState(prefeitura.cidade)
   const [estado, setEstado] = useState(prefeitura.estado)
@@ -174,7 +175,10 @@ export const ManagePrefeituraModal: React.FC<Props> = ({ prefeitura, open, onOpe
         currentLogo={logoUrl}
         open={logoDialogOpen}
         onOpenChange={setLogoDialogOpen}
-        onLogoUpdated={(url) => setLogoUrl(url)}
+        onLogoUpdated={(url) => {
+          setLogoUrl(url)
+          refreshTenant(prefeitura.id)
+        }}
       />
     </>
   )

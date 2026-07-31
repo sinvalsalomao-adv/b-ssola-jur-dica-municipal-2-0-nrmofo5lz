@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft,
@@ -11,6 +11,8 @@ import {
   Copy,
   ListChecks,
   Loader2,
+  GripVertical,
+  Youtube,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -28,6 +30,8 @@ import {
 } from '@/components/ui/alert-dialog'
 import { useEducation } from '@/context/EducationContext'
 import { extractYouTubeId } from '@/lib/youtube'
+import { reorderAulas } from '@/services/education'
+import { cn } from '@/lib/utils'
 import { LessonFormModal } from '@/components/LessonFormModal'
 import { QuizManagementModal } from '@/components/QuizManagementModal'
 import { CopyLessonDialog } from '@/components/CopyLessonDialog'
@@ -49,6 +53,17 @@ export default function TrackDetailPage() {
   const [copyTarget, setCopyTarget] = useState<AulaRecord | null>(null)
   const [quizModalOpen, setQuizModalOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [localLessons, setLocalLessons] = useState<AulaRecord[]>([])
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const [reordering, setReordering] = useState(false)
+
+  useEffect(() => {
+    if (track && !isDragging) {
+      setLocalLessons([...track.lessons].sort((a, b) => a.ordem - b.ordem))
+    }
+  }, [track, isDragging])
 
   if (!track) {
     return (
@@ -87,6 +102,53 @@ export default function TrackDetailPage() {
     } finally {
       setDeleting(false)
     }
+  }
+
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index)
+    setIsDragging(true)
+  }
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault()
+    if (draggedIndex !== null && draggedIndex !== index) {
+      setDragOverIndex(index)
+    }
+  }
+
+  const handleDrop = async (index: number) => {
+    if (draggedIndex === null || draggedIndex === index) {
+      setDraggedIndex(null)
+      setDragOverIndex(null)
+      setIsDragging(false)
+      return
+    }
+
+    const newLessons = [...localLessons]
+    const [moved] = newLessons.splice(draggedIndex, 1)
+    newLessons.splice(index, 0, moved)
+
+    setLocalLessons(newLessons)
+    setDraggedIndex(null)
+    setDragOverIndex(null)
+    setIsDragging(false)
+
+    setReordering(true)
+    try {
+      await reorderAulas(newLessons.map((l) => l.id))
+      toast.success('Ordem das aulas atualizada com sucesso!')
+    } catch (err) {
+      toast.error('Erro ao atualizar a ordem das aulas.')
+      setLocalLessons([...track.lessons].sort((a, b) => a.ordem - b.ordem))
+    } finally {
+      setReordering(false)
+    }
+  }
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null)
+    setDragOverIndex(null)
+    setIsDragging(false)
   }
 
   return (
@@ -136,27 +198,38 @@ export default function TrackDetailPage() {
       </div>
 
       <div className="space-y-4">
-        {track.lessons.length === 0 ? (
+        {localLessons.length === 0 ? (
           <Card className="bg-white border border-gray-100 shadow-sm">
             <CardContent className="p-8 text-center">
               <p className="text-sm text-gray-400">
-                Nenhuma aula cadastrada. Clique em "Adicionar Aula" para começar.
+                Nenhuma aula cadastrada. Clique em &quot;Adicionar Aula&quot; para começar.
               </p>
             </CardContent>
           </Card>
         ) : (
-          track.lessons.map((lesson) => {
+          localLessons.map((lesson, index) => {
             const done = isLessonCompleted(track.id, lesson.id)
             const videoId = extractYouTubeId(lesson.urlVideo)
             return (
               <Card
                 key={lesson.id}
-                className={`bg-white border shadow-sm overflow-hidden transition-all duration-200 ${
-                  done ? 'border-emerald-200' : 'border-gray-100'
-                }`}
+                draggable={!reordering}
+                onDragStart={() => handleDragStart(index)}
+                onDragOver={(e) => handleDragOver(e, index)}
+                onDrop={() => handleDrop(index)}
+                onDragEnd={handleDragEnd}
+                className={cn(
+                  'bg-white border shadow-sm overflow-hidden transition-all duration-200 cursor-grab active:cursor-grabbing',
+                  done ? 'border-emerald-200' : 'border-gray-100',
+                  draggedIndex === index && 'opacity-40',
+                  dragOverIndex === index && 'border-t-[3px] border-t-[#3b82f6]',
+                )}
               >
                 <CardContent className="p-0">
                   <div className="p-4 flex items-start gap-3 border-b border-gray-50">
+                    <div className="mt-0.5 text-gray-300 hover:text-[#3b82f6] transition-colors">
+                      <GripVertical className="w-5 h-5" />
+                    </div>
                     <div className="mt-0.5">
                       {done ? (
                         <CheckCircle2 className="w-5 h-5 text-emerald-500" />
@@ -208,7 +281,7 @@ export default function TrackDetailPage() {
                     </div>
                   </div>
 
-                  {videoId && (
+                  {videoId ? (
                     <div className="p-4 bg-gray-50">
                       <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
                         <iframe
@@ -220,6 +293,11 @@ export default function TrackDetailPage() {
                           allowFullScreen
                         />
                       </div>
+                    </div>
+                  ) : (
+                    <div className="p-6 bg-gray-50 text-center">
+                      <Youtube className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                      <p className="text-sm text-gray-400">Nenhum vídeo disponível</p>
                     </div>
                   )}
 
@@ -274,7 +352,7 @@ export default function TrackDetailPage() {
               Excluir Aula
             </AlertDialogTitle>
             <AlertDialogDescription className="text-sm text-gray-600">
-              Tem certeza que deseja excluir a aula "{deleteTarget?.titulo}"? Esta ação é
+              Tem certeza que deseja excluir a aula &quot;{deleteTarget?.titulo}&quot;? Esta ação é
               irreversível.
             </AlertDialogDescription>
           </AlertDialogHeader>

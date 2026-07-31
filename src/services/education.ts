@@ -103,6 +103,13 @@ export const deleteAula = async (id: string): Promise<boolean> => {
   return pb.collection('aulas').delete(id)
 }
 
+export const reorderAulas = async (aulaIds: string[]): Promise<void> => {
+  const updates = aulaIds.map((id, index) =>
+    pb.collection('aulas').update(id, { ordem: index + 1 }),
+  )
+  await Promise.all(updates)
+}
+
 export const getProgresso = async (usuarioId: string) => {
   const records = await pb.collection('progresso_usuario').getFullList({
     filter: `usuario_id = "${usuarioId}"`,
