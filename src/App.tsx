@@ -12,6 +12,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 import { MainLayout } from '@/components/MainLayout'
 import LoginPage from '@/pages/LoginPage'
+import OrgLoginPage from '@/pages/OrgLoginPage'
 import Dashboard from '@/pages/Dashboard'
 
 import BussolaKanban from '@/pages/BussolaKanban'
@@ -37,6 +38,7 @@ const App = () => (
               <Sonner position="top-right" />
               <Routes>
                 <Route path="/login" element={<LoginPage />} />
+                <Route path="/login/:slug" element={<OrgLoginPage />} />
                 <Route element={<MainLayout />}>
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
                   <Route path="/dashboard" element={<Dashboard />} />

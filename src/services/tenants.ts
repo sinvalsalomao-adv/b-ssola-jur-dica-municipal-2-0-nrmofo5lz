@@ -9,6 +9,8 @@ export function normalizeTenant(r: any): Prefeitura {
     slug: r.slug || '',
     logo: r.logo || null,
     adminName: r.admin_name || '',
+    cidade: r.cidade || '',
+    estado: r.estado || '',
     status: r.status || 'ativa',
     createdAt: r.created || '',
   }

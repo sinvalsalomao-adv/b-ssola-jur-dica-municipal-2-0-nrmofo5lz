@@ -9,6 +9,8 @@ export interface Prefeitura {
   slug: string
   logo: string | null
   adminName: string
+  cidade: string
+  estado: string
   status: PrefeituraStatus
   createdAt: string
 }

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-30T23:53:03.918Z",
+  "generatedAt": "2026-07-31T00:08:47.549Z",
   "collections": [
     {
       "name": "users",
@@ -96,12 +96,6 @@
           "system": false
         },
         {
-          "name": "logo",
-          "type": "file",
-          "required": false,
-          "system": false
-        },
-        {
           "name": "admin_name",
           "type": "text",
           "required": false,
@@ -127,6 +121,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "logo",
+          "type": "file",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE UNIQUE INDEX idx_tenants_slug ON tenants (slug)"]
