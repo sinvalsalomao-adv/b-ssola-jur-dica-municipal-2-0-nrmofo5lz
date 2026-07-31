@@ -33,9 +33,17 @@ export class ErrorBoundary extends Component<Props, State> {
             <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto">
               <AlertTriangle className="w-6 h-6" />
             </div>
-            <h2 className="text-lg font-bold text-slate-900">Ocorreu um erro na aplicação</h2>
+            <h2 className="text-lg font-bold text-slate-900">
+              {this.state.error?.message?.includes('removeChild') ||
+              this.state.error?.message?.includes('Node')
+                ? 'Falha de Sincronização de Interface'
+                : 'Ocorreu um erro na aplicação'}
+            </h2>
             <p className="text-xs text-slate-600 leading-relaxed">
-              {this.state.error?.message || 'Erro inesperado de renderização.'}
+              {this.state.error?.message?.includes('removeChild') ||
+              this.state.error?.message?.includes('Node')
+                ? 'Detectada alteração de nós do navegador (ex: tradução automática ativada). Clique abaixo para recarregar.'
+                : this.state.error?.message || 'Erro inesperado de renderização.'}
             </p>
             <Button
               onClick={() => {

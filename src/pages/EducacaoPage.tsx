@@ -146,20 +146,26 @@ export default function EducacaoPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {tracksWithProgress.map((track, index) => {
+        {(tracksWithProgress || []).map((track, index) => {
           const colors = cardColors[index % cardColors.length]
+          const trackKey = track.id || `track-${index}`
+          const totalLessons = track.totalLessons || 0
+          const completedCount = track.completedCount || 0
+          const progress = track.progress || 0
+
           return (
             <Card
-              key={track.id}
+              key={trackKey}
               className="bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-300 overflow-hidden relative group"
             >
               <CardContent className="p-0">
                 <div className={`h-28 ${colors.bg} flex items-center justify-center relative`}>
                   <GraduationCap className={`w-12 h-12 ${colors.text}`} />
                   <div className="absolute top-3 right-3 flex items-center gap-1.5">
-                    {track.progress === 100 && (
+                    {progress === 100 && (
                       <Badge className="bg-emerald-500 text-white border-0">
-                        <CheckCircle2 className="w-3 h-3 mr-1" /> Concluída
+                        <CheckCircle2 className="w-3 h-3 mr-1" />
+                        <span>Concluída</span>
                       </Badge>
                     )}
                     <Button
@@ -192,29 +198,34 @@ export default function EducacaoPage() {
                 <div className="p-5 space-y-4">
                   <div>
                     <h3 className="font-bold text-base text-[#1c2a3e] leading-snug min-h-[3rem]">
-                      {track.titulo}
+                      <span>{track.titulo}</span>
                     </h3>
-                    <p className="text-xs text-gray-500 mt-1 line-clamp-2">{track.descricao}</p>
+                    <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                      <span>{track.descricao}</span>
+                    </p>
                   </div>
 
                   <div className="flex items-center gap-4 text-xs text-gray-500">
                     <span className="flex items-center gap-1">
                       <PlayCircle className="w-3.5 h-3.5" />
-                      {track.totalLessons} aulas
+                      <span>{totalLessons} aulas</span>
                     </span>
                     <span className="flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5" />~{track.totalLessons * 15} min
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>~{totalLessons * 15} min</span>
                     </span>
                   </div>
 
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-gray-500 font-medium">Progresso</span>
-                      <span className="font-bold text-[#1c2a3e]">{track.progress}%</span>
+                      <span className="font-bold text-[#1c2a3e]">{progress}%</span>
                     </div>
-                    <Progress value={track.progress} className="h-2 bg-gray-100" />
+                    <Progress value={progress} className="h-2 bg-gray-100" />
                     <p className="text-[11px] text-gray-400">
-                      {track.completedCount} de {track.totalLessons} aulas concluídas
+                      <span>
+                        {completedCount} de {totalLessons} aulas concluídas
+                      </span>
                     </p>
                   </div>
 
@@ -312,8 +323,10 @@ export default function EducacaoPage() {
               Excluir Trilha de Aprendizagem
             </AlertDialogTitle>
             <AlertDialogDescription className="text-sm text-gray-600">
-              Tem certeza que deseja excluir a trilha "{trackToDelete?.titulo}"? Esta ação é
-              irreversível e removerá a trilha do sistema.
+              <span>
+                Tem certeza que deseja excluir a trilha &quot;{trackToDelete?.titulo || ''}&quot;?
+                Esta ação é irreversível e removerá a trilha do sistema.
+              </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -324,7 +337,7 @@ export default function EducacaoPage() {
               className="bg-red-600 hover:bg-red-700 text-white"
             >
               {deleting && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
-              Excluir
+              <span>Excluir</span>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

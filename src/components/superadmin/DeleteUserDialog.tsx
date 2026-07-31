@@ -21,6 +21,13 @@ interface Props {
 
 export const DeleteUserDialog: React.FC<Props> = ({ user, open, onOpenChange, onConfirm }) => {
   const [deleting, setDeleting] = React.useState(false)
+  const [activeUser, setActiveUser] = React.useState<GlobalUser | null>(user)
+
+  React.useEffect(() => {
+    if (user) {
+      setActiveUser(user)
+    }
+  }, [user])
 
   const handleConfirm = async () => {
     setDeleting(true)
@@ -31,6 +38,8 @@ export const DeleteUserDialog: React.FC<Props> = ({ user, open, onOpenChange, on
     }
   }
 
+  const targetUser = user || activeUser
+
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="bg-white rounded-xl shadow-xl">
@@ -39,9 +48,11 @@ export const DeleteUserDialog: React.FC<Props> = ({ user, open, onOpenChange, on
             Confirmar Exclusão
           </AlertDialogTitle>
           <AlertDialogDescription className="text-sm text-gray-600">
-            Tem certeza que deseja excluir o usuário{' '}
-            <span className="font-semibold text-[#1c2a3e]">{user?.name}</span>? Esta ação não pode
-            ser desfeita.
+            <span>Tem certeza que deseja excluir o usuário </span>
+            <span className="font-semibold text-[#1c2a3e]">
+              {targetUser?.name || 'este usuário'}
+            </span>
+            <span>? Esta ação não pode ser desfeita.</span>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -52,7 +63,7 @@ export const DeleteUserDialog: React.FC<Props> = ({ user, open, onOpenChange, on
             className="bg-red-600 hover:bg-red-700 text-white"
           >
             {deleting && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
-            Confirmar Exclusão
+            <span>Confirmar Exclusão</span>
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

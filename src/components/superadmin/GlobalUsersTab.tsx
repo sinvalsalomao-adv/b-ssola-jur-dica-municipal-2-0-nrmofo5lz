@@ -47,6 +47,7 @@ const ROLE_COLORS: Record<UserRole, string> = {
 function formatDate(iso: string): string {
   if (!iso || iso === '—') return '—'
   const d = new Date(iso)
+  if (isNaN(d.getTime())) return '—'
   return (
     d.toLocaleDateString('pt-BR') +
     ' ' +
@@ -55,7 +56,7 @@ function formatDate(iso: string): string {
 }
 
 export const GlobalUsersTab: React.FC = () => {
-  const { globalUsers, prefeituras, updateUser, toggleUserStatus, fetchUsers } = useSuperadmin()
+  const { globalUsers, prefeituras, toggleUserStatus, fetchUsers } = useSuperadmin()
   const [filterPref, setFilterPref] = useState('all')
   const [filterRole, setFilterRole] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
@@ -85,10 +86,28 @@ export const GlobalUsersTab: React.FC = () => {
     setEditModalOpen(true)
   }
 
+  const handleEditModalChange = (open: boolean) => {
+    setEditModalOpen(open)
+    if (!open) {
+      setTimeout(() => {
+        setEditUser(null)
+      }, 200)
+    }
+  }
+
   const handleDeleteClick = (e: React.MouseEvent, user: GlobalUser) => {
     e.stopPropagation()
     setDeleteUser(user)
     setDeleteDialogOpen(true)
+  }
+
+  const handleDeleteDialogChange = (open: boolean) => {
+    setDeleteDialogOpen(open)
+    if (!open) {
+      setTimeout(() => {
+        setDeleteUser(null)
+      }, 200)
+    }
   }
 
   const handleDeleteConfirm = async () => {
@@ -98,8 +117,7 @@ export const GlobalUsersTab: React.FC = () => {
       await pb.collection('users').delete(deleteUser.id)
       await fetchUsers()
       toast.success('Usuário excluído com sucesso!')
-      setDeleteDialogOpen(false)
-      setDeleteUser(null)
+      handleDeleteDialogChange(false)
     } catch (err: any) {
       const msg = err?.response?.message || err?.message || 'Erro ao excluir usuário.'
       toast.error(msg)
@@ -112,7 +130,7 @@ export const GlobalUsersTab: React.FC = () => {
         <div>
           <h3 className="text-base font-bold text-[#1c2a3e]">Usuários Globais</h3>
           <p className="text-xs text-gray-500">
-            Todos os usuários cadastrados across todas as prefeituras.
+            Todos os usuários cadastrados em todas as prefeituras.
           </p>
         </div>
         <Button
@@ -120,7 +138,7 @@ export const GlobalUsersTab: React.FC = () => {
           onClick={() => setCreateModalOpen(true)}
         >
           <UserPlus className="w-4 h-4 mr-1.5" />
-          Criar Usuário
+          <span>Criar Usuário</span>
         </Button>
       </div>
 
@@ -137,6 +155,7 @@ export const GlobalUsersTab: React.FC = () => {
             <button
               onClick={() => setSearchQuery('')}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+              type="button"
             >
               <X className="w-4 h-4" />
             </button>
@@ -149,7 +168,7 @@ export const GlobalUsersTab: React.FC = () => {
           <SelectContent>
             <SelectItem value="all">Todas as Prefeituras</SelectItem>
             {prefeituras.map((p) => (
-              <SelectItem key={p.id} value={p.slug}>
+              <SelectItem key={p.id || p.slug} value={p.slug}>
                 {p.name}
               </SelectItem>
             ))}
@@ -185,83 +204,88 @@ export const GlobalUsersTab: React.FC = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map((u) => (
-              <TableRow
-                key={u.id}
-                className="hover:bg-slate-50/50 cursor-pointer transition-colors"
-                onClick={() => handleRowClick(u)}
-              >
-                <TableCell className="font-medium text-[#1c2a3e] text-sm">{u.name}</TableCell>
-                <TableCell className="text-sm text-gray-600">{u.email}</TableCell>
-                <TableCell className="text-sm text-gray-600">{u.prefeituraName}</TableCell>
-                <TableCell>
-                  {u.role === 'superadmin' ? (
-                    <Badge className={ROLE_COLORS[u.role]}>{ROLE_LABELS[u.role]}</Badge>
-                  ) : (
-                    <Select
-                      value={u.role}
-                      onValueChange={(v) => updateUser(u.id, { role: v as UserRole })}
-                    >
-                      <SelectTrigger className="h-7 w-[110px] text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="servidor">Servidor</SelectItem>
-                        <SelectItem value="gestor">Gestor</SelectItem>
-                        <SelectItem value="secretario">Secretário</SelectItem>
-                        <SelectItem value="procurador">Procurador</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                </TableCell>
-                <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
-                  <div className="flex items-center justify-center gap-2">
-                    <span className="text-xs text-gray-500">
-                      {u.status === 'ativo' ? 'Ativo' : 'Inativo'}
-                    </span>
-                    <Switch
-                      checked={u.status === 'ativo'}
-                      onCheckedChange={() => toggleUserStatus(u.id)}
-                    />
-                  </div>
-                </TableCell>
-                <TableCell className="text-xs text-gray-500">{formatDate(u.lastAccess)}</TableCell>
-                <TableCell className="text-center">
-                  <div className="flex items-center justify-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-gray-500 hover:text-[#3b82f6] hover:bg-blue-50"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleRowClick(u)
-                      }}
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-gray-500 hover:text-red-600 hover:bg-red-50"
-                      onClick={(e) => handleDeleteClick(e, u)}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
+            {filtered.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} className="text-center py-8 text-gray-500 text-sm">
+                  <span>Nenhum usuário encontrado.</span>
                 </TableCell>
               </TableRow>
-            ))}
+            ) : (
+              filtered.map((u, idx) => {
+                const uKey = u.id ? u.id : `user-${u.email}-${idx}`
+                return (
+                  <TableRow
+                    key={uKey}
+                    className="hover:bg-slate-50/50 cursor-pointer transition-colors"
+                    onClick={() => handleRowClick(u)}
+                  >
+                    <TableCell className="font-medium text-[#1c2a3e] text-sm">
+                      <span>{u.name || '—'}</span>
+                    </TableCell>
+                    <TableCell className="text-sm text-gray-600">
+                      <span>{u.email || '—'}</span>
+                    </TableCell>
+                    <TableCell className="text-sm text-gray-600">
+                      <span>{u.prefeituraName || '—'}</span>
+                    </TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Badge className={ROLE_COLORS[u.role] || 'bg-slate-400 text-white'}>
+                        {ROLE_LABELS[u.role] || u.role}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-center gap-2">
+                        <span className="text-xs text-gray-500">
+                          {u.status === 'ativo' ? 'Ativo' : 'Inativo'}
+                        </span>
+                        <Switch
+                          checked={u.status === 'ativo'}
+                          onCheckedChange={() => toggleUserStatus(u.id)}
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-xs text-gray-500">
+                      <span>{formatDate(u.lastAccess)}</span>
+                    </TableCell>
+                    <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-gray-500 hover:text-[#3b82f6] hover:bg-blue-50"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleRowClick(u)
+                          }}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-gray-500 hover:text-red-600 hover:bg-red-50"
+                          onClick={(e) => handleDeleteClick(e, u)}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })
+            )}
           </TableBody>
         </Table>
       </div>
-      <p className="text-xs text-gray-400">{filtered.length} usuário(s) encontrado(s).</p>
+      <p className="text-xs text-gray-400">
+        <span>{filtered.length} usuário(s) encontrado(s).</span>
+      </p>
       <CreateUserModal open={createModalOpen} onOpenChange={setCreateModalOpen} />
-      <EditUserModal user={editUser} open={editModalOpen} onOpenChange={setEditModalOpen} />
+      <EditUserModal user={editUser} open={editModalOpen} onOpenChange={handleEditModalChange} />
       <DeleteUserDialog
         user={deleteUser}
         open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
+        onOpenChange={handleDeleteDialogChange}
         onConfirm={handleDeleteConfirm}
       />
     </div>

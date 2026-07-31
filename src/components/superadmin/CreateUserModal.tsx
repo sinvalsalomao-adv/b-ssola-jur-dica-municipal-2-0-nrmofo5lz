@@ -220,7 +220,7 @@ export const CreateUserModal: React.FC<Props> = ({ open, onOpenChange }) => {
               className="bg-[#3b82f6] hover:bg-[#2563eb] text-white"
             >
               {submitting && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
-              Criar Usuário
+              <span>Criar Usuário</span>
             </Button>
           </DialogFooter>
         </form>

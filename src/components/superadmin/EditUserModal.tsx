@@ -39,7 +39,8 @@ const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
 ]
 
 export const EditUserModal: React.FC<Props> = ({ user, open, onOpenChange }) => {
-  const { prefeituras, updateUser, fetchUsers } = useSuperadmin()
+  const { prefeituras, fetchUsers } = useSuperadmin()
+  const [activeUser, setActiveUser] = useState<GlobalUser | null>(user)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<UserRole>('servidor')
@@ -52,18 +53,24 @@ export const EditUserModal: React.FC<Props> = ({ user, open, onOpenChange }) => 
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
-    if (open && user) {
-      setName(user.name)
-      setEmail(user.email)
-      setRole(user.role)
-      setTenantId(prefeituras.find((p) => p.slug === user.prefeituraSlug)?.id || '')
-      setStatus(user.status)
+    if (user) {
+      setActiveUser(user)
+    }
+  }, [user])
+
+  useEffect(() => {
+    if (open && activeUser) {
+      setName(activeUser.name || '')
+      setEmail(activeUser.email || '')
+      setRole(activeUser.role || 'servidor')
+      setTenantId(prefeituras.find((p) => p.slug === activeUser.prefeituraSlug)?.id || '')
+      setStatus(activeUser.status || 'ativo')
       setNewPassword('')
       setConfirmPassword('')
       setShowPasswordReset(false)
       setErrors({})
     }
-  }, [open, user, prefeituras])
+  }, [open, activeUser, prefeituras])
 
   const validate = (): boolean => {
     const errs: FieldErrors = {}
@@ -84,7 +91,8 @@ export const EditUserModal: React.FC<Props> = ({ user, open, onOpenChange }) => 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!user || !validate()) return
+    const target = user || activeUser
+    if (!target || !validate()) return
     setSubmitting(true)
     try {
       const apiData: Record<string, any> = {
@@ -98,7 +106,7 @@ export const EditUserModal: React.FC<Props> = ({ user, open, onOpenChange }) => 
         apiData.password = newPassword
         apiData.passwordConfirm = confirmPassword
       }
-      await pb.collection('users').update(user.id, apiData)
+      await pb.collection('users').update(target.id, apiData)
       await fetchUsers()
       toast.success('Usuário atualizado com sucesso!')
       onOpenChange(false)

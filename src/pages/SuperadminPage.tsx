@@ -45,13 +45,13 @@ export default function SuperadminPage() {
           <Tabs defaultValue="prefeituras" className="w-full">
             <TabsList className="grid w-full max-w-2xl grid-cols-3 mb-6">
               <TabsTrigger value="prefeituras" className="gap-2">
-                <Building2 className="w-4 h-4" /> Prefeituras
+                <Building2 className="w-4 h-4" /> <span>Prefeituras</span>
               </TabsTrigger>
               <TabsTrigger value="usuarios" className="gap-2">
-                <Users className="w-4 h-4" /> Usuários Globais
+                <Users className="w-4 h-4" /> <span>Usuários Globais</span>
               </TabsTrigger>
               <TabsTrigger value="config" className="gap-2">
-                <Settings className="w-4 h-4" /> Configurações
+                <Settings className="w-4 h-4" /> <span>Configurações</span>
               </TabsTrigger>
             </TabsList>
             <TabsContent value="prefeituras">
