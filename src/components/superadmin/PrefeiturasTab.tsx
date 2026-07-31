@@ -14,6 +14,7 @@ import { useSuperadmin } from '@/context/SuperadminContext'
 import { NewPrefeituraModal } from '@/components/superadmin/NewPrefeituraModal'
 import { ManagePrefeituraModal } from '@/components/superadmin/ManagePrefeituraModal'
 import { Prefeitura } from '@/types/superadmin'
+import pb from '@/lib/pocketbase/client'
 
 export const PrefeiturasTab: React.FC = () => {
   const { prefeituras, globalUsers, loading } = useSuperadmin()
