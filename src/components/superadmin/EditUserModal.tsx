@@ -46,7 +46,7 @@ export const EditUserModal: React.FC<Props> = ({ user, open, onOpenChange }) => 
   const [tenantId, setTenantId] = useState('')
   const [status, setStatus] = useState<UserStatus>('ativo')
   const [newPassword, setNewPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [showPasswordReset, setShowPasswordReset] = useState(false)
   const [errors, setErrors] = useState<FieldErrors>({})
   const [submitting, setSubmitting] = useState(false)
