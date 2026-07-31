@@ -115,7 +115,7 @@ export default function RelatoriosPage() {
     )
   }, [projects])
 
-  if (user?.role !== 'superadmin') {
+  if (user?.role !== 'superadmin' && user?.role !== 'admin') {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 animate-fade-in">
         <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
@@ -123,7 +123,7 @@ export default function RelatoriosPage() {
         </div>
         <h2 className="text-2xl font-bold text-[#1c2a3e]">Acesso Negado</h2>
         <p className="text-sm text-gray-500 text-center max-w-md">
-          Apenas superadministradores podem acessar o dashboard de relatórios.
+          Apenas administradores podem acessar o dashboard de relatórios.
         </p>
       </div>
     )

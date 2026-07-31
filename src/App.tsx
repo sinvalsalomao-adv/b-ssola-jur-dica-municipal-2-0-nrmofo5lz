@@ -9,6 +9,7 @@ import TrackDetailPage from '@/pages/TrackDetailPage'
 import QuizPage from '@/pages/QuizPage'
 import SuperadminPage from '@/pages/SuperadminPage'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import AdminAuditLogsPage from '@/pages/AdminAuditLogsPage'
 
 import { MainLayout } from '@/components/MainLayout'
 import LoginPage from '@/pages/LoginPage'
@@ -56,6 +57,7 @@ const App = () => (
                   <Route path="/notificacoes" element={<NotificacoesPage />} />
                   <Route path="/configuracoes" element={<ConfiguracoesPage />} />
                   <Route path="/perfil" element={<PerfilPage />} />
+                  <Route path="/audit-logs" element={<AdminAuditLogsPage />} />
                   <Route path="/superadmin" element={<SuperadminPage />} />
                 </Route>
                 <Route path="*" element={<NotFound />} />

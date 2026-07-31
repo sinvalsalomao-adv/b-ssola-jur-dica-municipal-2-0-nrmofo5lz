@@ -13,7 +13,7 @@ export default function UsuariosPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
 
-  if (user?.role === 'superadmin') {
+  if (user?.role === 'superadmin' || user?.role === 'admin') {
     return <TenantUsersManager />
   }
 

@@ -12,8 +12,11 @@ import {
   DEFAULT_PROXIMITY_DAYS,
 } from '@/types/controle'
 import { MOCK_DOCUMENTS } from '@/data/mockControle'
+import { useAuth } from '@/context/AuthContext'
+import { AdminDashboardCards } from '@/components/admin/AdminDashboardCards'
 
 export default function ControlePage() {
+  const { user } = useAuth()
   const [stallLimits, setStallLimits] = useState<StallLimits>(DEFAULT_STALL_LIMITS)
   const [proximityDays, setProximityDays] = useState(DEFAULT_PROXIMITY_DAYS)
   const [documents, setDocuments] = useState<DocumentItem[]>(MOCK_DOCUMENTS)
@@ -44,6 +47,8 @@ export default function ControlePage() {
           </p>
         </div>
       </div>
+
+      {user?.role === 'admin' && <AdminDashboardCards />}
 
       <Tabs defaultValue="notificacoes" className="w-full">
         <TabsList className="bg-white border border-gray-100 shadow-sm rounded-lg p-1 overflow-x-auto flex w-full sm:w-auto">

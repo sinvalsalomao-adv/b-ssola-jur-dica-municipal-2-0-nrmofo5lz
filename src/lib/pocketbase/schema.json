@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-31T00:57:55.553Z",
+  "generatedAt": "2026-07-31T01:10:00.406Z",
   "collections": [
     {
       "name": "users",
@@ -373,7 +373,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["Gargalo", "Prazo Fatal"]
+          "selectValues": ["Gargalo", "Prazo Fatal", "Aviso Interno"]
         }
       ],
       "indexes": [

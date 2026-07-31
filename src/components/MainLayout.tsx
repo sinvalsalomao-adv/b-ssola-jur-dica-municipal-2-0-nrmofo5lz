@@ -18,6 +18,7 @@ import {
   Settings,
   LogOut,
   User as UserIcon,
+  History,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
@@ -83,7 +84,12 @@ export const MainLayout: React.FC = () => {
     { label: 'Educação', path: '/educacao', icon: GraduationCap },
     { label: 'Usuários', path: '/usuarios', icon: Users },
     ...(isSuperadmin ? [{ label: 'Superadmin', path: '/superadmin', icon: Shield }] : []),
-    ...(isSuperadmin ? [{ label: 'Relatórios', path: '/relatorios', icon: BarChart3 }] : []),
+    ...(isSuperadmin || user?.role === 'admin'
+      ? [{ label: 'Relatórios', path: '/relatorios', icon: BarChart3 }]
+      : []),
+    ...(user?.role === 'admin'
+      ? [{ label: 'Logs de Auditoria', path: '/audit-logs', icon: History }]
+      : []),
     { label: 'Notificações', path: '/notificacoes', icon: Bell },
     ...(user?.role === 'admin' || isSuperadmin
       ? [{ label: 'Configurações', path: '/configuracoes', icon: Settings }]
@@ -103,6 +109,7 @@ export const MainLayout: React.FC = () => {
     '/superadmin': 'Painel do Superadministrador',
     '/relatorios': 'Relatórios Comparativos',
     '/notificacoes': 'Notificações',
+    '/audit-logs': 'Logs de Auditoria',
     '/configuracoes': 'Configurações',
     '/perfil': 'Meu Perfil',
   }

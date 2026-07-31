@@ -1,6 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, AlertTriangle, Clock, CheckCheck, ChevronLeft, ChevronRight } from 'lucide-react'
+import {
+  Bell,
+  AlertTriangle,
+  Clock,
+  CheckCheck,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+} from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -20,6 +28,7 @@ import {
   markAllNotificationsAsRead,
 } from '@/services/notifications'
 import { toast } from 'sonner'
+import { NewNotificationModal } from '@/components/admin/NewNotificationModal'
 import type { NotificationItem } from '@/types/controle'
 
 const PER_PAGE = 10
@@ -34,6 +43,7 @@ export default function NotificacoesPage() {
   const [loading, setLoading] = useState(true)
   const [filterTipo, setFilterTipo] = useState('Todos')
   const [filterLida, setFilterLida] = useState('Todos')
+  const [createOpen, setCreateOpen] = useState(false)
 
   const load = useCallback(async () => {
     if (!user?.tenantId) return
@@ -99,9 +109,19 @@ export default function NotificacoesPage() {
             <p className="text-xs text-gray-500">{totalItems} notificação(ões) encontrada(s)</p>
           </div>
         </div>
-        <Button variant="outline" onClick={handleMarkAllRead} className="gap-2 text-xs">
-          <CheckCheck className="w-4 h-4" /> Marcar todas como lidas
-        </Button>
+        <div className="flex items-center gap-2">
+          {user?.role === 'admin' && (
+            <Button
+              onClick={() => setCreateOpen(true)}
+              className="gap-2 text-xs bg-[#3b82f6] hover:bg-[#2563eb] text-white"
+            >
+              <Plus className="w-4 h-4" /> Nova Notificação
+            </Button>
+          )}
+          <Button variant="outline" onClick={handleMarkAllRead} className="gap-2 text-xs">
+            <CheckCheck className="w-4 h-4" /> Marcar todas como lidas
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -216,6 +236,13 @@ export default function NotificacoesPage() {
           </Button>
         </div>
       )}
+
+      <NewNotificationModal
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreated={load}
+        tenantId={user?.tenantId || ''}
+      />
     </div>
   )
 }

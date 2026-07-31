@@ -52,7 +52,8 @@ export function TenantUsersManager() {
     }
     try {
       const data = await getUsersByTenant(user.tenantId)
-      setUsers(data)
+      const filtered = user?.role === 'admin' ? data.filter((u) => u.role !== 'superadmin') : data
+      setUsers(filtered)
     } catch {
       /* ignore */
     }
@@ -155,16 +156,18 @@ export function TenantUsersManager() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-gray-500 hover:text-[#3b82f6] hover:bg-blue-50"
+                        className="h-8 w-8 text-gray-500 hover:text-[#3b82f6] hover:bg-blue-50 disabled:opacity-30 disabled:cursor-not-allowed"
                         onClick={() => handleEdit(u)}
+                        disabled={u.id === user?.id}
                       >
                         <Pencil className="w-3.5 h-3.5" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-gray-500 hover:text-red-600 hover:bg-red-50"
+                        className="h-8 w-8 text-gray-500 hover:text-red-600 hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed"
                         onClick={() => handleDelete(u)}
+                        disabled={u.id === user?.id}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
