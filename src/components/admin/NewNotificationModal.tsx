@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -35,12 +36,14 @@ const TYPES = [
 ]
 
 export function NewNotificationModal({ open, onOpenChange, onCreated, tenantId }: Props) {
+  const [assunto, setAssunto] = useState('')
   const [mensagem, setMensagem] = useState('')
   const [tipo, setTipo] = useState('Aviso Interno')
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
     if (open) {
+      setAssunto('')
       setMensagem('')
       setTipo('Aviso Interno')
     }
@@ -48,10 +51,15 @@ export function NewNotificationModal({ open, onOpenChange, onCreated, tenantId }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!mensagem.trim() || !tenantId) return
+    if (!assunto.trim() || !mensagem.trim() || !tenantId) return
     setSubmitting(true)
     try {
-      await createInternalNotification({ tenantId, mensagem: mensagem.trim(), tipo })
+      await createInternalNotification({
+        tenantId,
+        subject: assunto.trim(),
+        mensagem: mensagem.trim(),
+        tipo,
+      })
       toast.success('Notificação enviada com sucesso!')
       onOpenChange(false)
       onCreated()
@@ -83,6 +91,15 @@ export function NewNotificationModal({ open, onOpenChange, onCreated, tenantId }
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div>
+            <Label className="text-xs font-semibold text-gray-700">Assunto *</Label>
+            <Input
+              value={assunto}
+              onChange={(e) => setAssunto(e.target.value)}
+              className="mt-1"
+              placeholder="Digite o assunto da notificação..."
+            />
           </div>
           <div>
             <Label className="text-xs font-semibold text-gray-700">Mensagem *</Label>

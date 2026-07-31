@@ -4,6 +4,7 @@ export const createInternalNotification = async (data: {
   tenantId: string
   mensagem: string
   tipo: string
+  subject?: string
 }) => {
   const today = new Date().toISOString().split('T')[0]
   return pb.collection('notifications').create({
@@ -13,15 +14,25 @@ export const createInternalNotification = async (data: {
     person_responsible: 'Todos os Servidores',
     lida: false,
     alert_date: today,
-    project_title: 'Aviso Interno',
+    project_title: data.subject || 'Aviso Interno',
     column: '—',
     days_stalled: 0,
   })
 }
 
-export const getAuditLogsPaginated = async (tenantId: string, page: number, perPage: number) => {
+export const getAuditLogsPaginated = async (
+  tenantId: string,
+  page: number,
+  perPage: number,
+  search?: string,
+) => {
+  let filter = `tenant = "${tenantId}"`
+  if (search && search.trim()) {
+    const s = search.trim()
+    filter += ` && (user_name ~ "${s}" || action_type ~ "${s}")`
+  }
   const result = await pb.collection('audit_logs').getList(page, perPage, {
-    filter: `tenant = "${tenantId}"`,
+    filter,
     sort: '-created',
   })
   return {

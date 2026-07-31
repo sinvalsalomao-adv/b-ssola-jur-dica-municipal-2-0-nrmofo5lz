@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
-import { History, ChevronLeft, ChevronRight } from 'lucide-react'
+import { History, ChevronLeft, ChevronRight, Search, Lock } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Input } from '@/components/ui/input'
 import { useAuth } from '@/context/AuthContext'
 import { useRealtime } from '@/hooks/use-realtime'
 import { getAuditLogsPaginated } from '@/services/admin-notifications'
@@ -23,12 +24,13 @@ export default function AdminAuditLogsPage() {
   const [totalPages, setTotalPages] = useState(1)
   const [totalItems, setTotalItems] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
 
   const load = useCallback(async () => {
     if (!user?.tenantId) return
     setLoading(true)
     try {
-      const result = await getAuditLogsPaginated(user.tenantId, page, PER_PAGE)
+      const result = await getAuditLogsPaginated(user.tenantId, page, PER_PAGE, search || undefined)
       setItems(result.items)
       setTotalPages(result.totalPages)
       setTotalItems(result.totalItems)
@@ -37,11 +39,16 @@ export default function AdminAuditLogsPage() {
     } finally {
       setLoading(false)
     }
-  }, [user?.tenantId, page])
+  }, [user?.tenantId, page, search])
 
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    setPage(1)
+  }, [search])
+
   useRealtime(
     'audit_logs',
     () => {
@@ -49,6 +56,20 @@ export default function AdminAuditLogsPage() {
     },
     !!user?.tenantId,
   )
+
+  if (user?.role !== 'admin' && user?.role !== 'superadmin') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 animate-fade-in">
+        <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
+          <Lock className="w-8 h-8 text-red-600" />
+        </div>
+        <h2 className="text-2xl font-bold text-[#1c2a3e]">Acesso Negado</h2>
+        <p className="text-sm text-gray-500 text-center max-w-md">
+          Apenas administradores podem acessar os logs de auditoria.
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-5 animate-fade-in max-w-4xl mx-auto">
@@ -60,6 +81,16 @@ export default function AdminAuditLogsPage() {
           <h2 className="text-xl font-bold text-[#1c2a3e]">Logs de Auditoria</h2>
           <p className="text-xs text-gray-500">{totalItems} registro(s) encontrado(s)</p>
         </div>
+      </div>
+
+      <div className="relative max-w-sm">
+        <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por usuário ou ação..."
+          className="pl-9 h-9 text-xs"
+        />
       </div>
 
       {loading ? (
@@ -101,7 +132,12 @@ export default function AdminAuditLogsPage() {
                   </div>
                   <div className="text-[10px] text-gray-400 shrink-0 text-right">
                     <p>{dt.toLocaleDateString('pt-BR')}</p>
-                    <p>{dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                    <p>
+                      {dt.toLocaleTimeString('pt-BR', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </p>
                   </div>
                 </CardContent>
               </Card>

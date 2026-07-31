@@ -14,6 +14,7 @@ import {
 import { MOCK_DOCUMENTS } from '@/data/mockControle'
 import { useAuth } from '@/context/AuthContext'
 import { AdminDashboardCards } from '@/components/admin/AdminDashboardCards'
+import { AdminCharts } from '@/components/controle/AdminCharts'
 
 export default function ControlePage() {
   const { user } = useAuth()
@@ -49,6 +50,8 @@ export default function ControlePage() {
       </div>
 
       {user?.role === 'admin' && <AdminDashboardCards />}
+
+      {user?.role === 'admin' && <AdminCharts />}
 
       <Tabs defaultValue="notificacoes" className="w-full">
         <TabsList className="bg-white border border-gray-100 shadow-sm rounded-lg p-1 overflow-x-auto flex w-full sm:w-auto">

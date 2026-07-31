@@ -1,7 +1,19 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Shield, Lock, BarChart3, Layers, PieChart, FileText, AlertTriangle } from 'lucide-react'
+import {
+  Shield,
+  Lock,
+  BarChart3,
+  Layers,
+  PieChart,
+  FileText,
+  AlertTriangle,
+  Download,
+  FileDown,
+} from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Button } from '@/components/ui/button'
+import { exportReportToCsv, exportReportToPdf } from '@/lib/reportExporter'
 import { useAuth } from '@/context/AuthContext'
 import {
   getAllProjects,
@@ -115,6 +127,24 @@ export default function RelatoriosPage() {
     )
   }, [projects])
 
+  const handleExportCsv = () => {
+    exportReportToCsv({
+      usersByRole,
+      projectsByColumn: projectsByCol,
+      notificationsSummary: notifSummary,
+      tenantName: user?.prefeitura || undefined,
+    })
+  }
+
+  const handleExportPdf = () => {
+    exportReportToPdf({
+      usersByRole,
+      projectsByColumn: projectsByCol,
+      notificationsSummary: notifSummary,
+      tenantName: user?.prefeitura || undefined,
+    })
+  }
+
   if (user?.role !== 'superadmin' && user?.role !== 'admin') {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 animate-fade-in">
@@ -143,15 +173,25 @@ export default function RelatoriosPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-[#1c2a3e] flex items-center justify-center">
-          <Shield className="w-5 h-5 text-white" />
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-[#1c2a3e] flex items-center justify-center">
+            <Shield className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-[#1c2a3e]">Relatórios</h2>
+            <p className="text-xs text-gray-500">
+              Análise do município e comparativo entre prefeituras
+            </p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-xl font-bold text-[#1c2a3e]">Relatórios</h2>
-          <p className="text-xs text-gray-500">
-            Análise do município e comparativo entre prefeituras
-          </p>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" className="gap-2 text-xs" onClick={handleExportCsv}>
+            <Download className="w-4 h-4" /> Exportar CSV
+          </Button>
+          <Button variant="outline" className="gap-2 text-xs" onClick={handleExportPdf}>
+            <FileDown className="w-4 h-4" /> Exportar PDF
+          </Button>
         </div>
       </div>
 
