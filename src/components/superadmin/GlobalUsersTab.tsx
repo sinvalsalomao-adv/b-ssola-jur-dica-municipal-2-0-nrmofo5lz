@@ -88,11 +88,7 @@ export const GlobalUsersTab: React.FC = () => {
 
   const handleEditModalChange = (open: boolean) => {
     setEditModalOpen(open)
-    if (!open) {
-      setTimeout(() => {
-        setEditUser(null)
-      }, 200)
-    }
+    if (!open) setEditUser(null)
   }
 
   const handleDeleteClick = (e: React.MouseEvent, user: GlobalUser) => {
@@ -103,11 +99,7 @@ export const GlobalUsersTab: React.FC = () => {
 
   const handleDeleteDialogChange = (open: boolean) => {
     setDeleteDialogOpen(open)
-    if (!open) {
-      setTimeout(() => {
-        setDeleteUser(null)
-      }, 200)
-    }
+    if (!open) setDeleteUser(null)
   }
 
   const handleDeleteConfirm = async () => {
@@ -211,11 +203,10 @@ export const GlobalUsersTab: React.FC = () => {
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.map((u, idx) => {
-                const uKey = u.id ? u.id : `user-${u.email}-${idx}`
+              filtered.map((u) => {
                 return (
                   <TableRow
-                    key={uKey}
+                    key={u.id}
                     className="hover:bg-slate-50/50 cursor-pointer transition-colors"
                     onClick={() => handleRowClick(u)}
                   >

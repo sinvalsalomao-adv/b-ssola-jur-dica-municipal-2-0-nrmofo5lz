@@ -88,6 +88,7 @@ export const MainLayout: React.FC = () => {
     ...(user?.role === 'admin' || isSuperadmin
       ? [{ label: 'Configurações', path: '/configuracoes', icon: Settings }]
       : []),
+    { label: 'Meu Perfil', path: '/perfil', icon: UserIcon },
   ]
 
   const pageTitles: Record<string, string> = {
@@ -103,6 +104,7 @@ export const MainLayout: React.FC = () => {
     '/relatorios': 'Relatórios Comparativos',
     '/notificacoes': 'Notificações',
     '/configuracoes': 'Configurações',
+    '/perfil': 'Meu Perfil',
   }
 
   const currentTitle = pageTitles[location.pathname] || 'Bússola Jurídica Municipal'

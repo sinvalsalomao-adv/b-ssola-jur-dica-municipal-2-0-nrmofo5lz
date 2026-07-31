@@ -25,6 +25,7 @@ import UsuariosPage from '@/pages/UsuariosPage'
 import RelatoriosPage from '@/pages/RelatoriosPage'
 import NotificacoesPage from '@/pages/NotificacoesPage'
 import ConfiguracoesPage from '@/pages/ConfiguracoesPage'
+import PerfilPage from '@/pages/PerfilPage'
 import NotFound from '@/pages/NotFound'
 
 const App = () => (
@@ -54,6 +55,7 @@ const App = () => (
                   <Route path="/relatorios" element={<RelatoriosPage />} />
                   <Route path="/notificacoes" element={<NotificacoesPage />} />
                   <Route path="/configuracoes" element={<ConfiguracoesPage />} />
+                  <Route path="/perfil" element={<PerfilPage />} />
                   <Route path="/superadmin" element={<SuperadminPage />} />
                 </Route>
                 <Route path="*" element={<NotFound />} />

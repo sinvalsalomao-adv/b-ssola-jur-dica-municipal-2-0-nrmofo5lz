@@ -6,9 +6,16 @@ import { useNavigate } from 'react-router-dom'
 import { USERS } from '@/types/project'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
+import { useAuth } from '@/context/AuthContext'
+import { TenantUsersManager } from '@/components/superadmin/TenantUsersManager'
 
 export default function UsuariosPage() {
+  const { user } = useAuth()
   const navigate = useNavigate()
+
+  if (user?.role === 'superadmin') {
+    return <TenantUsersManager />
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
