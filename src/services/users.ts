@@ -33,3 +33,5 @@ export const updateUser = async (id: string, data: Record<string, any>) =>
 
 export const toggleUserStatus = async (id: string, currentStatus: string) =>
   updateUser(id, { status: currentStatus === 'ativo' ? 'inativo' : 'ativo' })
+
+export const deleteUser = async (id: string) => pb.collection('users').delete(id)

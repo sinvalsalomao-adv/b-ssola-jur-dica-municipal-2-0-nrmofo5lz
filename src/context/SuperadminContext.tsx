@@ -23,6 +23,7 @@ interface SuperadminContextType {
   addGlobalUser: (
     data: Omit<GlobalUser, 'id' | 'lastAccess'> & { password?: string; tenantId?: string },
   ) => Promise<void>
+  fetchUsers: () => Promise<void>
   updateUser: (id: string, updates: Partial<GlobalUser>) => void
   toggleUserStatus: (id: string) => void
   updatePlatformConfig: (updates: Partial<PlatformConfig>) => void
@@ -225,6 +226,7 @@ export const SuperadminProvider: React.FC<{ children: ReactNode }> = ({ children
         togglePrefeituraStatus,
         refreshTenant,
         addGlobalUser,
+        fetchUsers,
         updateUser,
         toggleUserStatus,
         updatePlatformConfig,
