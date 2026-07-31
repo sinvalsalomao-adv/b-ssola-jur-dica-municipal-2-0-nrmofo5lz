@@ -2,6 +2,8 @@ import React, { useState, useMemo } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
+import { UserPlus } from 'lucide-react'
+import { CreateUserModal } from '@/components/superadmin/CreateUserModal'
 import {
   Table,
   TableHeader,
@@ -46,6 +48,7 @@ export const GlobalUsersTab: React.FC = () => {
   const { globalUsers, prefeituras, updateUser, toggleUserStatus } = useSuperadmin()
   const [filterPref, setFilterPref] = useState('all')
   const [filterRole, setFilterRole] = useState('all')
+  const [createModalOpen, setCreateModalOpen] = useState(false)
 
   const filtered = useMemo(() => {
     return globalUsers.filter((u) => {
@@ -57,11 +60,20 @@ export const GlobalUsersTab: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="text-base font-bold text-[#1c2a3e]">Usuários Globais</h3>
-        <p className="text-xs text-gray-500">
-          Todos os usuários cadastrados across todas as prefeituras.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-base font-bold text-[#1c2a3e]">Usuários Globais</h3>
+          <p className="text-xs text-gray-500">
+            Todos os usuários cadastrados across todas as prefeituras.
+          </p>
+        </div>
+        <Button
+          className="bg-[#3b82f6] hover:bg-[#2563eb] text-white"
+          onClick={() => setCreateModalOpen(true)}
+        >
+          <UserPlus className="w-4 h-4 mr-1.5" />
+          Criar Usuário
+        </Button>
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -145,6 +157,7 @@ export const GlobalUsersTab: React.FC = () => {
         </Table>
       </div>
       <p className="text-xs text-gray-400">{filtered.length} usuário(s) encontrado(s).</p>
+      <CreateUserModal open={createModalOpen} onOpenChange={setCreateModalOpen} />
     </div>
   )
 }

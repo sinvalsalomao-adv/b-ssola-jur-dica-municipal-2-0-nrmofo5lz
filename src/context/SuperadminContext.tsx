@@ -20,7 +20,9 @@ interface SuperadminContextType {
   updatePrefeitura: (id: string, updates: Partial<Prefeitura>) => void
   togglePrefeituraStatus: (id: string) => void
   refreshTenant: (id: string) => Promise<void>
-  addGlobalUser: (data: Omit<GlobalUser, 'id' | 'lastAccess'>) => Promise<void>
+  addGlobalUser: (
+    data: Omit<GlobalUser, 'id' | 'lastAccess'> & { password?: string; tenantId?: string },
+  ) => Promise<void>
   updateUser: (id: string, updates: Partial<GlobalUser>) => void
   toggleUserStatus: (id: string) => void
   updatePlatformConfig: (updates: Partial<PlatformConfig>) => void
@@ -166,15 +168,16 @@ export const SuperadminProvider: React.FC<{ children: ReactNode }> = ({ children
   }
 
   const addGlobalUser: SuperadminContextType['addGlobalUser'] = async (data) => {
-    const tenant = prefeituras.find((p) => p.slug === data.prefeituraSlug)
+    const pwd = data.password || 'Skip@Pass'
+    const tId = data.tenantId || prefeituras.find((p) => p.slug === data.prefeituraSlug)?.id || null
     await pb.collection('users').create({
       name: data.name,
       email: data.email,
       role: data.role,
       status: data.status || 'ativo',
-      tenant: tenant?.id || null,
-      password: 'Skip@Pass',
-      passwordConfirm: 'Skip@Pass',
+      tenant: tId,
+      password: pwd,
+      passwordConfirm: pwd,
     })
     await fetchUsers()
   }
