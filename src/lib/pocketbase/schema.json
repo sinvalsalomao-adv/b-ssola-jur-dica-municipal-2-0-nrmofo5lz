@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-02T01:01:15.025Z",
+  "generatedAt": "2026-08-02T01:13:50.856Z",
   "collections": [
     {
       "name": "users",
@@ -393,6 +393,58 @@
           "type": "date",
           "required": false,
           "system": false
+        },
+        {
+          "name": "recorrencia",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["nenhuma", "diaria", "semanal", "mensal"]
+        },
+        {
+          "name": "dia_semana",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["domingo", "segunda", "terca", "quarta", "quinta", "sexta", "sabado"]
+        },
+        {
+          "name": "dia_mes",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "exige_confirmacao",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "modo_confirmacao",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["leitura", "video"]
+        },
+        {
+          "name": "video_url",
+          "type": "url",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "recorrencia_ativa",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "parent_notification",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "notifications"
         }
       ],
       "indexes": [
@@ -1285,6 +1337,78 @@
         }
       ],
       "indexes": ["CREATE UNIQUE INDEX idx_dashboard_pref_user ON dashboard_preferences (user)"]
+    },
+    {
+      "name": "notification_reads",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (user = @request.auth.id || @request.auth.role = 'superadmin' || (@request.auth.role = 'admin' && tenant = @request.auth.tenant))",
+        "view": "@request.auth.id != '' && (user = @request.auth.id || @request.auth.role = 'superadmin' || (@request.auth.role = 'admin' && tenant = @request.auth.tenant))",
+        "create": "@request.auth.id != '' && user = @request.auth.id",
+        "update": "@request.auth.id != '' && user = @request.auth.id",
+        "delete": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@request.auth.role = 'admin' && tenant = @request.auth.tenant))"
+      },
+      "fields": [
+        {
+          "name": "notification",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "notifications"
+        },
+        {
+          "name": "user",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "tenant",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "tenants"
+        },
+        {
+          "name": "read_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "confirmed_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "watched_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_notification_reads_notif_user ON notification_reads (notification, user)",
+        "CREATE INDEX idx_notification_reads_tenant ON notification_reads (tenant)",
+        "CREATE INDEX idx_notification_reads_user ON notification_reads (user)",
+        "CREATE INDEX idx_notification_reads_notif ON notification_reads (notification)"
+      ]
     }
   ]
 }

@@ -7,6 +7,12 @@ export const createInternalNotification = async (data: {
   subject?: string
   sendNow: boolean
   scheduledFor?: string
+  recorrencia?: string
+  diaSemana?: string
+  diaMes?: number
+  exigeConfirmacao?: boolean
+  modoConfirmacao?: string
+  videoUrl?: string
 }) => {
   const today = new Date().toISOString().split('T')[0]
   const now = new Date().toISOString()
@@ -25,11 +31,41 @@ export const createInternalNotification = async (data: {
     delivery_status: isScheduled ? 'agendada' : 'enviada',
     scheduled_for: isScheduled ? data.scheduledFor : '',
     delivered_at: isScheduled ? '' : now,
+    recorrencia: data.recorrencia || 'nenhuma',
+    dia_semana: data.diaSemana || '',
+    ...(data.diaMes ? { dia_mes: data.diaMes } : {}),
+    exige_confirmacao: data.exigeConfirmacao || false,
+    modo_confirmacao: data.modoConfirmacao || '',
+    video_url: data.videoUrl || '',
+    recorrencia_ativa: true,
   })
 }
 
 export const cancelScheduledNotification = async (id: string) =>
   pb.collection('notifications').update(id, { delivery_status: 'cancelada' })
+
+export const cancelRecurringNotification = async (id: string) => {
+  const notif = await pb.collection('notifications').getOne(id)
+  const parentId = notif.parent_notification || notif.id
+
+  await pb.collection('notifications').update(parentId, {
+    recorrencia_ativa: false,
+    delivery_status: 'cancelada',
+  })
+
+  if (id !== parentId) {
+    await pb.collection('notifications').update(id, { delivery_status: 'cancelada' })
+  }
+
+  const children = await pb.collection('notifications').getFullList({
+    filter: `parent_notification = "${parentId}" && delivery_status = 'agendada'`,
+  })
+  await Promise.all(
+    children.map((c) =>
+      pb.collection('notifications').update(c.id, { delivery_status: 'cancelada' }),
+    ),
+  )
+}
 
 export const getAuditLogsPaginated = async (
   tenantId: string,

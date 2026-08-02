@@ -18,6 +18,14 @@ export interface NotificationItem {
   deliveryStatus?: DeliveryStatus
   scheduledFor?: string
   deliveredAt?: string
+  recorrencia?: 'nenhuma' | 'diaria' | 'semanal' | 'mensal'
+  diaSemana?: string
+  diaMes?: number
+  exigeConfirmacao?: boolean
+  modoConfirmacao?: 'leitura' | 'video'
+  videoUrl?: string
+  parentNotification?: string
+  recorrenciaAtiva?: boolean
 }
 
 export interface CalendarEvent {
