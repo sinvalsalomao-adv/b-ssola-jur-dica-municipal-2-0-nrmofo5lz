@@ -1,6 +1,7 @@
 import { ColumnType } from '@/types/project'
 
-export type AlertType = 'Gargalo' | 'Prazo Fatal'
+export type AlertType = 'Gargalo' | 'Prazo Fatal' | 'Aviso Interno'
+export type DeliveryStatus = 'enviada' | 'agendada' | 'cancelada'
 
 export interface NotificationItem {
   id: string
@@ -14,6 +15,9 @@ export interface NotificationItem {
   mensagem?: string
   lida?: boolean
   projetoId?: string
+  deliveryStatus?: DeliveryStatus
+  scheduledFor?: string
+  deliveredAt?: string
 }
 
 export interface CalendarEvent {

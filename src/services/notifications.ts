@@ -2,25 +2,37 @@ import pb from '@/lib/pocketbase/client'
 import { normalizeNotification } from '@/services/controle'
 import type { NotificationItem } from '@/types/controle'
 
+function enrichNotification(r: any): NotificationItem {
+  return {
+    ...normalizeNotification(r),
+    deliveryStatus: r.delivery_status || 'enviada',
+    scheduledFor: r.scheduled_for || '',
+    deliveredAt: r.delivered_at || '',
+  }
+}
+
 export const getUnreadNotifications = async (
   tenantId: string,
   limit = 5,
 ): Promise<NotificationItem[]> => {
   const result = await pb.collection('notifications').getList(1, limit, {
-    filter: `tenant = "${tenantId}" && lida = false`,
+    filter: `tenant = "${tenantId}" && lida = false && delivery_status = 'enviada'`,
     sort: '-created',
     expand: 'tenant',
   })
-  return result.items.map(normalizeNotification)
+  return result.items.map(enrichNotification)
 }
 
 export const getNotificationsPaginated = async (
   tenantId: string,
   page: number,
   perPage: number,
-  filters?: { tipo?: string; lida?: string },
+  filters?: { tipo?: string; lida?: string; role?: string },
 ) => {
   let filter = `tenant = "${tenantId}"`
+  if (filters?.role === 'servidor') {
+    filter += ` && delivery_status = 'enviada'`
+  }
   if (filters?.tipo && filters.tipo !== 'Todos') {
     filter += ` && tipo = "${filters.tipo}"`
   }
@@ -33,7 +45,7 @@ export const getNotificationsPaginated = async (
     expand: 'tenant',
   })
   return {
-    items: result.items.map(normalizeNotification),
+    items: result.items.map(enrichNotification),
     page: result.page,
     perPage: result.perPage,
     totalItems: result.totalItems,
@@ -43,7 +55,7 @@ export const getNotificationsPaginated = async (
 
 export const getUnreadNotificationsCount = async (tenantId: string): Promise<number> => {
   const result = await pb.collection('notifications').getList(1, 1, {
-    filter: `tenant = "${tenantId}" && lida = false`,
+    filter: `tenant = "${tenantId}" && lida = false && delivery_status = 'enviada'`,
   })
   return result.totalItems
 }
@@ -53,7 +65,7 @@ export const markNotificationAsRead = async (id: string) =>
 
 export const markAllNotificationsAsRead = async (tenantId: string) => {
   const records = await pb.collection('notifications').getFullList({
-    filter: `tenant = "${tenantId}" && lida = false`,
+    filter: `tenant = "${tenantId}" && lida = false && delivery_status = 'enviada'`,
   })
   await Promise.all(records.map((r) => pb.collection('notifications').update(r.id, { lida: true })))
 }

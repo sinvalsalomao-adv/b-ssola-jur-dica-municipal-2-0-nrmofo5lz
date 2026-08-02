@@ -5,20 +5,31 @@ export const createInternalNotification = async (data: {
   mensagem: string
   tipo: string
   subject?: string
+  sendNow: boolean
+  scheduledFor?: string
 }) => {
   const today = new Date().toISOString().split('T')[0]
+  const now = new Date().toISOString()
+  const isScheduled = !data.sendNow && !!data.scheduledFor
+
   return pb.collection('notifications').create({
     tenant: data.tenantId,
     mensagem: data.mensagem,
     tipo: data.tipo,
     person_responsible: 'Todos os Servidores',
     lida: false,
-    alert_date: today,
+    alert_date: isScheduled ? data.scheduledFor!.split('T')[0] : today,
     project_title: data.subject || 'Aviso Interno',
     column: '—',
     days_stalled: 0,
+    delivery_status: isScheduled ? 'agendada' : 'enviada',
+    scheduled_for: isScheduled ? data.scheduledFor : '',
+    delivered_at: isScheduled ? '' : now,
   })
 }
+
+export const cancelScheduledNotification = async (id: string) =>
+  pb.collection('notifications').update(id, { delivery_status: 'cancelada' })
 
 export const getAuditLogsPaginated = async (
   tenantId: string,

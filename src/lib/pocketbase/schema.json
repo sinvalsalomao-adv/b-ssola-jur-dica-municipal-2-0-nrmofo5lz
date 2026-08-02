@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-31T01:13:07.100Z",
+  "generatedAt": "2026-08-02T01:01:15.025Z",
   "collections": [
     {
       "name": "users",
@@ -374,6 +374,25 @@
           "required": false,
           "system": false,
           "selectValues": ["Gargalo", "Prazo Fatal", "Aviso Interno"]
+        },
+        {
+          "name": "scheduled_for",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "delivery_status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["enviada", "agendada", "cancelada"]
+        },
+        {
+          "name": "delivered_at",
+          "type": "date",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -1218,6 +1237,54 @@
         }
       ],
       "indexes": ["CREATE INDEX idx_quiz_perguntas_trilha_id ON quiz_perguntas (trilha_id)"]
+    },
+    {
+      "name": "dashboard_preferences",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && user = @request.auth.id",
+        "view": "@request.auth.id != '' && user = @request.auth.id",
+        "create": "@request.auth.id != '' && user = @request.auth.id",
+        "update": "@request.auth.id != '' && user = @request.auth.id",
+        "delete": "@request.auth.id != '' && user = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "user",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "tenant",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "tenants"
+        },
+        {
+          "name": "config",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE UNIQUE INDEX idx_dashboard_pref_user ON dashboard_preferences (user)"]
     }
   ]
 }

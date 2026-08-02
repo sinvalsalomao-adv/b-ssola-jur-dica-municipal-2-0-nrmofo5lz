@@ -39,6 +39,9 @@ export function NewNotificationModal({ open, onOpenChange, onCreated, tenantId }
   const [assunto, setAssunto] = useState('')
   const [mensagem, setMensagem] = useState('')
   const [tipo, setTipo] = useState('Aviso Interno')
+  const [sendMode, setSendMode] = useState<'now' | 'schedule'>('now')
+  const [scheduledFor, setScheduledFor] = useState('')
+  const [errors, setErrors] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
@@ -46,12 +49,32 @@ export function NewNotificationModal({ open, onOpenChange, onCreated, tenantId }
       setAssunto('')
       setMensagem('')
       setTipo('Aviso Interno')
+      setSendMode('now')
+      setScheduledFor('')
+      setErrors({})
     }
   }, [open])
+
+  const validate = (): boolean => {
+    const errs: Record<string, string> = {}
+    if (sendMode === 'schedule') {
+      if (!scheduledFor) {
+        errs.scheduledFor = 'Selecione uma data e hora'
+      } else {
+        const selected = new Date(scheduledFor)
+        if (selected.getTime() <= Date.now()) {
+          errs.scheduledFor = 'A data e hora devem ser no futuro'
+        }
+      }
+    }
+    setErrors(errs)
+    return Object.keys(errs).length === 0
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!assunto.trim() || !mensagem.trim() || !tenantId) return
+    if (!validate()) return
     setSubmitting(true)
     try {
       await createInternalNotification({
@@ -59,8 +82,14 @@ export function NewNotificationModal({ open, onOpenChange, onCreated, tenantId }
         subject: assunto.trim(),
         mensagem: mensagem.trim(),
         tipo,
+        sendNow: sendMode === 'now',
+        scheduledFor: sendMode === 'schedule' ? new Date(scheduledFor).toISOString() : undefined,
       })
-      toast.success('Notificação enviada com sucesso!')
+      toast.success(
+        sendMode === 'now'
+          ? 'Notificação enviada com sucesso!'
+          : 'Notificação agendada com sucesso!',
+      )
       onOpenChange(false)
       onCreated()
     } catch (err) {
@@ -98,7 +127,7 @@ export function NewNotificationModal({ open, onOpenChange, onCreated, tenantId }
               value={assunto}
               onChange={(e) => setAssunto(e.target.value)}
               className="mt-1"
-              placeholder="Digite o assunto da notificação..."
+              placeholder="Digite o assunto..."
             />
           </div>
           <div>
@@ -110,6 +139,33 @@ export function NewNotificationModal({ open, onOpenChange, onCreated, tenantId }
               placeholder="Digite a mensagem para os servidores..."
             />
           </div>
+          <div>
+            <Label className="text-xs font-semibold text-gray-700">Envio *</Label>
+            <Select value={sendMode} onValueChange={(v) => setSendMode(v as 'now' | 'schedule')}>
+              <SelectTrigger className="mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="now">Enviar agora</SelectItem>
+                <SelectItem value="schedule">Agendar envio</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {sendMode === 'schedule' && (
+            <div>
+              <Label className="text-xs font-semibold text-gray-700">Data e Hora *</Label>
+              <Input
+                type="datetime-local"
+                value={scheduledFor}
+                onChange={(e) => setScheduledFor(e.target.value)}
+                className="mt-1"
+                min={new Date().toISOString().slice(0, 16)}
+              />
+              {errors.scheduledFor && (
+                <p className="text-xs text-red-500 mt-1">{errors.scheduledFor}</p>
+              )}
+            </div>
+          )}
           <DialogFooter className="pt-3 border-t">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
@@ -120,7 +176,7 @@ export function NewNotificationModal({ open, onOpenChange, onCreated, tenantId }
               className="bg-[#3b82f6] hover:bg-[#2563eb] text-white"
             >
               {submitting && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
-              Enviar
+              {sendMode === 'now' ? 'Enviar' : 'Agendar'}
             </Button>
           </DialogFooter>
         </form>
