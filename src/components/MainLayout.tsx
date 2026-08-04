@@ -19,7 +19,7 @@ import {
   LogOut,
   User as UserIcon,
   History,
-  Undo2,
+  UserRoundCog,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
@@ -47,6 +47,7 @@ import {
 import { ProjectSidePanel } from '@/components/ProjectSidePanel'
 import { NewProjectModal } from '@/components/NewProjectModal'
 import { NotificationBell } from '@/components/NotificationBell'
+import { ProfileSwitcherDialog } from '@/components/ProfileSwitcherDialog'
 
 export const MainLayout: React.FC = () => {
   const location = useLocation()
@@ -54,9 +55,11 @@ export const MainLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false)
+  const [profileSwitcherOpen, setProfileSwitcherOpen] = useState(false)
   const [logoutError, setLogoutError] = useState('')
-  const { user, originalUser, isImpersonating, restoreProfile, logout } = useAuth()
+  const { user, originalUser, logout } = useAuth()
   const isSuperadmin = user?.role === 'superadmin'
+  const canSwitchProfile = originalUser?.role === 'superadmin'
 
   const handleLogout = () => {
     try {
@@ -158,6 +161,40 @@ export const MainLayout: React.FC = () => {
     </nav>
   )
 
+  const renderProfileSwitcherButton = (isMobile = false) => {
+    if (!canSwitchProfile) return null
+
+    const button = (
+      <button
+        type="button"
+        onClick={() => {
+          setProfileSwitcherOpen(true)
+          if (isMobile) setMobileOpen(false)
+        }}
+        className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-amber-200 hover:bg-[#2a3f5f] hover:text-white transition-colors ${
+          collapsed && !isMobile ? 'justify-center px-0' : ''
+        }`}
+        aria-label="Alterar perfil"
+      >
+        <UserRoundCog className="w-5 h-5 shrink-0" />
+        {(!collapsed || isMobile) && <span>Alterar perfil</span>}
+      </button>
+    )
+
+    if (collapsed && !isMobile) {
+      return (
+        <Tooltip delayDuration={100}>
+          <TooltipTrigger asChild>{button}</TooltipTrigger>
+          <TooltipContent side="right" className="bg-[#1c2a3e] text-white border-none">
+            Alterar perfil
+          </TooltipContent>
+        </Tooltip>
+      )
+    }
+
+    return button
+  }
+
   return (
     <TooltipProvider>
       <div className="min-h-screen bg-[#f5f6fa] text-[#1e293b] flex">
@@ -196,6 +233,8 @@ export const MainLayout: React.FC = () => {
           {/* Nav Items */}
           <div className="flex-1 overflow-y-auto">{renderNavLinks()}</div>
 
+          <div className="px-2 py-3 border-t border-[#2a3f5f]">{renderProfileSwitcherButton()}</div>
+
           {/* Footer info in sidebar */}
           {!collapsed && (
             <div className="p-4 border-t border-[#2a3f5f] text-xs text-[#c8d6e5]">
@@ -232,6 +271,9 @@ export const MainLayout: React.FC = () => {
                     <span className="font-bold text-base text-white">Bússola Jurídica</span>
                   </div>
                   {renderNavLinks(true)}
+                  <div className="mt-4 px-2 pt-3 border-t border-[#2a3f5f]">
+                    {renderProfileSwitcherButton(true)}
+                  </div>
                 </SheetContent>
               </Sheet>
 
@@ -240,21 +282,6 @@ export const MainLayout: React.FC = () => {
 
             {/* Right side actions */}
             <div className="flex items-center gap-3">
-              {isImpersonating && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    restoreProfile()
-                    navigate('/superadmin')
-                  }}
-                  className="hidden sm:flex border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 gap-2"
-                  title={`Voltar ao perfil de ${originalUser?.name || 'Superadmin'}`}
-                >
-                  <Undo2 className="w-4 h-4" />
-                  Voltar ao Superadmin
-                </Button>
-              )}
               <NotificationBell />
 
               <div className="h-8 w-px bg-gray-200 hidden sm:block" />
@@ -309,26 +336,6 @@ export const MainLayout: React.FC = () => {
 
           {/* Main Body */}
           <main className="flex-1 p-4 md:p-6 overflow-x-hidden">
-            {isImpersonating && (
-              <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                <span>
-                  Você está visualizando o sistema como <strong>{user?.name}</strong>
-                  {user?.prefeitura ? ` — ${user.prefeitura}` : ''}.
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    restoreProfile()
-                    navigate('/superadmin')
-                  }}
-                  className="sm:hidden border-amber-300 bg-white text-amber-800 hover:bg-amber-100"
-                >
-                  <Undo2 className="w-4 h-4 mr-2" />
-                  Voltar ao Superadmin
-                </Button>
-              </div>
-            )}
             <Outlet />
           </main>
         </div>
@@ -336,6 +343,7 @@ export const MainLayout: React.FC = () => {
         {/* Shared Modals and Side Panels */}
         <ProjectSidePanel />
         <NewProjectModal />
+        <ProfileSwitcherDialog open={profileSwitcherOpen} onOpenChange={setProfileSwitcherOpen} />
 
         {/* Logout Confirmation Dialog */}
         <AlertDialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>

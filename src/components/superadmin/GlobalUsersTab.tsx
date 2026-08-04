@@ -3,7 +3,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
-import { UserPlus, Search, X, Pencil, Trash2, LogIn } from 'lucide-react'
+import { UserPlus, Search, X, Pencil, Trash2 } from 'lucide-react'
 import { CreateUserModal } from '@/components/superadmin/CreateUserModal'
 import { EditUserModal } from '@/components/superadmin/EditUserModal'
 import { DeleteUserDialog } from '@/components/superadmin/DeleteUserDialog'
@@ -24,8 +24,6 @@ import {
 } from '@/components/ui/select'
 import { toast } from 'sonner'
 import { useSuperadmin } from '@/context/SuperadminContext'
-import { useAuth } from '@/context/AuthContext'
-import { useNavigate } from 'react-router-dom'
 import { UserRole, GlobalUser } from '@/types/superadmin'
 
 const ROLE_LABELS: Record<UserRole, string> = {
@@ -59,8 +57,6 @@ function formatDate(iso: string): string {
 
 export const GlobalUsersTab: React.FC = () => {
   const { globalUsers, prefeituras, toggleUserStatus, fetchUsers } = useSuperadmin()
-  const { switchProfile } = useAuth()
-  const navigate = useNavigate()
   const [filterPref, setFilterPref] = useState('all')
   const [filterRole, setFilterRole] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
@@ -93,17 +89,6 @@ export const GlobalUsersTab: React.FC = () => {
   const handleEditModalChange = (open: boolean) => {
     setEditModalOpen(open)
     if (!open) setEditUser(null)
-  }
-
-  const handleSwitchProfile = async (e: React.MouseEvent, user: GlobalUser) => {
-    e.stopPropagation()
-    try {
-      await switchProfile(user.id)
-      toast.success(`Perfil alterado para ${user.name}.`)
-      navigate('/dashboard')
-    } catch (err: any) {
-      toast.error(err?.message || 'Não foi possível trocar de perfil.')
-    }
   }
 
   const handleDeleteClick = (e: React.MouseEvent, user: GlobalUser) => {
@@ -255,18 +240,6 @@ export const GlobalUsersTab: React.FC = () => {
                     </TableCell>
                     <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-1">
-                        {u.role !== 'superadmin' && u.status === 'ativo' && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
-                            onClick={(e) => handleSwitchProfile(e, u)}
-                            title={`Acessar como ${u.name}`}
-                            aria-label={`Acessar o perfil de ${u.name}`}
-                          >
-                            <LogIn className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
                         <Button
                           variant="ghost"
                           size="icon"
