@@ -19,6 +19,7 @@ import {
   LogOut,
   User as UserIcon,
   History,
+  Undo2,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
@@ -54,7 +55,7 @@ export const MainLayout: React.FC = () => {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false)
   const [logoutError, setLogoutError] = useState('')
-  const { user, logout } = useAuth()
+  const { user, originalUser, isImpersonating, restoreProfile, logout } = useAuth()
   const isSuperadmin = user?.role === 'superadmin'
 
   const handleLogout = () => {
@@ -239,6 +240,21 @@ export const MainLayout: React.FC = () => {
 
             {/* Right side actions */}
             <div className="flex items-center gap-3">
+              {isImpersonating && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    restoreProfile()
+                    navigate('/superadmin')
+                  }}
+                  className="hidden sm:flex border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 gap-2"
+                  title={`Voltar ao perfil de ${originalUser?.name || 'Superadmin'}`}
+                >
+                  <Undo2 className="w-4 h-4" />
+                  Voltar ao Superadmin
+                </Button>
+              )}
               <NotificationBell />
 
               <div className="h-8 w-px bg-gray-200 hidden sm:block" />
@@ -293,6 +309,26 @@ export const MainLayout: React.FC = () => {
 
           {/* Main Body */}
           <main className="flex-1 p-4 md:p-6 overflow-x-hidden">
+            {isImpersonating && (
+              <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <span>
+                  Você está visualizando o sistema como <strong>{user?.name}</strong>
+                  {user?.prefeitura ? ` — ${user.prefeitura}` : ''}.
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    restoreProfile()
+                    navigate('/superadmin')
+                  }}
+                  className="sm:hidden border-amber-300 bg-white text-amber-800 hover:bg-amber-100"
+                >
+                  <Undo2 className="w-4 h-4 mr-2" />
+                  Voltar ao Superadmin
+                </Button>
+              </div>
+            )}
             <Outlet />
           </main>
         </div>

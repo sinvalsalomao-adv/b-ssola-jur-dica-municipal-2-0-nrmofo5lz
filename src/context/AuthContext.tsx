@@ -13,9 +13,13 @@ export interface AuthUser {
 
 interface AuthContextType {
   user: AuthUser | null
+  originalUser: AuthUser | null
   isAuthenticated: boolean
+  isImpersonating: boolean
   loading: boolean
   login: (email: string, password: string) => Promise<{ error: any }>
+  switchProfile: (userId: string) => Promise<void>
+  restoreProfile: () => void
   logout: () => void
 }
 
@@ -41,6 +45,7 @@ function normalizeUser(record: any): AuthUser | null {
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null)
+  const [originalUser, setOriginalUser] = useState<AuthUser | null>(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [loading, setLoading] = useState(true)
 
@@ -49,8 +54,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       pb.collection('users')
         .authRefresh()
         .then(() => pb.collection('users').getOne(pb.authStore.record.id, { expand: 'tenant' }))
-        .then((record) => {
-          setUser(normalizeUser(record))
+        .then(async (record) => {
+          const authenticatedUser = normalizeUser(record)
+          setOriginalUser(authenticatedUser)
+          const impersonatedUserId = sessionStorage.getItem('impersonatedUserId')
+
+          if (authenticatedUser?.role === 'superadmin' && impersonatedUserId) {
+            try {
+              const impersonatedRecord = await pb
+                .collection('users')
+                .getOne(impersonatedUserId, { expand: 'tenant' })
+              setUser(normalizeUser(impersonatedRecord))
+            } catch {
+              sessionStorage.removeItem('impersonatedUserId')
+              setUser(authenticatedUser)
+            }
+          } else {
+            sessionStorage.removeItem('impersonatedUserId')
+            setUser(authenticatedUser)
+          }
           setIsAuthenticated(true)
         })
         .catch(() => {
@@ -73,12 +95,39 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const record = await pb
         .collection('users')
         .getOne(pb.authStore.record.id, { expand: 'tenant' })
-      setUser(normalizeUser(record))
+      const authenticatedUser = normalizeUser(record)
+      sessionStorage.removeItem('impersonatedUserId')
+      setOriginalUser(authenticatedUser)
+      setUser(authenticatedUser)
       setIsAuthenticated(true)
       return { error: null }
     } catch (error) {
       return { error }
     }
+  }
+
+  const switchProfile = async (userId: string) => {
+    if (originalUser?.role !== 'superadmin') {
+      throw new Error('Apenas superadministradores podem trocar de perfil.')
+    }
+
+    const record = await pb.collection('users').getOne(userId, { expand: 'tenant' })
+    const targetUser = normalizeUser(record)
+    if (!targetUser || targetUser.role === 'superadmin') {
+      throw new Error('Selecione um usuário municipal ativo para acessar o perfil.')
+    }
+    if (record.status && record.status !== 'ativo') {
+      throw new Error('Não é possível acessar o perfil de um usuário inativo.')
+    }
+
+    sessionStorage.setItem('impersonatedUserId', targetUser.id)
+    setUser(targetUser)
+  }
+
+  const restoreProfile = () => {
+    if (!originalUser) return
+    sessionStorage.removeItem('impersonatedUserId')
+    setUser(originalUser)
   }
 
   const logout = () => {
@@ -88,12 +137,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       console.error('Failed to clear auth store:', err)
       pb.authStore.clear()
     }
+    sessionStorage.removeItem('impersonatedUserId')
     setUser(null)
+    setOriginalUser(null)
     setIsAuthenticated(false)
   }
 
+  const isImpersonating = Boolean(originalUser && user && originalUser.id !== user.id)
+
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, loading, login, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        originalUser,
+        isAuthenticated,
+        isImpersonating,
+        loading,
+        login,
+        switchProfile,
+        restoreProfile,
+        logout,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )
