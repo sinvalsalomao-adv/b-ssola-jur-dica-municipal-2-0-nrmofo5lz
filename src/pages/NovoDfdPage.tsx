@@ -21,14 +21,14 @@ export default function NovoDfdPage() {
   const [loading, setLoading] = useState(true)
 
   const loadDfds = useCallback(async () => {
-    if (!user?.tenantId) return
     try {
-      const dfds = await getRecentDfds(user.tenantId, 5)
+      const tenantFilter = user?.role === 'superadmin' ? undefined : user?.tenantId || undefined
+      const dfds = await getRecentDfds(tenantFilter, 5)
       setRecentDfds(dfds)
     } catch {
       // ignore
     }
-  }, [user?.tenantId])
+  }, [user?.role, user?.tenantId])
 
   useEffect(() => {
     loadDfds().finally(() => setLoading(false))
@@ -49,7 +49,7 @@ export default function NovoDfdPage() {
     () => {
       loadDfds()
     },
-    !!user?.tenantId,
+    true,
   )
 
   const handleEditDfd = (dfd: DfdRecord) => {

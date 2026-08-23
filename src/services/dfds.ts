@@ -23,12 +23,32 @@ export function normalizeDfd(r: any): DfdRecord {
   }
 }
 
-export const getRecentDfds = async (tenantId: string, limit = 5): Promise<DfdRecord[]> => {
-  const result = await pb.collection('dfds').getList(1, limit, {
-    filter: `tenant = "${tenantId}"`,
+async function resolveFallbackTenant(tenantId?: string): Promise<string> {
+  if (tenantId && tenantId.trim() !== '') return tenantId
+
+  if (pb.authStore.record?.tenant) {
+    return pb.authStore.record.tenant
+  }
+
+  try {
+    const firstTenant = await pb.collection('tenants').getFirstListItem('', { requestKey: null })
+    if (firstTenant?.id) return firstTenant.id
+  } catch {
+    // ignore
+  }
+
+  return ''
+}
+
+export const getRecentDfds = async (tenantId?: string, limit = 5): Promise<DfdRecord[]> => {
+  const options: Record<string, any> = {
     sort: '-created',
     expand: EXPAND,
-  })
+  }
+  if (tenantId && tenantId.trim() !== '') {
+    options.filter = `tenant = "${tenantId}"`
+  }
+  const result = await pb.collection('dfds').getList(1, limit, options)
   return result.items.map(normalizeDfd)
 }
 
@@ -38,11 +58,38 @@ export const getDfd = async (id: string): Promise<DfdRecord> => {
 }
 
 export const createDfd = async (data: Record<string, any>): Promise<DfdRecord> => {
-  const record = await pb.collection('dfds').create(data, { expand: EXPAND })
+  const payload: Record<string, any> = { ...data }
+
+  // Ensure tenant is populated
+  if (!payload.tenant || String(payload.tenant).trim() === '') {
+    const resolvedTenant = await resolveFallbackTenant()
+    if (resolvedTenant) {
+      payload.tenant = resolvedTenant
+    }
+  }
+
+  // Ensure responsible_user is handled properly
+  if (
+    !payload.responsible_user ||
+    payload.responsible_user === 'none' ||
+    String(payload.responsible_user).trim() === ''
+  ) {
+    if (pb.authStore.record?.id) {
+      payload.responsible_user = pb.authStore.record.id
+    } else {
+      delete payload.responsible_user
+    }
+  }
+
+  const record = await pb.collection('dfds').create(payload, { expand: EXPAND })
   return normalizeDfd(record)
 }
 
 export const updateDfd = async (id: string, data: Record<string, any>): Promise<DfdRecord> => {
-  const record = await pb.collection('dfds').update(id, data, { expand: EXPAND })
+  const payload: Record<string, any> = { ...data }
+  if (payload.responsible_user === '' || payload.responsible_user === 'none') {
+    payload.responsible_user = null
+  }
+  const record = await pb.collection('dfds').update(id, payload, { expand: EXPAND })
   return normalizeDfd(record)
 }

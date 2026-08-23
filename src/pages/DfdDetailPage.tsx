@@ -80,11 +80,13 @@ export default function DfdDetailPage() {
   }, [loadDfd])
 
   useEffect(() => {
-    if (!user?.tenantId) return
-    getUsersByTenant(user.tenantId)
-      .then((data) => setUsers(data.map((u) => ({ id: u.id, name: u.name }))))
-      .catch(() => {})
-  }, [user?.tenantId])
+    const effectiveTenant = dfd?.tenantId || user?.tenantId
+    if (effectiveTenant) {
+      getUsersByTenant(effectiveTenant)
+        .then((data) => setUsers(data.map((u) => ({ id: u.id, name: u.name }))))
+        .catch(() => {})
+    }
+  }, [dfd?.tenantId, user?.tenantId])
 
   useRealtime(
     'dfds',
@@ -95,22 +97,27 @@ export default function DfdDetailPage() {
   )
 
   const handleSave = async () => {
-    if (!dfd || !id || !user?.tenantId) return
+    if (!dfd || !id) return
+    const effectiveTenantId = dfd.tenantId || user?.tenantId || ''
     if (!title.trim()) {
       toast.error('O título é obrigatório.')
       return
     }
     setSaving(true)
     try {
-      if (objeto.trim()) await saveOrIncrementFrase(objeto, 'objeto', user.tenantId)
-      if (descricao.trim()) await saveOrIncrementFrase(descricao, 'descricao', user.tenantId)
+      if (objeto.trim() && effectiveTenantId) {
+        await saveOrIncrementFrase(objeto, 'objeto', effectiveTenantId)
+      }
+      if (descricao.trim() && effectiveTenantId) {
+        await saveOrIncrementFrase(descricao, 'descricao', effectiveTenantId)
+      }
 
       await updateDfd(id, {
         titulo: title,
         objeto,
         descricao,
         justificativa,
-        responsible_user: responsibleUserId,
+        responsible_user: responsibleUserId || null,
         prazo: deadline,
       })
 
@@ -120,7 +127,7 @@ export default function DfdDetailPage() {
           objeto,
           justificativa,
           deadline,
-          responsibleUserId,
+          responsibleUserId: responsibleUserId || undefined,
         })
       }
 
@@ -328,7 +335,7 @@ export default function DfdDetailPage() {
         onOpenChange={setShowDocModal}
         dfd={dfd}
         projectId={dfd.projetoId}
-        tenantId={user?.tenantId || ''}
+        tenantId={dfd.tenantId || user?.tenantId || ''}
         userName={user?.name || 'Usuário'}
       />
     </div>

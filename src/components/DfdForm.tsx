@@ -33,18 +33,22 @@ interface DfdFormProps {
 }
 
 export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
-  const { addProject, updateProject } = useProjects()
+  const { addProject, updateProject, tenants } = useProjects()
   const { user } = useAuth()
   const navigate = useNavigate()
 
-  const tenantId = user?.tenantId || ''
+  const [selectedTenantId, setSelectedTenantId] = useState(
+    dfd?.tenantId || user?.tenantId || (tenants.length > 0 ? tenants[0].id : ''),
+  )
   const isEditing = !!dfd
 
   const [title, setTitle] = useState(dfd?.title || '')
   const [objeto, setObjeto] = useState(dfd?.objeto || '')
   const [descricao, setDescricao] = useState(dfd?.descricao || '')
   const [justificativa, setJustificativa] = useState(dfd?.justificativa || '')
-  const [responsibleUserId, setResponsibleUserId] = useState(dfd?.responsibleUserId || '')
+  const [responsibleUserId, setResponsibleUserId] = useState(
+    dfd?.responsibleUserId || user?.id || '',
+  )
   const [deadline, setDeadline] = useState(dfd?.deadline || '')
   const [users, setUsers] = useState<{ id: string; name: string }[]>([])
   const [objetoPhrases, setObjetoPhrases] = useState<string[]>([])
@@ -53,22 +57,52 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
   const [submitting, setSubmitting] = useState(false)
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
 
+  // Keep selectedTenantId updated if user's tenant or tenants list loads
   useEffect(() => {
-    if (!tenantId) return
-    getUsersByTenant(tenantId)
-      .then((data) => {
-        const mapped = data.map((u) => ({ id: u.id, name: u.name }))
-        setUsers(mapped)
-        if (!responsibleUserId && mapped.length > 0) setResponsibleUserId(mapped[0].id)
-      })
-      .catch(() => {})
-    getFrasesAsStrings(tenantId, 'objeto')
-      .then(setObjetoPhrases)
-      .catch(() => {})
-    getFrasesAsStrings(tenantId, 'descricao')
-      .then(setDescricaoPhrases)
-      .catch(() => {})
-  }, [tenantId])
+    if (!selectedTenantId) {
+      if (dfd?.tenantId) {
+        setSelectedTenantId(dfd.tenantId)
+      } else if (user?.tenantId) {
+        setSelectedTenantId(user.tenantId)
+      } else if (tenants.length > 0) {
+        setSelectedTenantId(tenants[0].id)
+      }
+    }
+  }, [user?.tenantId, tenants, dfd?.tenantId, selectedTenantId])
+
+  // Load users and phrases whenever the effective tenant changes
+  useEffect(() => {
+    const effectiveTenant = selectedTenantId || user?.tenantId || ''
+    if (effectiveTenant) {
+      getUsersByTenant(effectiveTenant)
+        .then((data) => {
+          const mapped = data.map((u) => ({ id: u.id, name: u.name }))
+          setUsers(mapped)
+          if (!responsibleUserId && mapped.length > 0) {
+            setResponsibleUserId(mapped[0].id)
+          } else if (!responsibleUserId && user?.id) {
+            setResponsibleUserId(user.id)
+          }
+        })
+        .catch(() => {
+          if (!responsibleUserId && user?.id) {
+            setResponsibleUserId(user.id)
+          }
+        })
+      getFrasesAsStrings(effectiveTenant, 'objeto')
+        .then(setObjetoPhrases)
+        .catch(() => {})
+      getFrasesAsStrings(effectiveTenant, 'descricao')
+        .then(setDescricaoPhrases)
+        .catch(() => {})
+    } else if (user) {
+      // Fallback if tenant is not available yet
+      if (!responsibleUserId && user.id) {
+        setResponsibleUserId(user.id)
+      }
+      setUsers([{ id: user.id, name: user.name }])
+    }
+  }, [selectedTenantId, user?.tenantId, user?.id, user?.name])
 
   const addPhraseIfNew = (text: string, type: 'objeto' | 'descricao') => {
     const trimmed = text.trim()
@@ -118,11 +152,39 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
     }
     setSubmitting(true)
     try {
-      if (objeto.trim()) await saveOrIncrementFrase(objeto, 'objeto', tenantId)
-      if (descricao.trim()) await saveOrIncrementFrase(descricao, 'descricao', tenantId)
+      // Resolve effective tenant
+      let effectiveTenantId = selectedTenantId || user?.tenantId || dfd?.tenantId || ''
+      if (!effectiveTenantId) {
+        if (tenants.length > 0) {
+          effectiveTenantId = tenants[0].id
+        } else {
+          try {
+            const { getTenants } = await import('@/services/projects')
+            const list = await getTenants()
+            if (list.length > 0) effectiveTenantId = list[0].id
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      if (!effectiveTenantId) {
+        throw new Error(
+          'Prefeitura (Tenant) não identificada. Por favor, selecione uma prefeitura.',
+        )
+      }
+
+      // Resolve effective responsible user
+      const effectiveResponsibleUserId = responsibleUserId || user?.id || null
+
+      if (objeto.trim()) await saveOrIncrementFrase(objeto, 'objeto', effectiveTenantId)
+      if (descricao.trim()) await saveOrIncrementFrase(descricao, 'descricao', effectiveTenantId)
 
       const projTitle = title.trim() || 'Sem título'
       let savedProjectId = ''
+
+      const selectedTenantObj = tenants.find((t) => t.id === effectiveTenantId)
+      const prefeituraName = selectedTenantObj?.name || user?.prefeitura || ''
 
       if (isEditing && dfd?.projetoId) {
         savedProjectId = dfd.projetoId
@@ -132,15 +194,18 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
           deadline,
           objeto,
           justificativa,
-          responsibleUserId,
+          responsibleUserId: effectiveResponsibleUserId || undefined,
+          tenantId: effectiveTenantId,
+          prefeitura: prefeituraName,
         })
         await updateDfd(dfd.id, {
           titulo: projTitle,
           objeto,
           descricao,
           justificativa,
-          responsible_user: responsibleUserId,
+          responsible_user: effectiveResponsibleUserId,
           prazo: deadline,
+          tenant: effectiveTenantId,
           status: isDraft ? 'Rascunho' : 'Finalizado',
         })
       } else {
@@ -148,11 +213,12 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
           title: projTitle,
           description: descricao,
           responsible: '',
-          responsibleUserId,
+          responsibleUserId: effectiveResponsibleUserId || undefined,
           deadline,
           priority: 'Média' as Priority,
           column: (isDraft ? 'Ideação' : 'Elaborar DFD') as ColumnType,
-          prefeitura: user?.prefeitura || '',
+          prefeitura: prefeituraName,
+          tenantId: effectiveTenantId,
           objeto,
           justificativa,
         })
@@ -162,10 +228,10 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
           objeto,
           descricao,
           justificativa,
-          responsible_user: responsibleUserId,
+          responsible_user: effectiveResponsibleUserId,
           prazo: deadline,
           status: isDraft ? 'Rascunho' : 'Finalizado',
-          tenant: tenantId,
+          tenant: effectiveTenantId,
           projeto_id: newProject.id,
         })
       }
@@ -173,7 +239,13 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
       if (savedProjectId && pendingFiles.length > 0) {
         for (const file of pendingFiles) {
           try {
-            await uploadDocument(file, savedProjectId, tenantId, user?.name || 'Usuário', projTitle)
+            await uploadDocument(
+              file,
+              savedProjectId,
+              projTitle,
+              effectiveTenantId,
+              user?.name || 'Usuário',
+            )
           } catch {
             // ignore individual file upload errors
           }
@@ -277,8 +349,25 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
           />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {user?.role === 'superadmin' && tenants.length > 0 && (
+            <div>
+              <Label className="text-xs font-semibold text-gray-700">Prefeitura (Tenant) *</Label>
+              <Select value={selectedTenantId} onValueChange={setSelectedTenantId}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Selecione a prefeitura..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {tenants.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <div className={user?.role === 'superadmin' && tenants.length > 0 ? '' : 'sm:col-span-1'}>
             <Label className="text-xs font-semibold text-gray-700">Responsável pelo DFD</Label>
             <Select value={responsibleUserId} onValueChange={setResponsibleUserId}>
               <SelectTrigger className="mt-1">
@@ -293,7 +382,7 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
               </SelectContent>
             </Select>
           </div>
-          <div>
+          <div className={user?.role === 'superadmin' && tenants.length > 0 ? '' : 'sm:col-span-1'}>
             <Label className="text-xs font-semibold text-gray-700">Prazo para Conclusão *</Label>
             <Input
               type="date"

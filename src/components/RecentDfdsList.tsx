@@ -27,17 +27,18 @@ export const RecentDfdsList = ({
   const [internalLoading, setInternalLoading] = useState(!isControlled)
 
   const loadDfds = useCallback(async () => {
-    if (isControlled || !tenantId) return
+    if (isControlled) return
     try {
       setInternalLoading(true)
-      const data = await getRecentDfds(tenantId)
+      const tenantFilter = user?.role === 'superadmin' ? undefined : tenantId || undefined
+      const data = await getRecentDfds(tenantFilter)
       setInternalDfds(data)
     } catch {
       setInternalDfds([])
     } finally {
       setInternalLoading(false)
     }
-  }, [isControlled, tenantId])
+  }, [isControlled, tenantId, user?.role])
 
   useEffect(() => {
     if (isControlled) return
