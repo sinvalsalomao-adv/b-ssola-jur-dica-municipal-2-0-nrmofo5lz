@@ -29,9 +29,10 @@ import { getErrorMessage } from '@/lib/pocketbase/errors'
 interface DfdFormProps {
   dfd?: DfdRecord | null
   onDfdSaved?: () => void
+  onSaved?: () => void
 }
 
-export const DfdForm = ({ dfd, onDfdSaved }: DfdFormProps) => {
+export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
   const { addProject, updateProject } = useProjects()
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -183,6 +184,7 @@ export const DfdForm = ({ dfd, onDfdSaved }: DfdFormProps) => {
       if (isDraft) {
         toast.success('Rascunho salvo com sucesso!')
         onDfdSaved?.()
+        onSaved?.()
         resetForm()
       } else {
         toast.success('DFD finalizado! Card criado na coluna "Elaborar DFD" do Kanban.')

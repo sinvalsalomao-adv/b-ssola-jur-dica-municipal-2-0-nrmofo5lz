@@ -20,7 +20,7 @@ export const RecentDfdsList = ({
   loading: propLoading,
 }: RecentDfdsListProps) => {
   const { user } = useAuth()
-  const tenantId = user?.tenant || ''
+  const tenantId = user?.tenantId || ''
   const isControlled = propDfds !== undefined
 
   const [internalDfds, setInternalDfds] = useState<DfdRecord[]>([])

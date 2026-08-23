@@ -50,23 +50,28 @@ export const NewPrefeituraModal: React.FC<Props> = ({ open, onOpenChange }) => {
     if (!slug.trim()) return toast.error('Slug do subdomínio é obrigatório.')
     if (!adminName.trim()) return toast.error('Nome do Administrador Inicial é obrigatório.')
 
-    const newPref = addPrefeitura({
-      name: name.trim(),
+    const prefName = name.trim()
+    const prefSlug = slug.trim()
+    addPrefeitura({
+      name: prefName,
       cnpj,
-      slug: slug.trim(),
+      slug: prefSlug,
       logo,
       adminName: adminName.trim(),
+      cidade: '',
+      estado: '',
+    }).then(() => {
+      addGlobalUser({
+        name: adminName.trim(),
+        email: `admin@${prefSlug}.gov.br`,
+        prefeituraName: prefName,
+        prefeituraSlug: prefSlug,
+        role: 'admin',
+        status: 'ativo',
+      })
+      toast.success(`Prefeitura "${prefName}" criada com sucesso!`)
+      onOpenChange(false)
     })
-    addGlobalUser({
-      name: adminName.trim(),
-      email: `admin@${slug.trim()}.gov.br`,
-      prefeituraName: newPref.name,
-      prefeituraSlug: newPref.slug,
-      role: 'admin',
-      status: 'ativo',
-    })
-    toast.success(`Prefeitura "${newPref.name}" criada com sucesso!`)
-    onOpenChange(false)
   }
 
   return (

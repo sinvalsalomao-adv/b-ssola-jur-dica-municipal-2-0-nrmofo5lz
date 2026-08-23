@@ -35,7 +35,7 @@ export default function QuizPage() {
   const allAnswered = track.quiz.every((q) => answers[q.id] !== undefined)
   const approved = score >= 70
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     let correct = 0
     track.quiz.forEach((q) => {
       if (answers[q.id] === q.correctIndex) correct++
@@ -43,7 +43,7 @@ export default function QuizPage() {
     const pct = Math.round((correct / track.quiz.length) * 100)
     setScore(pct)
     setSubmitted(true)
-    const code = setQuizResult(track.id, pct, pct >= 70)
+    const code = await setQuizResult(track.id, pct, pct >= 70)
     setCertCode(code)
   }
 

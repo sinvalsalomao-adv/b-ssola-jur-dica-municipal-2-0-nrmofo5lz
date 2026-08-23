@@ -1,16 +1,15 @@
 import pb from '@/lib/pocketbase/client'
+import type { DocumentItem } from '@/types/controle'
 
-export function normalizeDocument(r: any) {
+export function normalizeDocument(r: any): DocumentItem {
   return {
     id: r.id,
-    projectName: r.project_name || '',
+    projectTitle: r.project_name || '',
     fileName: r.nome_arquivo || r.file || 'Documento',
-    fileUrl: r.url || (r.file ? pb.files.getURL(r, r.file) : ''),
+    pdfUrl: r.url || (r.file ? pb.files.getURL(r, r.file) : ''),
     fileSize: r.tamanho || 0,
     uploadDate: r.upload_em || r.created || '',
-    uploadedBy: r.upload_por || 'Sistema',
-    projectId: r.projeto_id || '',
-    tenantId: r.tenant || '',
+    uploader: r.upload_por || 'Sistema',
   }
 }
 
