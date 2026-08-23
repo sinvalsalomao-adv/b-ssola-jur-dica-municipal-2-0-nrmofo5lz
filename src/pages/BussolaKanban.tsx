@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useProjects } from '@/context/ProjectContext'
-import { COLUMNS, PREFEITURAS, ColumnType, Project } from '@/types/project'
+import { useAuth } from '@/context/AuthContext'
+import { COLUMNS, ColumnType, Project } from '@/types/project'
 import {
   Plus,
   Filter,
@@ -30,13 +31,39 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { getUsers } from '@/services/users'
+import { getUsersByTenant } from '@/services/users'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CORREÇÕES APLICADAS vs. versão original:
+//
+// 1. REMOVIDO: import de `PREFEITURAS` (lista hardcoded com só 3 cidades)
+//    ADICIONADO: filtro de prefeitura gerado dinamicamente a partir de
+//    `tenants` do ProjectContext — reflete o banco de dados real.
+//
+// 2. REMOVIDO: `getUsers()` que traz TODOS os usuários do sistema (problema
+//    de privacidade entre tenants para não-superadmins)
+//    ADICIONADO: `getUsersByTenant(user.tenantId)` para admins comuns;
+//    superadmin continua vendo todos via `getUsers()`.
+//
+// 3. CORRIGIDO: filtro de cidade usava comparação fuzzy com múltiplos
+//    `.includes()` que causava falsos positivos (ex: "Tangará" matchando
+//    "Tangará da Serra"). Agora usa só igualdade exata após normalização.
+//
+// 4. ADICIONADO: estado `isDraggingOver` por coluna para feedback visual
+//    no drop target — o original não tinha nenhum feedback de hover no drag.
+//
+// 5. ADICIONADO: indicador de prazo vencido (badge vermelho) nos cards.
+//
+// 6. ADICIONADO: contagem total de projetos filtrados no cabeçalho.
+// ─────────────────────────────────────────────────────────────────────────────
 
 type SortOption = 'prazo' | 'priority' | 'recentes'
 
 export default function BussolaKanban() {
+  const { user } = useAuth()
   const {
     projects,
+    tenants,
     loading,
     error,
     selectedCity,
@@ -47,26 +74,44 @@ export default function BussolaKanban() {
   } = useProjects()
 
   const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null)
+  const [dragOverColumn, setDragOverColumn] = useState<ColumnType | null>(null)
   const [responsibleFilter, setResponsibleFilter] = useState('Todos')
   const [sortBy, setSortBy] = useState<SortOption>('prazo')
   const [users, setUsers] = useState<{ id: string; name: string }[]>([])
 
+  // CORREÇÃO 2: carrega apenas usuários do tenant correto
   useEffect(() => {
-    getUsers()
-      .then((data) => setUsers(data.map((u) => ({ id: u.id, name: u.name }))))
-      .catch(() => {})
-  }, [])
+    if (!user) return
+    const loadUsers = async () => {
+      try {
+        if (user.role === 'superadmin') {
+          const { getUsers } = await import('@/services/users')
+          const data = await getUsers()
+          setUsers(data.map((u) => ({ id: u.id, name: u.name })))
+        } else if (user.tenantId) {
+          const data = await getUsersByTenant(user.tenantId)
+          setUsers(data.map((u) => ({ id: u.id, name: u.name })))
+        }
+      } catch {
+        // silencioso — filtro de responsável simplesmente fica sem opções
+      }
+    }
+    loadUsers()
+  }, [user])
+
+  // CORREÇÃO 1: prefeituras dinâmicas do banco
+  const prefeituraOptions = useMemo(() => {
+    return tenants.map((t) => t.name).sort()
+  }, [tenants])
 
   const filteredProjects = useMemo(() => {
     if (!Array.isArray(projects)) return []
     return projects.filter((p) => {
       if (!p) return false
+      // CORREÇÃO 3: comparação exata, sem fuzzy que causava falsos positivos
       if (selectedCity !== 'Todas as Prefeituras') {
-        const pCity = (p.prefeitura || '').toLowerCase().trim()
-        const sCity = selectedCity.toLowerCase().trim()
-        if (pCity && sCity && pCity !== sCity && !pCity.includes(sCity) && !sCity.includes(pCity)) {
-          return false
-        }
+        const pCity = (p.prefeitura || '').trim()
+        if (pCity !== selectedCity) return false
       }
       if (responsibleFilter !== 'Todos' && p.responsibleUserId !== responsibleFilter) return false
       return true
@@ -113,9 +158,20 @@ export default function BussolaKanban() {
     e.dataTransfer.effectAllowed = 'move'
   }
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragEnd = () => {
+    setDraggedProjectId(null)
+    setDragOverColumn(null)
+  }
+
+  // CORREÇÃO 4: rastreia coluna sob o cursor para feedback visual
+  const handleDragOver = (e: React.DragEvent, col: ColumnType) => {
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
+    setDragOverColumn(col)
+  }
+
+  const handleDragLeave = () => {
+    setDragOverColumn(null)
   }
 
   const handleDrop = (e: React.DragEvent, targetColumn: ColumnType) => {
@@ -124,6 +180,7 @@ export default function BussolaKanban() {
     if (id) {
       moveProjectColumn(id, targetColumn)
       setDraggedProjectId(null)
+      setDragOverColumn(null)
     }
   }
 
@@ -139,6 +196,15 @@ export default function BussolaKanban() {
         return 'bg-gray-400'
     }
   }
+
+  // CORREÇÃO 5: detecta prazo vencido
+  const isOverdue = (deadline: string) => {
+    if (!deadline) return false
+    const d = new Date(deadline.substring(0, 10) + 'T23:59:59')
+    return !isNaN(d.getTime()) && d < new Date()
+  }
+
+  const hasActiveFilters = selectedCity !== 'Todas as Prefeituras' || responsibleFilter !== 'Todos'
 
   if (loading) {
     return (
@@ -170,13 +236,16 @@ export default function BussolaKanban() {
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
         <div>
           <h2 className="text-lg font-bold text-[#1c2a3e]">Bússola de Projetos</h2>
+          {/* CORREÇÃO 6: contagem de projetos filtrados */}
           <p className="text-xs text-gray-500">
-            Acompanhamento das 7 etapas dos processos jurídico-administrativos.
+            {hasActiveFilters
+              ? `${filteredProjects.length} projeto${filteredProjects.length !== 1 ? 's' : ''} com os filtros atuais`
+              : 'Acompanhamento das 7 etapas dos processos jurídico-administrativos.'}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* Filter by Prefeitura */}
+          {/* CORREÇÃO 1: prefeituras dinâmicas */}
           <div className="flex items-center gap-2">
             <Filter className="w-4 h-4 text-gray-500 shrink-0" />
             <Select value={selectedCity} onValueChange={setSelectedCity}>
@@ -185,7 +254,7 @@ export default function BussolaKanban() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="Todas as Prefeituras">Todas as Prefeituras</SelectItem>
-                {PREFEITURAS.map((pref) => (
+                {prefeituraOptions.map((pref) => (
                   <SelectItem key={pref} value={pref}>
                     {pref}
                   </SelectItem>
@@ -194,7 +263,7 @@ export default function BussolaKanban() {
             </Select>
           </div>
 
-          {/* Filter by Responsible */}
+          {/* Filtro por Responsável */}
           <div className="flex items-center gap-1.5">
             <Select value={responsibleFilter} onValueChange={setResponsibleFilter}>
               <SelectTrigger className="w-[190px] h-9 text-xs font-medium">
@@ -222,7 +291,7 @@ export default function BussolaKanban() {
             )}
           </div>
 
-          {/* Sort Control */}
+          {/* Ordenação */}
           <div className="flex items-center gap-2">
             <ArrowUpDown className="w-3.5 h-3.5 text-gray-500 shrink-0" />
             <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
@@ -262,12 +331,20 @@ export default function BussolaKanban() {
         <div className="flex gap-4 min-w-[1280px]">
           {COLUMNS.map((col) => {
             const columnProjects = getProjectsByColumn(col)
+            const isDropTarget = dragOverColumn === col
+
             return (
               <div
                 key={col}
-                onDragOver={handleDragOver}
+                onDragOver={(e) => handleDragOver(e, col)}
+                onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, col)}
-                className="w-[280px] bg-[#edf0f5] rounded-xl p-3 flex flex-col shrink-0 border border-slate-200/60 min-h-[600px]"
+                // CORREÇÃO 4: feedback visual no drop target
+                className={`w-[280px] rounded-xl p-3 flex flex-col shrink-0 min-h-[600px] border transition-colors duration-150 ${
+                  isDropTarget
+                    ? 'bg-blue-50 border-blue-300 border-dashed'
+                    : 'bg-[#edf0f5] border-slate-200/60'
+                }`}
               >
                 <div className="flex items-center justify-between mb-3 px-1">
                   <h3 className="font-bold text-xs uppercase tracking-wide text-[#1c2a3e]">
@@ -281,13 +358,23 @@ export default function BussolaKanban() {
                 <div className="flex-1 space-y-2.5 overflow-y-auto pr-0.5">
                   {columnProjects.map((project) => {
                     const formattedDate = formatDate(project.deadline, 'Sem prazo')
+                    const overdue = isOverdue(project.deadline)
+                    const isDragging = draggedProjectId === project.id
+
                     return (
                       <Card
                         key={project.id}
                         draggable
                         onDragStart={(e) => handleDragStart(e, project.id)}
+                        onDragEnd={handleDragEnd}
                         onClick={() => openProjectDetails(project)}
-                        className="bg-white hover:shadow-md transition-all duration-150 cursor-grab active:cursor-grabbing border border-gray-100 group relative"
+                        className={`bg-white hover:shadow-md transition-all duration-150 cursor-grab active:cursor-grabbing border group relative ${
+                          isDragging
+                            ? 'opacity-40 border-blue-300'
+                            : overdue
+                              ? 'border-red-200'
+                              : 'border-gray-100'
+                        }`}
                       >
                         <CardContent className="p-3.5 space-y-2">
                           <div className="flex items-center justify-between">
@@ -299,9 +386,7 @@ export default function BussolaKanban() {
                             </Badge>
                             <div className="flex items-center gap-1">
                               <span
-                                className={`w-2.5 h-2.5 rounded-full ${getPriorityColor(
-                                  project.priority,
-                                )}`}
+                                className={`w-2.5 h-2.5 rounded-full ${getPriorityColor(project.priority)}`}
                                 title={`Prioridade: ${project.priority}`}
                               />
                               <span className="text-[10px] text-gray-500 font-medium">
@@ -348,9 +433,17 @@ export default function BussolaKanban() {
                                 {project.responsible || 'Sem responsável'}
                               </span>
                             </div>
-                            <div className="flex items-center gap-1 font-medium text-slate-700">
+                            {/* CORREÇÃO 5: badge de prazo vencido */}
+                            <div
+                              className={`flex items-center gap-1 font-medium ${overdue ? 'text-red-600' : 'text-slate-700'}`}
+                            >
                               <Calendar className="w-3.5 h-3.5 text-gray-400" />
                               <span>{formattedDate}</span>
+                              {overdue && (
+                                <span className="text-[9px] font-bold bg-red-100 text-red-600 px-1 rounded">
+                                  VENCIDO
+                                </span>
+                              )}
                             </div>
                           </div>
                         </CardContent>
@@ -359,12 +452,20 @@ export default function BussolaKanban() {
                   })}
 
                   {columnProjects.length === 0 && (
-                    <div className="h-28 border-2 border-dashed border-gray-300/70 rounded-lg flex flex-col items-center justify-center text-gray-400 text-xs">
+                    <div
+                      className={`h-28 border-2 border-dashed rounded-lg flex flex-col items-center justify-center text-xs transition-colors ${
+                        isDropTarget
+                          ? 'border-blue-400 text-blue-500 bg-blue-50/50'
+                          : 'border-gray-300/70 text-gray-400'
+                      }`}
+                    >
                       <span>Nenhum projeto</span>
                       <span className="text-[10px] mt-0.5">
-                        {responsibleFilter !== 'Todos'
+                        {responsibleFilter !== 'Todos' || selectedCity !== 'Todas as Prefeituras'
                           ? 'Com os filtros atuais'
-                          : 'Arraste um card aqui'}
+                          : isDropTarget
+                            ? 'Solte aqui'
+                            : 'Arraste um card aqui'}
                       </span>
                     </div>
                   )}
