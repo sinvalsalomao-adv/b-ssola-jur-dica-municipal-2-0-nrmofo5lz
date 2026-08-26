@@ -1,5 +1,6 @@
 import pb from '@/lib/pocketbase/client'
 import type { GlobalUser, UserRole, UserStatus } from '@/types/superadmin'
+import { sanitizeInput } from '@/lib/sanitize'
 
 export function normalizeUser(r: any): GlobalUser {
   return {
@@ -28,8 +29,13 @@ export const getUsersByTenant = async (tenantId: string): Promise<GlobalUser[]> 
   return records.map(normalizeUser)
 }
 
-export const updateUser = async (id: string, data: Record<string, any>) =>
-  normalizeUser(await pb.collection('users').update(id, data, { expand: 'tenant' }))
+export const updateUser = async (id: string, data: Record<string, any>) => {
+  const payload: Record<string, any> = { ...data }
+  if (payload.name !== undefined) payload.name = sanitizeInput(payload.name)
+  if (payload.email !== undefined) payload.email = sanitizeInput(payload.email)
+  if (payload.cargo !== undefined) payload.cargo = sanitizeInput(payload.cargo)
+  return normalizeUser(await pb.collection('users').update(id, payload, { expand: 'tenant' }))
+}
 
 export const toggleUserStatus = async (id: string, currentStatus: string) =>
   updateUser(id, { status: currentStatus === 'ativo' ? 'inativo' : 'ativo' })

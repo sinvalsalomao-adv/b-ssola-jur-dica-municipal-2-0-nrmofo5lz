@@ -10,6 +10,11 @@ import { updateProfileName, uploadAvatar, changePassword, getAvatarUrl } from '@
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 import pb from '@/lib/pocketbase/client'
 import { toast } from 'sonner'
+import {
+  PasswordStrengthIndicator,
+  validatePasswordStrength,
+} from '@/components/PasswordStrengthIndicator'
+import { sanitizeInput } from '@/lib/sanitize'
 
 const ROLE_LABELS: Record<string, string> = {
   superadmin: 'Superadmin',
@@ -54,7 +59,7 @@ export default function PerfilPage() {
     if (!user) return
     setSavingName(true)
     try {
-      await updateProfileName(user.id, name)
+      await updateProfileName(user.id, sanitizeInput(name))
       toast.success('Nome atualizado com sucesso!')
     } catch (err) {
       toast.error(getErrorMessage(err))
@@ -84,8 +89,9 @@ export default function PerfilPage() {
 
   const handleChangePassword = async () => {
     if (!user) return
-    if (newPwd.length < 8) {
-      toast.error('A nova senha deve ter no mínimo 8 caracteres.')
+    const pwdVal = validatePasswordStrength(newPwd)
+    if (!pwdVal.allValid) {
+      toast.error('A nova senha não atende a todos os requisitos de segurança.')
       return
     }
     if (newPwd !== confirmPwd) {
@@ -219,6 +225,11 @@ export default function PerfilPage() {
                   className="mt-1"
                 />
               </div>
+              {newPwd && (
+                <div className="col-span-2">
+                  <PasswordStrengthIndicator password={newPwd} />
+                </div>
+              )}
             </div>
             <Button
               onClick={handleChangePassword}

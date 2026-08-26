@@ -21,6 +21,8 @@ export default function OrgLoginPage() {
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [failedAttempts, setFailedAttempts] = useState(0)
+  const isLocked = failedAttempts >= 3
 
   useEffect(() => {
     if (!slug) {
@@ -48,13 +50,21 @@ export default function OrgLoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isLocked) return
     setError('')
     setSubmitting(true)
     const { error: loginError } = await login(email, password)
     if (loginError) {
-      setError('Email ou senha incorretos. Tente novamente.')
+      const newAttempts = failedAttempts + 1
+      setFailedAttempts(newAttempts)
+      if (newAttempts >= 3) {
+        setError('Muitas tentativas. Aguarde 15 minutos.')
+      } else {
+        setError('Email ou senha incorretos. Tente novamente.')
+      }
       setSubmitting(false)
     } else {
+      setFailedAttempts(0)
       const role = (pb.authStore.record as any)?.role || 'servidor'
       if (role === 'superadmin') {
         navigate('/superadmin')
@@ -186,14 +196,16 @@ export default function OrgLoginPage() {
 
               <Button
                 type="submit"
-                disabled={submitting}
-                className="w-full h-10 bg-[#3b82f6] hover:bg-[#2563eb] text-white font-medium"
+                disabled={submitting || isLocked}
+                className="w-full h-10 bg-[#3b82f6] hover:bg-[#2563eb] text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {submitting ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Entrando...
                   </>
+                ) : isLocked ? (
+                  'Acesso bloqueado temporariamente'
                 ) : (
                   'Entrar'
                 )}

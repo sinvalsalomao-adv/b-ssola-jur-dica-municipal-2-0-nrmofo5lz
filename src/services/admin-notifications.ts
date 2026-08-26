@@ -1,4 +1,5 @@
 import pb from '@/lib/pocketbase/client'
+import { sanitizeInput } from '@/lib/sanitize'
 
 export const createInternalNotification = async (data: {
   tenantId: string
@@ -20,12 +21,12 @@ export const createInternalNotification = async (data: {
 
   return pb.collection('notifications').create({
     tenant: data.tenantId,
-    mensagem: data.mensagem,
+    mensagem: sanitizeInput(data.mensagem),
     tipo: data.tipo,
     person_responsible: 'Todos os Servidores',
     lida: false,
     alert_date: isScheduled ? data.scheduledFor!.split('T')[0] : today,
-    project_title: data.subject || 'Aviso Interno',
+    project_title: sanitizeInput(data.subject) || 'Aviso Interno',
     column: '—',
     days_stalled: 0,
     delivery_status: isScheduled ? 'agendada' : 'enviada',

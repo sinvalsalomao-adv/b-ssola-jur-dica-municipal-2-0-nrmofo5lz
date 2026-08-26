@@ -1,5 +1,6 @@
 import pb from '@/lib/pocketbase/client'
 import type { TrilhaRecord, AulaRecord, QuizPergunta } from '@/types/education'
+import { sanitizeInput } from '@/lib/sanitize'
 
 export function normalizeTrilha(r: any): TrilhaRecord {
   return {
@@ -50,7 +51,11 @@ export const createTrilha = async (data: {
   descricao: string
   ordem: number
 }): Promise<TrilhaRecord> => {
-  const record = await pb.collection('trilhas').create(data)
+  const record = await pb.collection('trilhas').create({
+    titulo: sanitizeInput(data.titulo),
+    descricao: sanitizeInput(data.descricao),
+    ordem: data.ordem,
+  })
   return normalizeTrilha(record)
 }
 
@@ -58,7 +63,11 @@ export const updateTrilha = async (
   id: string,
   data: Partial<{ titulo: string; descricao: string; ordem: number }>,
 ): Promise<TrilhaRecord> => {
-  const record = await pb.collection('trilhas').update(id, data)
+  const payload: Record<string, any> = {}
+  if (data.titulo !== undefined) payload.titulo = sanitizeInput(data.titulo)
+  if (data.descricao !== undefined) payload.descricao = sanitizeInput(data.descricao)
+  if (data.ordem !== undefined) payload.ordem = data.ordem
+  const record = await pb.collection('trilhas').update(id, payload)
   return normalizeTrilha(record)
 }
 
@@ -79,8 +88,8 @@ export const createAula = async (data: {
 }): Promise<AulaRecord> => {
   const record = await pb.collection('aulas').create({
     trilha_id: data.trilhaId,
-    titulo: data.titulo,
-    url_video: data.urlVideo,
+    titulo: sanitizeInput(data.titulo),
+    url_video: data.urlVideo, // Preserve URL structure
     ordem: data.ordem ?? 1,
   })
   return normalizeAula(record)
@@ -92,7 +101,7 @@ export const updateAula = async (
 ): Promise<AulaRecord> => {
   const updateData: Record<string, any> = {}
   if (data.trilhaId !== undefined) updateData.trilha_id = data.trilhaId
-  if (data.titulo !== undefined) updateData.titulo = data.titulo
+  if (data.titulo !== undefined) updateData.titulo = sanitizeInput(data.titulo)
   if (data.urlVideo !== undefined) updateData.url_video = data.urlVideo
   if (data.ordem !== undefined) updateData.ordem = data.ordem
   const record = await pb.collection('aulas').update(id, updateData)
@@ -190,9 +199,9 @@ export const createQuizPergunta = async (data: {
 }): Promise<QuizPergunta> => {
   const record = await pb.collection('quiz_perguntas').create({
     trilha_id: data.trilhaId,
-    pergunta: data.pergunta,
-    opcoes: data.opcoes,
-    resposta_correta: data.respostaCorreta,
+    pergunta: sanitizeInput(data.pergunta),
+    opcoes: (data.opcoes || []).map((o) => sanitizeInput(o)),
+    resposta_correta: sanitizeInput(data.respostaCorreta),
     ordem: data.ordem ?? 1,
   })
   return normalizeQuizPergunta(record)
@@ -203,9 +212,13 @@ export const updateQuizPergunta = async (
   data: Partial<{ pergunta: string; opcoes: string[]; respostaCorreta: string; ordem: number }>,
 ): Promise<QuizPergunta> => {
   const updateData: Record<string, any> = {}
-  if (data.pergunta !== undefined) updateData.pergunta = data.pergunta
-  if (data.opcoes !== undefined) updateData.opcoes = data.opcoes
-  if (data.respostaCorreta !== undefined) updateData.resposta_correta = data.respostaCorreta
+  if (data.pergunta !== undefined) updateData.pergunta = sanitizeInput(data.pergunta)
+  if (data.opcoes !== undefined) {
+    updateData.opcoes = (data.opcoes || []).map((o) => sanitizeInput(o))
+  }
+  if (data.respostaCorreta !== undefined) {
+    updateData.resposta_correta = sanitizeInput(data.respostaCorreta)
+  }
   if (data.ordem !== undefined) updateData.ordem = data.ordem
   const record = await pb.collection('quiz_perguntas').update(id, updateData)
   return normalizeQuizPergunta(record)

@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import { useSuperadmin } from '@/context/SuperadminContext'
 import { generateSlug, formatCNPJ, isValidCNPJ } from '@/types/superadmin'
+import { sanitizeInput } from '@/lib/sanitize'
 
 interface Props {
   open: boolean
@@ -50,19 +51,21 @@ export const NewPrefeituraModal: React.FC<Props> = ({ open, onOpenChange }) => {
     if (!slug.trim()) return toast.error('Slug do subdomínio é obrigatório.')
     if (!adminName.trim()) return toast.error('Nome do Administrador Inicial é obrigatório.')
 
-    const prefName = name.trim()
+    const prefName = sanitizeInput(name.trim())
     const prefSlug = slug.trim()
+    const cleanAdminName = sanitizeInput(adminName.trim())
+
     addPrefeitura({
       name: prefName,
       cnpj,
       slug: prefSlug,
       logo,
-      adminName: adminName.trim(),
+      adminName: cleanAdminName,
       cidade: '',
       estado: '',
     }).then(() => {
       addGlobalUser({
-        name: adminName.trim(),
+        name: cleanAdminName,
         email: `admin@${prefSlug}.gov.br`,
         prefeituraName: prefName,
         prefeituraSlug: prefSlug,

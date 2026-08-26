@@ -1,5 +1,6 @@
 import pb from '@/lib/pocketbase/client'
 import { Project, ColumnType, Priority } from '@/types/project'
+import { sanitizeInput } from '@/lib/sanitize'
 
 export function normalizeProject(r: any): Project {
   if (!r || typeof r !== 'object') {
@@ -58,6 +59,14 @@ export const getProjects = async (tenantId?: string): Promise<Project[]> => {
 
 export const createProject = async (data: Record<string, any>): Promise<Project> => {
   const payload: Record<string, any> = { ...data }
+  if (payload.title !== undefined) payload.title = sanitizeInput(payload.title)
+  if (payload.titulo !== undefined) payload.titulo = sanitizeInput(payload.titulo)
+  if (payload.description !== undefined) payload.description = sanitizeInput(payload.description)
+  if (payload.descricao !== undefined) payload.descricao = sanitizeInput(payload.descricao)
+  if (payload.objeto !== undefined) payload.objeto = sanitizeInput(payload.objeto)
+  if (payload.justificativa !== undefined)
+    payload.justificativa = sanitizeInput(payload.justificativa)
+
   if (
     !payload.responsible_user ||
     payload.responsible_user === 'none' ||
@@ -73,10 +82,18 @@ export const createProject = async (data: Record<string, any>): Promise<Project>
 
 export const updateProject = async (id: string, data: Record<string, any>): Promise<Project> => {
   const payload: Record<string, any> = { ...data }
+  if (payload.title !== undefined) payload.title = sanitizeInput(payload.title)
+  if (payload.titulo !== undefined) payload.titulo = sanitizeInput(payload.titulo)
+  if (payload.description !== undefined) payload.description = sanitizeInput(payload.description)
+  if (payload.descricao !== undefined) payload.descricao = sanitizeInput(payload.descricao)
+  if (payload.objeto !== undefined) payload.objeto = sanitizeInput(payload.objeto)
+  if (payload.justificativa !== undefined)
+    payload.justificativa = sanitizeInput(payload.justificativa)
+
   if (payload.responsible_user === '' || payload.responsible_user === 'none') {
     payload.responsible_user = null
   }
-  const record = await pb.collection('projects').update(id, data, {
+  const record = await pb.collection('projects').update(id, payload, {
     expand: 'responsible_user,tenant',
   })
   return normalizeProject(record)

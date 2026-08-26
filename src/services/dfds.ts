@@ -1,5 +1,6 @@
 import pb from '@/lib/pocketbase/client'
 import type { DfdRecord } from '@/types/dfd'
+import { sanitizeInput } from '@/lib/sanitize'
 
 const EXPAND = 'responsible_user,projeto_id,tenant'
 
@@ -60,6 +61,13 @@ export const getDfd = async (id: string): Promise<DfdRecord> => {
 export const createDfd = async (data: Record<string, any>): Promise<DfdRecord> => {
   const payload: Record<string, any> = { ...data }
 
+  if (payload.titulo !== undefined) payload.titulo = sanitizeInput(payload.titulo)
+  if (payload.title !== undefined) payload.title = sanitizeInput(payload.title)
+  if (payload.objeto !== undefined) payload.objeto = sanitizeInput(payload.objeto)
+  if (payload.descricao !== undefined) payload.descricao = sanitizeInput(payload.descricao)
+  if (payload.justificativa !== undefined)
+    payload.justificativa = sanitizeInput(payload.justificativa)
+
   // Ensure tenant is populated
   if (!payload.tenant || String(payload.tenant).trim() === '') {
     const resolvedTenant = await resolveFallbackTenant()
@@ -87,6 +95,14 @@ export const createDfd = async (data: Record<string, any>): Promise<DfdRecord> =
 
 export const updateDfd = async (id: string, data: Record<string, any>): Promise<DfdRecord> => {
   const payload: Record<string, any> = { ...data }
+
+  if (payload.titulo !== undefined) payload.titulo = sanitizeInput(payload.titulo)
+  if (payload.title !== undefined) payload.title = sanitizeInput(payload.title)
+  if (payload.objeto !== undefined) payload.objeto = sanitizeInput(payload.objeto)
+  if (payload.descricao !== undefined) payload.descricao = sanitizeInput(payload.descricao)
+  if (payload.justificativa !== undefined)
+    payload.justificativa = sanitizeInput(payload.justificativa)
+
   if (payload.responsible_user === '' || payload.responsible_user === 'none') {
     payload.responsible_user = null
   }

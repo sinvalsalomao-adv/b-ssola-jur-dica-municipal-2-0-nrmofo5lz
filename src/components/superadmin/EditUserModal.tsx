@@ -22,6 +22,11 @@ import { useSuperadmin } from '@/context/SuperadminContext'
 import { UserRole, UserStatus, GlobalUser } from '@/types/superadmin'
 import { extractFieldErrors, getErrorMessage, type FieldErrors } from '@/lib/pocketbase/errors'
 import pb from '@/lib/pocketbase/client'
+import {
+  PasswordStrengthIndicator,
+  validatePasswordStrength,
+} from '@/components/PasswordStrengthIndicator'
+import { sanitizeInput } from '@/lib/sanitize'
 
 interface Props {
   user: GlobalUser | null
@@ -81,8 +86,14 @@ export const EditUserModal: React.FC<Props> = ({ user, open, onOpenChange }) => 
     if (role !== 'superadmin' && !tenantId)
       errs.tenant = 'Prefeitura é obrigatória para este perfil.'
     if (showPasswordReset) {
-      if (!newPassword) errs.newPassword = 'Senha é obrigatória.'
-      else if (newPassword.length < 8) errs.newPassword = 'Senha deve ter no mínimo 8 caracteres.'
+      if (!newPassword) {
+        errs.newPassword = 'Senha é obrigatória.'
+      } else {
+        const pwdVal = validatePasswordStrength(newPassword)
+        if (!pwdVal.allValid) {
+          errs.newPassword = 'A senha não atende a todos os requisitos de segurança.'
+        }
+      }
       if (newPassword !== confirmPassword) errs.confirmPassword = 'As senhas não coincidem.'
     }
     setErrors(errs)
@@ -96,8 +107,8 @@ export const EditUserModal: React.FC<Props> = ({ user, open, onOpenChange }) => 
     setSubmitting(true)
     try {
       const apiData: Record<string, any> = {
-        name: name.trim(),
-        email: email.trim(),
+        name: sanitizeInput(name.trim()),
+        email: sanitizeInput(email.trim()),
         role,
         status,
         tenant: tenantId || null,
@@ -238,6 +249,11 @@ export const EditUserModal: React.FC<Props> = ({ user, open, onOpenChange }) => 
                     <p className="text-xs text-red-500 mt-1">{errors.confirmPassword}</p>
                   )}
                 </div>
+                {newPassword && (
+                  <div className="col-span-2">
+                    <PasswordStrengthIndicator password={newPassword} />
+                  </div>
+                )}
               </div>
             )}
           </div>

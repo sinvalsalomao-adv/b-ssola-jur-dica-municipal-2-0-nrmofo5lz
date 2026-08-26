@@ -21,6 +21,11 @@ import { toast } from 'sonner'
 import { useSuperadmin } from '@/context/SuperadminContext'
 import { UserRole, UserStatus } from '@/types/superadmin'
 import { extractFieldErrors, getErrorMessage, type FieldErrors } from '@/lib/pocketbase/errors'
+import {
+  PasswordStrengthIndicator,
+  validatePasswordStrength,
+} from '@/components/PasswordStrengthIndicator'
+import { sanitizeInput } from '@/lib/sanitize'
 
 interface Props {
   open: boolean
@@ -69,8 +74,14 @@ export const CreateUserModal: React.FC<Props> = ({ open, onOpenChange }) => {
     if (!role) errs.role = 'Perfil é obrigatório.'
     if (role !== 'superadmin' && !tenantId)
       errs.tenant = 'Prefeitura é obrigatória para este perfil.'
-    if (!password) errs.password = 'Senha é obrigatória.'
-    else if (password.length < 8) errs.password = 'Senha deve ter no mínimo 8 caracteres.'
+    if (!password) {
+      errs.password = 'Senha é obrigatória.'
+    } else {
+      const pwdVal = validatePasswordStrength(password)
+      if (!pwdVal.allValid) {
+        errs.password = 'A senha não atende a todos os requisitos de segurança.'
+      }
+    }
     if (password !== confirmPassword) errs.confirmPassword = 'As senhas não coincidem.'
     setErrors(errs)
     return Object.keys(errs).length === 0
@@ -83,8 +94,8 @@ export const CreateUserModal: React.FC<Props> = ({ open, onOpenChange }) => {
     try {
       const tenant = prefeituras.find((p) => p.id === tenantId)
       await addGlobalUser({
-        name: name.trim(),
-        email: email.trim(),
+        name: sanitizeInput(name.trim()),
+        email: sanitizeInput(email.trim()),
         prefeituraName: tenant?.name || '—',
         prefeituraSlug: tenant?.slug || '',
         role,
@@ -210,6 +221,7 @@ export const CreateUserModal: React.FC<Props> = ({ open, onOpenChange }) => {
               )}
             </div>
           </div>
+          {password && <PasswordStrengthIndicator password={password} />}
           <DialogFooter className="pt-4 border-t flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar

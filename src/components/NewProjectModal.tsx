@@ -25,6 +25,7 @@ import { Loader2, ChevronDown, ChevronUp } from 'lucide-react'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { normalizeDateForInput } from '@/lib/dateUtils'
+import { sanitizeInput } from '@/lib/sanitize'
 
 export const NewProjectModal: React.FC = () => {
   const { isNewModalOpen, setIsNewModalOpen, addProject, saving, tenants } = useProjects()
@@ -81,8 +82,8 @@ export const NewProjectModal: React.FC = () => {
         selectedTenant?.id || user?.tenantId || (tenants.length > 0 ? tenants[0].id : undefined)
 
       await addProject({
-        title: title.trim(),
-        description: description.trim(),
+        title: sanitizeInput(title.trim()),
+        description: sanitizeInput(description.trim()),
         responsible: '',
         responsibleUserId: responsibleUserId === 'none' ? '' : responsibleUserId,
         deadline,
@@ -91,8 +92,8 @@ export const NewProjectModal: React.FC = () => {
           prefeitura || user?.prefeitura || (tenants.length > 0 ? tenants[0].name : 'Florânia'),
         tenantId: resolvedTenantId,
         priority,
-        objeto: objeto.trim(),
-        justificativa: justificativa.trim(),
+        objeto: sanitizeInput(objeto.trim()),
+        justificativa: sanitizeInput(justificativa.trim()),
       })
       toast.success('Projeto criado com sucesso!')
       setIsNewModalOpen(false)

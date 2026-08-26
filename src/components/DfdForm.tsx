@@ -25,6 +25,7 @@ import { uploadDocument } from '@/services/documents'
 import { getFrasesAsStrings, saveOrIncrementFrase } from '@/services/frases'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
+import { sanitizeInput } from '@/lib/sanitize'
 
 interface DfdFormProps {
   dfd?: DfdRecord | null
@@ -180,7 +181,10 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
       if (objeto.trim()) await saveOrIncrementFrase(objeto, 'objeto', effectiveTenantId)
       if (descricao.trim()) await saveOrIncrementFrase(descricao, 'descricao', effectiveTenantId)
 
-      const projTitle = title.trim() || 'Sem título'
+      const projTitle = sanitizeInput(title.trim()) || 'Sem título'
+      const cleanObjeto = sanitizeInput(objeto)
+      const cleanDescricao = sanitizeInput(descricao)
+      const cleanJustificativa = sanitizeInput(justificativa)
       let savedProjectId = ''
 
       const selectedTenantObj = tenants.find((t) => t.id === effectiveTenantId)
@@ -190,19 +194,19 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
         savedProjectId = dfd.projetoId
         await updateProject(dfd.projetoId, {
           title: projTitle,
-          description: descricao,
+          description: cleanDescricao,
           deadline,
-          objeto,
-          justificativa,
+          objeto: cleanObjeto,
+          justificativa: cleanJustificativa,
           responsibleUserId: effectiveResponsibleUserId || undefined,
           tenantId: effectiveTenantId,
           prefeitura: prefeituraName,
         })
         await updateDfd(dfd.id, {
           titulo: projTitle,
-          objeto,
-          descricao,
-          justificativa,
+          objeto: cleanObjeto,
+          descricao: cleanDescricao,
+          justificativa: cleanJustificativa,
           responsible_user: effectiveResponsibleUserId,
           prazo: deadline,
           tenant: effectiveTenantId,
@@ -211,7 +215,7 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
       } else {
         const newProject = await addProject({
           title: projTitle,
-          description: descricao,
+          description: cleanDescricao,
           responsible: '',
           responsibleUserId: effectiveResponsibleUserId || undefined,
           deadline,
@@ -219,15 +223,15 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
           column: (isDraft ? 'Ideação' : 'Elaborar DFD') as ColumnType,
           prefeitura: prefeituraName,
           tenantId: effectiveTenantId,
-          objeto,
-          justificativa,
+          objeto: cleanObjeto,
+          justificativa: cleanJustificativa,
         })
         savedProjectId = newProject.id
         await createDfd({
           titulo: projTitle,
-          objeto,
-          descricao,
-          justificativa,
+          objeto: cleanObjeto,
+          descricao: cleanDescricao,
+          justificativa: cleanJustificativa,
           responsible_user: effectiveResponsibleUserId,
           prazo: deadline,
           status: isDraft ? 'Rascunho' : 'Finalizado',

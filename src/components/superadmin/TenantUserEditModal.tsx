@@ -21,6 +21,11 @@ import { extractFieldErrors, getErrorMessage, type FieldErrors } from '@/lib/poc
 import pb from '@/lib/pocketbase/client'
 import { toast } from 'sonner'
 import type { GlobalUser, UserRole } from '@/types/superadmin'
+import {
+  PasswordStrengthIndicator,
+  validatePasswordStrength,
+} from '@/components/PasswordStrengthIndicator'
+import { sanitizeInput } from '@/lib/sanitize'
 
 interface Props {
   user: GlobalUser | null
@@ -67,16 +72,25 @@ export function TenantUserEditModal({ user, open, onOpenChange, onSaved }: Props
     const e: FieldErrors = {}
     if (!name.trim()) e.name = 'Nome é obrigatório.'
     if (!email.trim()) e.email = 'Email é obrigatório.'
-    if (showPwd && newPwd.length < 8) e.newPwd = 'Mínimo 8 caracteres.'
-    if (showPwd && newPwd !== confirmPwd) e.confirmPwd = 'As senhas não coincidem.'
+    if (showPwd) {
+      if (!newPwd) {
+        e.newPwd = 'Senha é obrigatória.'
+      } else {
+        const pwdVal = validatePasswordStrength(newPwd)
+        if (!pwdVal.allValid) {
+          e.newPwd = 'A senha não atende a todos os requisitos de segurança.'
+        }
+      }
+      if (newPwd !== confirmPwd) e.confirmPwd = 'As senhas não coincidem.'
+    }
     setErrors(e)
     if (Object.keys(e).length > 0) return
 
     setSubmitting(true)
     try {
       const data: Record<string, any> = {
-        name: name.trim(),
-        email: email.trim(),
+        name: sanitizeInput(name.trim()),
+        email: sanitizeInput(email.trim()),
         role,
         status,
       }
@@ -185,6 +199,11 @@ export function TenantUserEditModal({ user, open, onOpenChange, onSaved }: Props
                     <p className="text-xs text-red-500 mt-1">{errors.confirmPwd}</p>
                   )}
                 </div>
+                {newPwd && (
+                  <div className="col-span-2">
+                    <PasswordStrengthIndicator password={newPwd} />
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -21,6 +21,7 @@ import { Loader2 } from 'lucide-react'
 import { createInternalNotification } from '@/services/admin-notifications'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { toast } from 'sonner'
+import { sanitizeInput } from '@/lib/sanitize'
 
 interface Props {
   open: boolean
@@ -79,8 +80,8 @@ export function NewNotificationModal({ open, onOpenChange, onCreated, tenantId }
     try {
       await createInternalNotification({
         tenantId,
-        subject: assunto.trim(),
-        mensagem: mensagem.trim(),
+        subject: sanitizeInput(assunto.trim()),
+        mensagem: sanitizeInput(mensagem.trim()),
         tipo,
         sendNow: sendMode === 'now',
         scheduledFor: sendMode === 'schedule' ? new Date(scheduledFor).toISOString() : undefined,

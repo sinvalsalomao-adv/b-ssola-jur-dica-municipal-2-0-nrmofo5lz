@@ -14,18 +14,28 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [failedAttempts, setFailedAttempts] = useState(0)
+  const isLocked = failedAttempts >= 3
 
   if (isAuthenticated) return <Navigate to="/dashboard" replace />
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isLocked) return
     setError(null)
     setLoading(true)
     const { error: loginError } = await login(email, password)
     setLoading(false)
     if (loginError) {
-      setError('Email ou senha inválidos. Tente novamente.')
+      const newAttempts = failedAttempts + 1
+      setFailedAttempts(newAttempts)
+      if (newAttempts >= 3) {
+        setError('Muitas tentativas. Aguarde 15 minutos.')
+      } else {
+        setError('Email ou senha inválidos. Tente novamente.')
+      }
     } else {
+      setFailedAttempts(0)
       navigate('/dashboard')
     }
   }
@@ -98,14 +108,16 @@ export default function Login() {
 
               <Button
                 type="submit"
-                disabled={loading}
-                className="w-full bg-[#3b82f6] hover:bg-[#2563eb] text-white font-medium"
+                disabled={loading || isLocked}
+                className="w-full bg-[#3b82f6] hover:bg-[#2563eb] text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Entrando...
                   </>
+                ) : isLocked ? (
+                  'Acesso bloqueado temporariamente'
                 ) : (
                   'Entrar'
                 )}

@@ -22,6 +22,11 @@ import { extractFieldErrors, getErrorMessage, type FieldErrors } from '@/lib/poc
 import pb from '@/lib/pocketbase/client'
 import { toast } from 'sonner'
 import type { UserRole } from '@/types/superadmin'
+import {
+  PasswordStrengthIndicator,
+  validatePasswordStrength,
+} from '@/components/PasswordStrengthIndicator'
+import { sanitizeInput } from '@/lib/sanitize'
 
 interface Props {
   open: boolean
@@ -63,8 +68,14 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated }: Props) 
     if (!name.trim()) e.name = 'Nome é obrigatório.'
     if (!email.trim()) e.email = 'Email é obrigatório.'
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = 'Email inválido.'
-    if (!password) e.password = 'Senha é obrigatória.'
-    else if (password.length < 8) e.password = 'Mínimo 8 caracteres.'
+    if (!password) {
+      e.password = 'Senha é obrigatória.'
+    } else {
+      const pwdVal = validatePasswordStrength(password)
+      if (!pwdVal.allValid) {
+        e.password = 'A senha não atende a todos os requisitos de segurança.'
+      }
+    }
     if (password !== confirm) e.confirm = 'As senhas não coincidem.'
     setErrors(e)
     return Object.keys(e).length === 0
@@ -76,8 +87,8 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated }: Props) 
     setSubmitting(true)
     try {
       await pb.collection('users').create({
-        name: name.trim(),
-        email: email.trim(),
+        name: sanitizeInput(name.trim()),
+        email: sanitizeInput(email.trim()),
         role,
         status: 'ativo',
         tenant: user.tenantId,
@@ -145,6 +156,7 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated }: Props) 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="mt-1"
+                placeholder="••••••••"
               />
               {errors.password && <p className="text-xs text-red-500 mt-1">{errors.password}</p>}
             </div>
@@ -155,10 +167,12 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated }: Props) 
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
                 className="mt-1"
+                placeholder="••••••••"
               />
               {errors.confirm && <p className="text-xs text-red-500 mt-1">{errors.confirm}</p>}
             </div>
           </div>
+          {password && <PasswordStrengthIndicator password={password} />}
           <DialogFooter className="pt-3 border-t">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
