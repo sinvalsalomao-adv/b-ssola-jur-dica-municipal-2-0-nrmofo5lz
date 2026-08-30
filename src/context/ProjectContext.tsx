@@ -162,17 +162,6 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       if (found) return found.id
     }
 
-    if (currentTenants.length > 0) return currentTenants[0].id
-
-    try {
-      const pbModule = await import('@/lib/pocketbase/client')
-      const pb = pbModule.default
-      const first = await pb.collection('tenants').getFirstListItem('', { requestKey: null })
-      if (first?.id) return first.id
-    } catch (e) {
-      console.error('Nenhum tenant encontrado:', e)
-    }
-
     throw new Error(
       'Prefeitura (tenant) não identificada. Por favor, selecione uma Prefeitura válida.',
     )

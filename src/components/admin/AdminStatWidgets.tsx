@@ -29,6 +29,7 @@ import {
   FileText,
 } from 'lucide-react'
 import { useAdminData } from './AdminWidgetProvider'
+import { formatDate } from '@/lib/dateUtils'
 
 export function StatsOverviewWidget() {
   const { projects } = useProjects()
@@ -179,11 +180,7 @@ export function RecentProjectsWidget() {
                 <TableCell className="text-xs">
                   <div className="flex items-center gap-2">
                     <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                    <span className="font-medium text-gray-800">
-                      {p.deadline
-                        ? new Date(p.deadline + 'T12:00:00').toLocaleDateString('pt-BR')
-                        : '—'}
-                    </span>
+                    <span className="font-medium text-gray-800">{formatDate(p.deadline, '—')}</span>
                   </div>
                 </TableCell>
               </TableRow>

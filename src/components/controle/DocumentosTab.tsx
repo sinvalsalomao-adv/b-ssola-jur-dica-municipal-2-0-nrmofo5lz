@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { FileText, Eye, Trash2, UploadCloud } from 'lucide-react'
+import { formatDate } from '@/lib/dateUtils'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -138,7 +139,7 @@ export const DocumentosTab: React.FC<DocumentosTabProps> = ({
                     {doc.projectTitle}
                   </TableCell>
                   <TableCell className="text-xs text-gray-500">
-                    {new Date(doc.uploadDate + 'T12:00:00').toLocaleDateString('pt-BR')}
+                    {formatDate(doc.uploadDate)}
                   </TableCell>
                   <TableCell className="text-xs text-gray-600">{doc.uploader}</TableCell>
                   <TableCell className="text-right">

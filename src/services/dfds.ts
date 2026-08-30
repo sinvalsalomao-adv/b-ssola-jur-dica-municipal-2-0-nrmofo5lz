@@ -1,6 +1,7 @@
 import pb from '@/lib/pocketbase/client'
 import type { DfdRecord } from '@/types/dfd'
 import { sanitizeInput } from '@/lib/sanitize'
+import { normalizeDateForInput } from '@/lib/dateUtils'
 
 const EXPAND = 'responsible_user,projeto_id,tenant'
 
@@ -13,13 +14,13 @@ export function normalizeDfd(r: any): DfdRecord {
     justificativa: r.justificativa || '',
     responsible: r.expand?.responsible_user?.name || '',
     responsibleUserId: r.responsible_user || '',
-    deadline: r.prazo || '',
+    deadline: normalizeDateForInput(r.prazo),
     status: (r.status || 'Rascunho') as 'Rascunho' | 'Finalizado',
     createdAt: r.created || '',
     projetoId: r.projeto_id || '',
     projectColumn: r.expand?.projeto_id?.coluna_kanban || '',
     projectPriority: r.expand?.projeto_id?.priority || '',
-    projectDeadline: r.expand?.projeto_id?.prazo || '',
+    projectDeadline: normalizeDateForInput(r.expand?.projeto_id?.prazo),
     tenantId: r.tenant || '',
   }
 }
@@ -29,13 +30,6 @@ async function resolveFallbackTenant(tenantId?: string): Promise<string> {
 
   if (pb.authStore.record?.tenant) {
     return pb.authStore.record.tenant
-  }
-
-  try {
-    const firstTenant = await pb.collection('tenants').getFirstListItem('', { requestKey: null })
-    if (firstTenant?.id) return firstTenant.id
-  } catch {
-    // ignore
   }
 
   return ''

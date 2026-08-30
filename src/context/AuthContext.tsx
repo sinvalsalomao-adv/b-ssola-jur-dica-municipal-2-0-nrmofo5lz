@@ -33,11 +33,12 @@ export const useAuth = () => {
 
 function normalizeUser(record: any): AuthUser | null {
   if (!record) return null
+  if (!record.role) return null
   return {
     id: record.id,
-    name: record.name || record.email || 'Usuário',
+    name: record.name || record.email || '',
     email: record.email || '',
-    role: (record.role || 'servidor') as UserRole,
+    role: record.role as UserRole,
     prefeitura: record.expand?.tenant?.name || null,
     tenantId: record.tenant || null,
   }

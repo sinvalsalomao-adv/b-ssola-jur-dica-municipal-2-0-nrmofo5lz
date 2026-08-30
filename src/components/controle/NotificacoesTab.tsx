@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import { AlertTriangle, Clock, User, Building2, Settings2 } from 'lucide-react'
+import { formatDate } from '@/lib/dateUtils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -134,7 +135,7 @@ export const NotificacoesTab: React.FC<NotificacoesTabProps> = ({
                 </div>
                 <div className="text-xs text-gray-400 sm:text-right shrink-0">
                   <p className="font-medium">Alerta enviado</p>
-                  <p>{new Date(n.alertDate + 'T12:00:00').toLocaleDateString('pt-BR')}</p>
+                  <p>{formatDate(n.alertDate)}</p>
                 </div>
               </CardContent>
             </Card>

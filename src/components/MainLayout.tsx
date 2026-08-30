@@ -80,22 +80,22 @@ export const MainLayout: React.FC = () => {
     .map((n) => n.charAt(0).toUpperCase())
     .join('')
 
+  const isAdminOrSuperadmin = isSuperadmin || user?.role === 'admin'
+
   const navItems = [
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { label: 'Bússola', path: '/bussola', icon: KanbanSquare },
     { label: 'Central de Controle', path: '/controle', icon: Gauge },
     { label: 'DFDs', path: '/dfds', icon: FileText },
     { label: 'Educação', path: '/educacao', icon: GraduationCap },
-    { label: 'Usuários', path: '/usuarios', icon: Users },
+    ...(isAdminOrSuperadmin ? [{ label: 'Usuários', path: '/usuarios', icon: Users }] : []),
     ...(isSuperadmin ? [{ label: 'Superadmin', path: '/superadmin', icon: Shield }] : []),
-    ...(isSuperadmin || user?.role === 'admin'
-      ? [{ label: 'Relatórios', path: '/relatorios', icon: BarChart3 }]
-      : []),
+    ...(isAdminOrSuperadmin ? [{ label: 'Relatórios', path: '/relatorios', icon: BarChart3 }] : []),
     ...(user?.role === 'admin'
       ? [{ label: 'Logs de Auditoria', path: '/audit-logs', icon: History }]
       : []),
     { label: 'Notificações', path: '/notificacoes', icon: Bell },
-    ...(user?.role === 'admin' || isSuperadmin
+    ...(isAdminOrSuperadmin
       ? [{ label: 'Configurações', path: '/configuracoes', icon: Settings }]
       : []),
     { label: 'Meu Perfil', path: '/perfil', icon: UserIcon },
@@ -305,9 +305,7 @@ export const MainLayout: React.FC = () => {
                       <p className="text-xs font-semibold text-[#1c2a3e]">
                         {user?.name || 'Usuário'}
                       </p>
-                      <p className="text-[10px] text-gray-500 capitalize">
-                        {user?.role || 'servidor'}
-                      </p>
+                      <p className="text-[10px] text-gray-500 capitalize">{user?.role || ''}</p>
                     </div>
                   </button>
                 </DropdownMenuTrigger>

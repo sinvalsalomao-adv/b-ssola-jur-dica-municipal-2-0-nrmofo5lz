@@ -104,12 +104,12 @@ export const DocumentTemplatesSection: React.FC = () => {
       } else {
         let resolvedTenant = tenantId
         if (!resolvedTenant) {
-          const loadedTenants = await getTenants()
-          if (loadedTenants.length > 0) {
-            resolvedTenant = loadedTenants[0].id
+          if (user?.tenantId) {
+            resolvedTenant = user.tenantId
           } else {
-            const first = await pb.collection('tenants').getFirstListItem('', { requestKey: null })
-            resolvedTenant = first.id
+            toast.error('Prefeitura não identificada.')
+            setSaving(false)
+            return
           }
         }
 

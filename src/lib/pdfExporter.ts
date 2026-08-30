@@ -1,4 +1,5 @@
 import { Project } from '@/types/project'
+import { formatDate } from '@/lib/dateUtils'
 
 export function exportProjectsToPdf(
   projects: Project[],
@@ -50,7 +51,7 @@ export function exportProjectsToPdf(
         ${p.column}
       </td>
       <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #475569; font-weight: 500;">
-        ${p.deadline ? new Date(p.deadline + 'T12:00:00').toLocaleDateString('pt-BR') : 'Sem prazo'}
+        ${formatDate(p.deadline, 'Sem prazo')}
       </td>
     </tr>
   `,

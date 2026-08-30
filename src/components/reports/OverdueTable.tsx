@@ -1,5 +1,6 @@
 import { Building2, Calendar, User } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { formatDate } from '@/lib/dateUtils'
 import {
   Table,
   TableHeader,
@@ -64,7 +65,7 @@ export function OverdueTable({ projects }: Props) {
               <TableCell className="text-xs">
                 <span className="flex items-center gap-1 text-red-600 font-medium">
                   <Calendar className="w-3 h-3" />
-                  {new Date(p.deadline + 'T12:00:00').toLocaleDateString('pt-BR')}
+                  {formatDate(p.deadline)}
                 </span>
               </TableCell>
             </TableRow>

@@ -156,7 +156,8 @@ export const createProjectComment = async (data: {
     try {
       // Validar se o usuário mencionado pertence ao mesmo tenant e está ativo
       const targetUser = await pb.collection('users').getOne(mentionedId)
-      if (targetUser && targetUser.status !== 'inativo') {
+      const belongsToTenant = !targetUser.tenant || targetUser.tenant === data.tenantId
+      if (targetUser && targetUser.status !== 'inativo' && belongsToTenant) {
         const mentionRecord = await pb.collection('comment_mentions').create(
           {
             comment_id: commentRecord.id,

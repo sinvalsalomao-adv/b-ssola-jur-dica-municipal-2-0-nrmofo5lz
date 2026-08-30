@@ -1,12 +1,10 @@
 import pb from '@/lib/pocketbase/client'
 import { Checklist, ChecklistItem } from '@/types/project'
 import { sanitizeInput } from '@/lib/sanitize'
+import { normalizeDateForInput } from '@/lib/dateUtils'
 
 export function normalizeChecklistItem(r: any): ChecklistItem {
-  let formattedPrazo = ''
-  if (r.prazo && typeof r.prazo === 'string') {
-    formattedPrazo = r.prazo.split('T')[0]
-  }
+  const formattedPrazo = normalizeDateForInput(r.prazo)
 
   return {
     id: r.id || '',
@@ -72,7 +70,7 @@ async function resolveFallbackTenant(tenantId?: string, projectId?: string): Pro
     return pb.authStore.record.tenant
   }
 
-  // If projectId is provided, try to fetch the project's tenant
+  // If projectId is provided, fetch the project's tenant explicitly
   if (projectId) {
     try {
       const proj = await pb
@@ -82,13 +80,6 @@ async function resolveFallbackTenant(tenantId?: string, projectId?: string): Pro
     } catch {
       // ignore
     }
-  }
-
-  try {
-    const firstTenant = await pb.collection('tenants').getFirstListItem('', { requestKey: null })
-    if (firstTenant?.id) return firstTenant.id
-  } catch {
-    // ignore
   }
 
   return ''

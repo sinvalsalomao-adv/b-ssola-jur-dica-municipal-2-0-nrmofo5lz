@@ -28,14 +28,25 @@ export function getErrorMessage(error: unknown): string {
   return msgs.length > 0 ? msgs.join(' ') : error.message || 'An unexpected error occurred.'
 }
 
-export function getSafeDiagnosticInfo(error: unknown) {
-  const errObj = typeof error === 'object' && error !== null ? (error as Record<string, any>) : {}
+export function getSafeDiagnosticInfo(error: unknown): {
+  status?: number
+  method?: string
+  endpoint?: string
+  requestId?: string
+  message: string
+  fieldErrors?: Record<string, string>
+  bodyStructureSummary?: unknown
+} {
+  const err = error as any
   return {
-    status: errObj.status || errObj.statusCode || 0,
-    method: errObj.method || errObj.response?.config?.method || '',
-    endpoint: errObj.url || errObj.response?.url || '',
-    requestId: errObj.requestId || errObj.request_id || '',
+    status: err?.status,
+    method: err?.method,
+    endpoint: err?.url,
+    requestId: err?.requestId,
     message: getErrorMessage(error),
-    bodyStructureSummary: errObj.request?.body || errObj.body || null,
+    fieldErrors: extractFieldErrors(error),
+    bodyStructureSummary: err?.request?.body
+      ? { email: '<string>', password: '[REDACTED]', secret_key: '[REDACTED]' }
+      : undefined,
   }
 }

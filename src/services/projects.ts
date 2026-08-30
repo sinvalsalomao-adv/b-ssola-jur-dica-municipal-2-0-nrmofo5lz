@@ -1,6 +1,7 @@
 import pb from '@/lib/pocketbase/client'
 import { Project, ColumnType, Priority } from '@/types/project'
 import { sanitizeInput } from '@/lib/sanitize'
+import { normalizeDateForInput } from '@/lib/dateUtils'
 
 export function normalizeProject(r: any): Project {
   if (!r || typeof r !== 'object') {
@@ -21,12 +22,8 @@ export function normalizeProject(r: any): Project {
     }
   }
 
-  let formattedDeadline = ''
-  if (r.prazo && typeof r.prazo === 'string') {
-    formattedDeadline = r.prazo.split('T')[0]
-  } else if (r.deadline && typeof r.deadline === 'string') {
-    formattedDeadline = r.deadline.split('T')[0]
-  }
+  const rawDeadline = r.prazo || r.deadline || ''
+  const formattedDeadline = normalizeDateForInput(rawDeadline)
 
   return {
     id: r.id || '',

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-30T01:10:07.922Z",
+  "generatedAt": "2026-08-30T02:25:16.318Z",
   "collections": [
     {
       "name": "users",
@@ -135,8 +135,8 @@
       "name": "platform_settings",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
+        "list": "@request.auth.id != '' && @request.auth.role = 'superadmin'",
+        "view": "@request.auth.id != '' && @request.auth.role = 'superadmin'",
         "create": "@request.auth.id != '' && @request.auth.role = 'superadmin'",
         "update": "@request.auth.id != '' && @request.auth.role = 'superadmin'",
         "delete": "@request.auth.id != '' && @request.auth.role = 'superadmin'"
@@ -697,7 +697,7 @@
       "apiRules": {
         "list": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
         "view": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
-        "create": "@request.auth.id != ''",
+        "create": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
         "update": "@request.auth.id != '' && @request.auth.role = 'superadmin'",
         "delete": "@request.auth.id != '' && @request.auth.role = 'superadmin'"
       },
@@ -774,11 +774,11 @@
       "name": "tenant_settings",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
-        "view": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
-        "create": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
-        "update": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
-        "delete": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')"
+        "list": "@request.auth.id != '' && ((tenant = @request.auth.tenant && @request.auth.role = 'admin') || @request.auth.role = 'superadmin')",
+        "view": "@request.auth.id != '' && ((tenant = @request.auth.tenant && @request.auth.role = 'admin') || @request.auth.role = 'superadmin')",
+        "create": "@request.auth.id != '' && ((tenant = @request.auth.tenant && @request.auth.role = 'admin') || @request.auth.role = 'superadmin')",
+        "update": "@request.auth.id != '' && ((tenant = @request.auth.tenant && @request.auth.role = 'admin') || @request.auth.role = 'superadmin')",
+        "delete": "@request.auth.id != '' && ((tenant = @request.auth.tenant && @request.auth.role = 'admin') || @request.auth.role = 'superadmin')"
       },
       "fields": [
         {

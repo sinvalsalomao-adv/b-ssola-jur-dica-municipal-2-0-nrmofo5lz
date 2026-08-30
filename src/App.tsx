@@ -10,6 +10,7 @@ import QuizPage from '@/pages/QuizPage'
 import SuperadminPage from '@/pages/SuperadminPage'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import AdminAuditLogsPage from '@/pages/AdminAuditLogsPage'
+import { ProtectedRoute } from '@/components/ProtectedRoute'
 
 import { MainLayout } from '@/components/MainLayout'
 import LoginPage from '@/pages/LoginPage'
@@ -41,7 +42,13 @@ const App = () => (
               <Routes>
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/login/:slug" element={<OrgLoginPage />} />
-                <Route element={<MainLayout />}>
+                <Route
+                  element={
+                    <ProtectedRoute>
+                      <MainLayout />
+                    </ProtectedRoute>
+                  }
+                >
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
                   <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/bussola" element={<BussolaKanban />} />

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { formatDate } from '@/lib/dateUtils'
 import {
   ArrowLeft,
   Edit3,
@@ -279,11 +280,7 @@ export default function DfdDetailPage() {
                 <InfoRow
                   icon={<Calendar className="w-4 h-4" />}
                   label="Prazo"
-                  value={
-                    dfd.deadline
-                      ? new Date(dfd.deadline + 'T12:00:00').toLocaleDateString('pt-BR')
-                      : '—'
-                  }
+                  value={formatDate(dfd.deadline, '—')}
                 />
                 {dfd.projectColumn && (
                   <InfoRow
