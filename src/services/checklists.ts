@@ -65,16 +65,50 @@ export const getChecklistsByProject = async (projectId: string): Promise<Checkli
   return checklistRecords.map((c) => normalizeChecklist(c, itemsByChecklist[c.id] || []))
 }
 
+async function resolveFallbackTenant(tenantId?: string, projectId?: string): Promise<string> {
+  if (tenantId && tenantId.trim() !== '') return tenantId.trim()
+
+  if (pb.authStore.record?.tenant) {
+    return pb.authStore.record.tenant
+  }
+
+  // If projectId is provided, try to fetch the project's tenant
+  if (projectId) {
+    try {
+      const proj = await pb
+        .collection('projects')
+        .getOne(projectId, { fields: 'tenant', requestKey: null })
+      if (proj?.tenant) return proj.tenant
+    } catch {
+      // ignore
+    }
+  }
+
+  try {
+    const firstTenant = await pb.collection('tenants').getFirstListItem('', { requestKey: null })
+    if (firstTenant?.id) return firstTenant.id
+  } catch {
+    // ignore
+  }
+
+  return ''
+}
+
 export const createChecklist = async (data: {
   titulo: string
   projetoId: string
-  tenantId: string
+  tenantId?: string
   ordem?: number
 }): Promise<Checklist> => {
-  const payload = {
+  let resolvedTenant = data.tenantId?.trim() || ''
+  if (!resolvedTenant) {
+    resolvedTenant = await resolveFallbackTenant(data.tenantId, data.projetoId)
+  }
+
+  const payload: Record<string, any> = {
     titulo: sanitizeInput(data.titulo.trim()),
     projeto_id: data.projetoId,
-    tenant: data.tenantId,
+    tenant: resolvedTenant,
     ordem: data.ordem ?? 0,
   }
 
@@ -105,17 +139,22 @@ export const createChecklistItem = async (data: {
   texto: string
   checklistId: string
   projetoId: string
-  tenantId: string
+  tenantId?: string
   concluido?: boolean
   responsibleUserId?: string
   prazo?: string
   ordem?: number
 }): Promise<ChecklistItem> => {
+  let resolvedTenant = data.tenantId?.trim() || ''
+  if (!resolvedTenant) {
+    resolvedTenant = await resolveFallbackTenant(data.tenantId, data.projetoId)
+  }
+
   const payload: Record<string, any> = {
     texto: sanitizeInput(data.texto.trim()),
     checklist_id: data.checklistId,
     projeto_id: data.projetoId,
-    tenant: data.tenantId,
+    tenant: resolvedTenant,
     concluido: !!data.concluido,
     ordem: data.ordem ?? 0,
   }

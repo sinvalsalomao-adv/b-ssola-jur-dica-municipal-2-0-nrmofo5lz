@@ -134,18 +134,20 @@ export const ProjectChecklistSection: React.FC<ProjectChecklistSectionProps> = (
   const completedItems = allItems.filter((i) => i.concluido).length
   const completionPercentage = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0
 
-  const logAudit = async (actionDesc: string) => {
-    const tenantId = user?.tenantId || (checklists[0]?.tenantId ?? '')
+  const logAudit = async (actionDesc: string, fallbackTenant?: string) => {
+    const tenantId = user?.tenantId || (checklists[0]?.tenantId ?? '') || fallbackTenant || ''
     try {
-      await createAuditLog({
-        userName: user?.name || 'Usuário',
-        actionType: 'Editou card',
-        description: actionDesc,
-        projectTitle: project.title,
-        tenantId,
-      })
-      if (onHistoryUpdate) {
-        onHistoryUpdate()
+      if (tenantId) {
+        await createAuditLog({
+          userName: user?.name || 'Usuário',
+          actionType: 'Editou card',
+          description: actionDesc,
+          projectTitle: project.title,
+          tenantId,
+        })
+        if (onHistoryUpdate) {
+          onHistoryUpdate()
+        }
       }
     } catch (err) {
       console.error('Falha ao registrar histórico de auditoria:', err)
@@ -170,7 +172,7 @@ export const ProjectChecklistSection: React.FC<ProjectChecklistSectionProps> = (
         ordem: checklists.length,
       })
       setChecklists((prev) => [...prev, created])
-      await logAudit(`Criou o checklist "${created.titulo}"`)
+      await logAudit(`Criou o checklist "${created.titulo}"`, created.tenantId)
       toast.success('Checklist criado com sucesso!')
       setNewChecklistTitle('')
       setIsCreatingChecklist(false)
@@ -255,7 +257,7 @@ export const ProjectChecklistSection: React.FC<ProjectChecklistSectionProps> = (
         texto: newItemText.trim(),
         checklistId,
         projetoId: project.id,
-        tenantId: user?.tenantId || checklist.tenantId,
+        tenantId: user?.tenantId || checklist.tenantId || '',
         concluido: false,
         responsibleUserId: newItemResponsible !== 'none' ? newItemResponsible : undefined,
         prazo: newItemDeadline || undefined,
@@ -272,7 +274,10 @@ export const ProjectChecklistSection: React.FC<ProjectChecklistSectionProps> = (
         prev.map((c) => (c.id === checklistId ? { ...c, items: [...c.items, created] } : c)),
       )
 
-      await logAudit(`Adicionou o item "${created.texto}" no checklist "${checklist.titulo}"`)
+      await logAudit(
+        `Adicionou o item "${created.texto}" no checklist "${checklist.titulo}"`,
+        created.tenantId,
+      )
       toast.success('Item adicionado!')
       setNewItemText('')
       setNewItemResponsible('none')
