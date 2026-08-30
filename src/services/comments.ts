@@ -142,69 +142,82 @@ export const createProjectComment = async (data: {
     tenant: data.tenantId,
   }
 
+  // Validar TODAS as menções ANTES de persistir comentário, menções, notificações ou auditoria (atomicidade estrita)
+  const uniqueMentionIds = Array.from(new Set(data.mentionedUserIds || [])).filter(
+    (id) => !!id && id !== data.userId,
+  )
+
+  const validatedUsers: any[] = []
+  if (uniqueMentionIds.length > 0) {
+    for (const mentionedId of uniqueMentionIds) {
+      try {
+        const targetUser = await pb.collection('users').getOne(mentionedId)
+        const hasValidTenant =
+          typeof targetUser?.tenant === 'string' &&
+          targetUser.tenant.trim() !== '' &&
+          targetUser.tenant === data.tenantId
+        const isUserActive = targetUser?.status === 'ativo'
+
+        if (!targetUser || !isUserActive || !hasValidTenant) {
+          throw new Error('Não foi possível adicionar uma ou mais menções.')
+        }
+
+        validatedUsers.push(targetUser)
+      } catch (err: any) {
+        if (err?.message === 'Não foi possível adicionar uma ou mais menções.') {
+          throw err
+        }
+        // Erro genérico uniforme para inexistente, sem tenant, outro tenant, status != 'ativo' ou falha de busca
+        throw new Error('Não foi possível adicionar uma ou mais menções.')
+      }
+    }
+  }
+
+  // Criar comentário / resposta apenas após todas as menções serem aprovadas
   const commentRecord = await pb.collection('project_comments').create(payload, {
     expand: 'user_id',
   })
 
-  // Processar menções caso existam
+  // Criar registros de menção, notificações e logs
   const mentionsList: CommentMention[] = []
-  const uniqueMentionIds = Array.from(new Set(data.mentionedUserIds || []))
+  for (const targetUser of validatedUsers) {
+    const mentionRecord = await pb.collection('comment_mentions').create(
+      {
+        comment_id: commentRecord.id,
+        project_id: data.projectId,
+        mentioned_user_id: targetUser.id,
+        author_id: data.userId,
+        tenant: data.tenantId,
+      },
+      { expand: 'mentioned_user_id' },
+    )
+    mentionsList.push(normalizeMention(mentionRecord))
 
-  for (const mentionedId of uniqueMentionIds) {
-    if (!mentionedId || mentionedId === data.userId) continue
+    // Criar notificação interna para o usuário mencionado
+    await pb.collection('notifications').create({
+      tenant: data.tenantId,
+      projeto_id: data.projectId,
+      target_user: targetUser.id,
+      tipo: 'Mencao',
+      project_title: data.projectTitle,
+      column: 'Comentários',
+      days_stalled: 0,
+      person_responsible: targetUser.name || 'Servidor',
+      mensagem: `${data.authorName} mencionou você em um comentário no projeto "${data.projectTitle}": "${cleanContent.slice(0, 120)}${cleanContent.length > 120 ? '...' : ''}"`,
+      lida: false,
+      delivery_status: 'enviada',
+      delivered_at: new Date().toISOString(),
+      alert_date: new Date().toISOString().split('T')[0],
+    })
 
-    try {
-      // Validar se o usuário mencionado existe, está ativo e possui tenant estritamente igual ao do projeto
-      const targetUser = await pb.collection('users').getOne(mentionedId)
-      const hasValidTenant = !!targetUser?.tenant && targetUser.tenant === data.tenantId
-      const isUserActive = targetUser && targetUser.status !== 'inativo'
-
-      if (targetUser && isUserActive && hasValidTenant) {
-        const mentionRecord = await pb.collection('comment_mentions').create(
-          {
-            comment_id: commentRecord.id,
-            project_id: data.projectId,
-            mentioned_user_id: mentionedId,
-            author_id: data.userId,
-            tenant: data.tenantId,
-          },
-          { expand: 'mentioned_user_id' },
-        )
-        mentionsList.push(normalizeMention(mentionRecord))
-
-        // Criar notificação interna para o usuário mencionado
-        await pb.collection('notifications').create({
-          tenant: data.tenantId,
-          projeto_id: data.projectId,
-          target_user: mentionedId,
-          tipo: 'Mencao',
-          project_title: data.projectTitle,
-          column: 'Comentários',
-          days_stalled: 0,
-          person_responsible: targetUser.name || 'Servidor',
-          mensagem: `${data.authorName} mencionou você em um comentário no projeto "${data.projectTitle}": "${cleanContent.slice(0, 120)}${cleanContent.length > 120 ? '...' : ''}"`,
-          lida: false,
-          delivery_status: 'enviada',
-          delivered_at: new Date().toISOString(),
-          alert_date: new Date().toISOString().split('T')[0],
-        })
-
-        // Log de auditoria da menção
-        await createAuditLog({
-          userName: data.authorName,
-          actionType: 'Mencionou usuário',
-          description: `Mencionou ${targetUser.name || targetUser.email} no projeto "${data.projectTitle}"`,
-          projectTitle: data.projectTitle,
-          tenantId: data.tenantId,
-        })
-      } else {
-        console.warn(
-          `Menção ignorada por política de segurança: usuário ${mentionedId} sem tenant, de outro município ou inativo.`,
-        )
-      }
-    } catch (mErr) {
-      console.error('Erro ao processar menção:', mErr)
-    }
+    // Log de auditoria da menção
+    await createAuditLog({
+      userName: data.authorName,
+      actionType: 'Mencionou usuário',
+      description: `Mencionou ${targetUser.name || targetUser.email} no projeto "${data.projectTitle}"`,
+      projectTitle: data.projectTitle,
+      tenantId: data.tenantId,
+    })
   }
 
   // Registrar auditoria da criação de comentário / resposta

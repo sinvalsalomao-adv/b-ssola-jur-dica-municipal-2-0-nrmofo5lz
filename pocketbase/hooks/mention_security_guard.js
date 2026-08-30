@@ -1,10 +1,10 @@
 // Security Hook: Restrict @mentions (comment_mentions) to active users within the exact same tenant
 // Rules:
 // 1. Target mentioned user must exist.
-// 2. Target mentioned user must not be inactive ('inativo').
+// 2. Target mentioned user status must be strictly equal to 'ativo' (allowlist estrita).
 // 3. Target mentioned user must have a non-empty tenant.
 // 4. Target mentioned user tenant must strictly match the project/mention tenant.
-// 5. No personal details or foreign tenant info leaked in error responses.
+// 5. No personal details, status, existence or foreign tenant info leaked in error responses (uniform generic message).
 
 onRecordCreateRequest((e) => {
   const auth = e.auth
@@ -21,7 +21,7 @@ onRecordCreateRequest((e) => {
   if (!targetUserId || !mentionTenant) {
     return e.json(400, {
       code: 400,
-      message: 'Dados incompletos para registrar menção.',
+      message: 'Não foi possível adicionar uma ou mais menções.',
     })
   }
 
@@ -30,15 +30,15 @@ onRecordCreateRequest((e) => {
     if (!targetUser) {
       return e.json(400, {
         code: 400,
-        message: 'O usuário mencionado não foi encontrado.',
+        message: 'Não foi possível adicionar uma ou mais menções.',
       })
     }
 
     const userStatus = targetUser.getString('status')
-    if (userStatus === 'inativo') {
+    if (userStatus !== 'ativo') {
       return e.json(400, {
         code: 400,
-        message: 'Não é possível mencionar um usuário inativo.',
+        message: 'Não foi possível adicionar uma ou mais menções.',
       })
     }
 
@@ -46,14 +46,13 @@ onRecordCreateRequest((e) => {
     if (!userTenant || userTenant !== mentionTenant) {
       return e.json(400, {
         code: 400,
-        message:
-          'Não é possível mencionar usuários sem prefeitura vinculada ou de outro município.',
+        message: 'Não foi possível adicionar uma ou mais menções.',
       })
     }
   } catch (err) {
     return e.json(400, {
       code: 400,
-      message: 'O usuário mencionado é inválido ou não pertence a esta prefeitura.',
+      message: 'Não foi possível adicionar uma ou mais menções.',
     })
   }
 

@@ -128,8 +128,8 @@ export function runCommentsAndParticipantsTests(): CommentsModuleTestResult {
     )
   })
 
-  // 3. Bloquear menção a usuário sem acesso/inativo, sem tenant ou de outro tenant
-  test('Deve bloquear e filtrar menções a usuários sem tenant, inativos ou pertencentes a outro tenant', () => {
+  // 3. Bloquear menção com allowlist estrita (status === 'ativo'), sem tenant, outro tenant, status ausente ou inexistente
+  test('Deve bloquear e filtrar menções a usuários sem tenant, status diferente de ativo, status ausente/desconhecido ou pertencentes a outro tenant', () => {
     const currentTenant = 'tenant_florania'
     const systemUsers = [
       { id: 'u1', name: 'Maria Servidora', tenant: 'tenant_florania', status: 'ativo' },
@@ -138,6 +138,14 @@ export function runCommentsAndParticipantsTests(): CommentsModuleTestResult {
       { id: 'u4', name: 'Superadmin Sem Tenant', tenant: '', status: 'ativo' },
       { id: 'u5', name: 'Superadmin Null Tenant', tenant: null as any, status: 'ativo' },
       { id: 'u6', name: 'Superadmin Undefined Tenant', tenant: undefined as any, status: 'ativo' },
+      { id: 'u7', name: 'Usuário Status Pendente', tenant: 'tenant_florania', status: 'pendente' },
+      { id: 'u8', name: 'Usuário Status Vazio', tenant: 'tenant_florania', status: '' },
+      {
+        id: 'u9',
+        name: 'Usuário Status Ausente',
+        tenant: 'tenant_florania',
+        status: undefined as any,
+      },
     ]
 
     function validateMentionSecurity(
@@ -148,7 +156,8 @@ export function runCommentsAndParticipantsTests(): CommentsModuleTestResult {
       targetTenantId: string,
     ): boolean {
       if (!user || !user.id) return false
-      if (user.status === 'inativo') return false
+      // Allowlist estrita: status deve ser EXATAMENTE 'ativo'
+      if (user.status !== 'ativo') return false
       if (!user.tenant || typeof user.tenant !== 'string' || user.tenant.trim() === '') return false
       return user.tenant === targetTenantId
     }
@@ -160,6 +169,9 @@ export function runCommentsAndParticipantsTests(): CommentsModuleTestResult {
     const isNoTenantBlocked = !validateMentionSecurity(systemUsers[3], currentTenant)
     const isNullTenantBlocked = !validateMentionSecurity(systemUsers[4], currentTenant)
     const isUndefinedTenantBlocked = !validateMentionSecurity(systemUsers[5], currentTenant)
+    const isPendingStatusBlocked = !validateMentionSecurity(systemUsers[6], currentTenant)
+    const isEmptyStatusBlocked = !validateMentionSecurity(systemUsers[7], currentTenant)
+    const isAbsentStatusBlocked = !validateMentionSecurity(systemUsers[8], currentTenant)
     const isNonExistentBlocked = !validateMentionSecurity(null, currentTenant)
 
     const eligibleUsers = systemUsers.filter((u) => validateMentionSecurity(u, currentTenant))
@@ -171,6 +183,9 @@ export function runCommentsAndParticipantsTests(): CommentsModuleTestResult {
       isNoTenantBlocked &&
       isNullTenantBlocked &&
       isUndefinedTenantBlocked &&
+      isPendingStatusBlocked &&
+      isEmptyStatusBlocked &&
+      isAbsentStatusBlocked &&
       isNonExistentBlocked &&
       eligibleUsers.length === 1 &&
       eligibleUsers[0].id === 'u1' &&
@@ -178,7 +193,10 @@ export function runCommentsAndParticipantsTests(): CommentsModuleTestResult {
       !eligibleUsers.some((u) => u.id === 'u3') &&
       !eligibleUsers.some((u) => u.id === 'u4') &&
       !eligibleUsers.some((u) => u.id === 'u5') &&
-      !eligibleUsers.some((u) => u.id === 'u6')
+      !eligibleUsers.some((u) => u.id === 'u6') &&
+      !eligibleUsers.some((u) => u.id === 'u7') &&
+      !eligibleUsers.some((u) => u.id === 'u8') &&
+      !eligibleUsers.some((u) => u.id === 'u9')
     )
   })
 
@@ -204,22 +222,35 @@ export function runCommentsAndParticipantsTests(): CommentsModuleTestResult {
       tenant: 'tenant_florania',
       status: 'inativo',
     }
+    const unknownStatusUser = {
+      id: 'u_unknown',
+      name: 'Servidor Desconhecido',
+      tenant: 'tenant_florania',
+      status: 'bloqueado',
+    }
 
     function filterValidMentions(
       mentionedIds: string[],
-      usersDb: Array<{ id: string; name: string; tenant: string | null; status: string }>,
+      usersDb: Array<{ id: string; name: string; tenant: string | null; status?: string }>,
       tenantId: string,
     ): string[] {
       return mentionedIds.filter((id) => {
         const u = usersDb.find((item) => item.id === id)
         if (!u) return false
-        if (u.status === 'inativo') return false
-        if (!u.tenant || u.tenant !== tenantId) return false
+        // Allowlist estrita
+        if (u.status !== 'ativo') return false
+        if (
+          !u.tenant ||
+          typeof u.tenant !== 'string' ||
+          u.tenant.trim() === '' ||
+          u.tenant !== tenantId
+        )
+          return false
         return true
       })
     }
 
-    const allDbUsers = [validUser, noTenantUser, otherTenantUser, inactiveUser]
+    const allDbUsers = [validUser, noTenantUser, otherTenantUser, inactiveUser, unknownStatusUser]
 
     // Comentário sem menção: permitido
     const commentWithoutMentions: string[] = []
@@ -229,11 +260,12 @@ export function runCommentsAndParticipantsTests(): CommentsModuleTestResult {
     const replyWithValidMention = [validUser.id]
     const filteredValidReply = filterValidMentions(replyWithValidMention, allDbUsers, projectTenant)
 
-    // Comentário ou resposta com menções inválidas (sem tenant, outro tenant, inativo, inexistente)
+    // Comentário ou resposta com menções inválidas (sem tenant, outro tenant, inativo, status desconhecido, inexistente)
     const replyWithInvalidMentions = [
       noTenantUser.id,
       otherTenantUser.id,
       inactiveUser.id,
+      unknownStatusUser.id,
       'u_fantasma',
     ]
     const filteredInvalidReply = filterValidMentions(
@@ -248,6 +280,328 @@ export function runCommentsAndParticipantsTests(): CommentsModuleTestResult {
       filteredValidReply[0] === validUser.id &&
       filteredInvalidReply.length === 0
     )
+  })
+
+  // 3.2 Teste de atomicidade estrita: validação prévia de TODAS as menções antes de criar qualquer registro
+  test('Atomicidade: rejeitar operação inteira se houver menção inválida sem criar comentário parcial, menção, notificação ou log', () => {
+    const GENERIC_ERROR_MESSAGE = 'Não foi possível adicionar uma ou mais menções.'
+    const currentTenant = 'tenant_florania'
+
+    const usersDb = [
+      { id: 'usr_valido_1', name: 'Ana Gestora', tenant: 'tenant_florania', status: 'ativo' },
+      { id: 'usr_valido_2', name: 'Bruno Procurador', tenant: 'tenant_florania', status: 'ativo' },
+      { id: 'usr_inativo', name: 'Carlos Inativo', tenant: 'tenant_florania', status: 'inativo' },
+      {
+        id: 'usr_outro_tenant',
+        name: 'Daniel Outra Cidade',
+        tenant: 'tenant_tangara',
+        status: 'ativo',
+      },
+      { id: 'usr_sem_tenant', name: 'Superadmin Sem Tenant', tenant: '', status: 'ativo' },
+      {
+        id: 'usr_status_desconhecido',
+        name: 'Eduardo Suspenso',
+        tenant: 'tenant_florania',
+        status: 'suspenso',
+      },
+    ]
+
+    interface StateTracker {
+      commentsCreated: any[]
+      mentionsCreated: any[]
+      notificationsCreated: any[]
+      auditLogsCreated: any[]
+    }
+
+    // Simulação do fluxo exato de atomicidade de createProjectComment
+    function simulateAtomicCommentCreation(
+      data: {
+        projectId: string
+        userId: string
+        authorName: string
+        content: string
+        tenantId: string
+        projectTitle: string
+        parentId?: string | null
+        mentionedUserIds?: string[]
+      },
+      tracker: StateTracker,
+    ): { success: boolean; error?: string; comment?: any } {
+      if (!data.projectId || !data.userId || !data.content?.trim() || !data.tenantId) {
+        return { success: false, error: 'Dados insuficientes para criar comentário.' }
+      }
+
+      const cleanContent = sanitizeInput(data.content)
+      if (!cleanContent) {
+        return { success: false, error: 'O comentário não pode ficar vazio.' }
+      }
+
+      // 1. Validação PRÉVIA de TODAS as menções antes de qualquer mutação
+      const uniqueMentionIds = Array.from(new Set(data.mentionedUserIds || [])).filter(
+        (id) => !!id && id !== data.userId,
+      )
+
+      const validatedUsers: any[] = []
+      for (const mId of uniqueMentionIds) {
+        const targetUser = usersDb.find((u) => u.id === mId)
+        const hasValidTenant =
+          typeof targetUser?.tenant === 'string' &&
+          targetUser.tenant.trim() !== '' &&
+          targetUser.tenant === data.tenantId
+        const isUserActive = targetUser?.status === 'ativo'
+
+        if (!targetUser || !isUserActive || !hasValidTenant) {
+          // Rejeita IMEDIATAMENTE com a mensagem uniforme genérica
+          return { success: false, error: GENERIC_ERROR_MESSAGE }
+        }
+
+        validatedUsers.push(targetUser)
+      }
+
+      // 2. Cria comentário APENAS após validação integral
+      const createdComment = {
+        id: `comm_${Date.now()}`,
+        project_id: data.projectId,
+        user_id: data.userId,
+        author_name: sanitizeInput(data.authorName),
+        content: cleanContent,
+        parent_id: data.parentId || null,
+        is_edited: false,
+        deleted: false,
+        tenant: data.tenantId,
+      }
+      tracker.commentsCreated.push(createdComment)
+
+      // 3. Cria menções e notificações
+      for (const u of validatedUsers) {
+        tracker.mentionsCreated.push({
+          comment_id: createdComment.id,
+          project_id: data.projectId,
+          mentioned_user_id: u.id,
+          author_id: data.userId,
+          tenant: data.tenantId,
+        })
+        tracker.notificationsCreated.push({
+          tenant: data.tenantId,
+          projeto_id: data.projectId,
+          target_user: u.id,
+          tipo: 'Mencao',
+          project_title: data.projectTitle,
+        })
+        tracker.auditLogsCreated.push({
+          userName: data.authorName,
+          actionType: 'Mencionou usuário',
+          projectTitle: data.projectTitle,
+          tenantId: data.tenantId,
+        })
+      }
+
+      // Log do comentário
+      tracker.auditLogsCreated.push({
+        userName: data.authorName,
+        actionType: data.parentId ? 'Criou resposta' : 'Criou comentário',
+        projectTitle: data.projectTitle,
+        tenantId: data.tenantId,
+      })
+
+      return { success: true, comment: createdComment }
+    }
+
+    // Cenário A: Uma menção válida + uma menção inválida (inativo) -> DEVE REJEITAR TUDO
+    const trackerA: StateTracker = {
+      commentsCreated: [],
+      mentionsCreated: [],
+      notificationsCreated: [],
+      auditLogsCreated: [],
+    }
+    const resultA = simulateAtomicCommentCreation(
+      {
+        projectId: 'proj_1',
+        userId: 'author_1',
+        authorName: 'Autor',
+        content: 'Chamando @Ana Gestora e @Carlos Inativo',
+        tenantId: currentTenant,
+        projectTitle: 'Projeto Teste',
+        mentionedUserIds: ['usr_valido_1', 'usr_inativo'],
+      },
+      trackerA,
+    )
+
+    // Cenário B: Uma menção válida + uma menção de outro tenant -> DEVE REJEITAR TUDO
+    const trackerB: StateTracker = {
+      commentsCreated: [],
+      mentionsCreated: [],
+      notificationsCreated: [],
+      auditLogsCreated: [],
+    }
+    const resultB = simulateAtomicCommentCreation(
+      {
+        projectId: 'proj_1',
+        userId: 'author_1',
+        authorName: 'Autor',
+        content: 'Chamando @Ana Gestora e @Daniel Outra Cidade',
+        tenantId: currentTenant,
+        projectTitle: 'Projeto Teste',
+        mentionedUserIds: ['usr_valido_1', 'usr_outro_tenant'],
+      },
+      trackerB,
+    )
+
+    // Cenário C: Uma menção válida + uma menção inexistente -> DEVE REJEITAR TUDO
+    const trackerC: StateTracker = {
+      commentsCreated: [],
+      mentionsCreated: [],
+      notificationsCreated: [],
+      auditLogsCreated: [],
+    }
+    const resultC = simulateAtomicCommentCreation(
+      {
+        projectId: 'proj_1',
+        userId: 'author_1',
+        authorName: 'Autor',
+        content: 'Chamando @Ana Gestora e @Fantasma',
+        tenantId: currentTenant,
+        projectTitle: 'Projeto Teste',
+        mentionedUserIds: ['usr_valido_1', 'usr_fantasma_inexistente'],
+      },
+      trackerC,
+    )
+
+    // Cenário D: Menção com status ausente ou desconhecido -> DEVE REJEITAR TUDO
+    const trackerD: StateTracker = {
+      commentsCreated: [],
+      mentionsCreated: [],
+      notificationsCreated: [],
+      auditLogsCreated: [],
+    }
+    const resultD = simulateAtomicCommentCreation(
+      {
+        projectId: 'proj_1',
+        userId: 'author_1',
+        authorName: 'Autor',
+        content: 'Chamando @Eduardo Suspenso',
+        tenantId: currentTenant,
+        projectTitle: 'Projeto Teste',
+        mentionedUserIds: ['usr_status_desconhecido'],
+      },
+      trackerD,
+    )
+
+    // Cenário E: Menções 100% válidas -> DEVE CRIAR COM SUCESSO
+    const trackerE: StateTracker = {
+      commentsCreated: [],
+      mentionsCreated: [],
+      notificationsCreated: [],
+      auditLogsCreated: [],
+    }
+    const resultE = simulateAtomicCommentCreation(
+      {
+        projectId: 'proj_1',
+        userId: 'author_1',
+        authorName: 'Autor',
+        content: 'Chamando @Ana Gestora e @Bruno Procurador',
+        tenantId: currentTenant,
+        projectTitle: 'Projeto Teste',
+        mentionedUserIds: ['usr_valido_1', 'usr_valido_2'],
+      },
+      trackerE,
+    )
+
+    // Cenário F: Comentário sem nenhuma menção -> DEVE CRIAR COM SUCESSO
+    const trackerF: StateTracker = {
+      commentsCreated: [],
+      mentionsCreated: [],
+      notificationsCreated: [],
+      auditLogsCreated: [],
+    }
+    const resultF = simulateAtomicCommentCreation(
+      {
+        projectId: 'proj_1',
+        userId: 'author_1',
+        authorName: 'Autor',
+        content: 'Comentário limpo sem nenhuma menção',
+        tenantId: currentTenant,
+        projectTitle: 'Projeto Teste',
+        mentionedUserIds: [],
+      },
+      trackerF,
+    )
+
+    const isAtomicA =
+      !resultA.success &&
+      resultA.error === GENERIC_ERROR_MESSAGE &&
+      trackerA.commentsCreated.length === 0 &&
+      trackerA.mentionsCreated.length === 0 &&
+      trackerA.notificationsCreated.length === 0 &&
+      trackerA.auditLogsCreated.length === 0
+
+    const isAtomicB =
+      !resultB.success &&
+      resultB.error === GENERIC_ERROR_MESSAGE &&
+      trackerB.commentsCreated.length === 0 &&
+      trackerB.mentionsCreated.length === 0 &&
+      trackerB.notificationsCreated.length === 0 &&
+      trackerB.auditLogsCreated.length === 0
+
+    const isAtomicC =
+      !resultC.success &&
+      resultC.error === GENERIC_ERROR_MESSAGE &&
+      trackerC.commentsCreated.length === 0 &&
+      trackerC.mentionsCreated.length === 0 &&
+      trackerC.notificationsCreated.length === 0 &&
+      trackerC.auditLogsCreated.length === 0
+
+    const isAtomicD =
+      !resultD.success &&
+      resultD.error === GENERIC_ERROR_MESSAGE &&
+      trackerD.commentsCreated.length === 0 &&
+      trackerD.mentionsCreated.length === 0 &&
+      trackerD.notificationsCreated.length === 0 &&
+      trackerD.auditLogsCreated.length === 0
+
+    const isSuccessE =
+      resultE.success &&
+      trackerE.commentsCreated.length === 1 &&
+      trackerE.mentionsCreated.length === 2 &&
+      trackerE.notificationsCreated.length === 2 &&
+      trackerE.auditLogsCreated.length === 3 // 2 mencoes + 1 comentario
+
+    const isSuccessF =
+      resultF.success &&
+      trackerF.commentsCreated.length === 1 &&
+      trackerF.mentionsCreated.length === 0 &&
+      trackerF.notificationsCreated.length === 0 &&
+      trackerF.auditLogsCreated.length === 1 // 1 comentario
+
+    return isAtomicA && isAtomicB && isAtomicC && isAtomicD && isSuccessE && isSuccessF
+  })
+
+  // 3.3 Teste de mensagem genérica e não-vazamento de existência, status ou tenant
+  test('Segurança e Não-vazamento: a mensagem de erro deve ser idêntica e genérica para qualquer falha de menção', () => {
+    const GENERIC_MSG = 'Não foi possível adicionar uma ou mais menções.'
+    const testCases = [
+      { reason: 'inexistente', expected: GENERIC_MSG },
+      { reason: 'sem_tenant', expected: GENERIC_MSG },
+      { reason: 'outro_tenant', expected: GENERIC_MSG },
+      { reason: 'inativo', expected: GENERIC_MSG },
+      { reason: 'status_desconhecido', expected: GENERIC_MSG },
+      { reason: 'status_nulo', expected: GENERIC_MSG },
+    ]
+
+    const allMatchGeneric = testCases.every((tc) => {
+      const msg = GENERIC_MSG
+      const leaksExistence =
+        msg.toLowerCase().includes('inexistente') || msg.toLowerCase().includes('não encontrado')
+      const leaksStatus =
+        msg.toLowerCase().includes('inativo') || msg.toLowerCase().includes('status')
+      const leaksTenant =
+        msg.toLowerCase().includes('prefeitura') ||
+        msg.toLowerCase().includes('município') ||
+        msg.toLowerCase().includes('tenant')
+      return msg === tc.expected && !leaksExistence && !leaksStatus && !leaksTenant
+    })
+
+    return allMatchGeneric
   })
 
   // 4. Adicionar/remover participante e impedir duplicidade

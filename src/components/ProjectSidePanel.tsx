@@ -107,7 +107,7 @@ export const ProjectSidePanel: React.FC = () => {
         .then((data) =>
           setUsers(
             data
-              .filter((u) => u.status !== 'inativo')
+              .filter((u) => u.status === 'ativo')
               .map((u) => ({
                 id: u.id,
                 name: u.name,

@@ -81,3 +81,14 @@
      - Usuário sem tenant, de outro município/tenant, inativo ou inexistente é rejeitado tanto na camada de frontend quanto no serviço e backend hook.
      - Superadmin sem tenant pode comentar quando autorizado mas não pode ser mencionado sem tenant correspondente.
      - Sugestões de menção restritas a usuários ativos do tenant do projeto.
+
+## Checkpoint 7: Ponto de Restauração — Atomicidade, Validação Estrita Prévia e Mensagem Uniforme de Menções v0.0.53
+
+- **Data/Hora:** 2025-05-24
+- **Versão:** 0.0.53
+- **Módulos:** `src/services/comments.ts`, `pocketbase/hooks/mention_security_guard.js`, `src/components/ProjectSidePanel.tsx`, `src/components/ProjectCommentsSection.tsx`, `src/services/comments.test.ts`
+- **Estado preservado:**
+  - Login multi-tenant, perfis (superadmin, admin, servidor), Dashboard, Bússola Kanban, DFDs, Checklist, Documentos, Comentários, Participantes, Notificações e Histórico de Auditoria.
+  - Integridade de todas as coleções do banco e preservação do histórico de menções e comentários já existentes sem deleções ou migrações destrutivas.
+  - Threading de comentários em 1 nível, edição, soft delete e permissões RLS.
+- **Propósito:** Ponto de restauração antes de aplicar correções de segurança obrigatórias de atomicidade completa (nenhum comentário, menção, notificação ou log criado se alguma menção for inválida), allowlist estrita `status === 'ativo'` em substituição a `status !== 'inativo'`, mensagem de erro genérica uniforme (`'Não foi possível adicionar uma ou mais menções.'`) sem vazamento de existência, status ou tenant alheio, e testes automatizados de atomicidade e segurança.

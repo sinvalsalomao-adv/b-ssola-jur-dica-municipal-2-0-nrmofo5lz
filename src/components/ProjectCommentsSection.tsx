@@ -78,8 +78,8 @@ export const ProjectCommentsSection: React.FC<Props> = ({
 
   const effectiveTenant = project.tenantId || user?.tenantId || ''
 
-  // Apenas usuários ativos autorizados para o tenant
-  const eligibleMentionUsers = tenantUsers.filter((u) => u.status !== 'inativo')
+  // Allowlist estrita: apenas usuários exatamente com status 'ativo' autorizados para o tenant
+  const eligibleMentionUsers = tenantUsers.filter((u) => u.status === 'ativo')
 
   const loadComments = async () => {
     if (!project.id) return
