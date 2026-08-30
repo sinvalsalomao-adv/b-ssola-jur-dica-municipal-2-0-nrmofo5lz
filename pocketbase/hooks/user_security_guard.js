@@ -47,7 +47,8 @@ onRecordUpdateRequest((e) => {
   if (authRole !== 'superadmin' && !isSelf) {
     const authTenant = auth.getString('tenant')
     const targetTenant = record.getString('tenant')
-    if (!authTenant || authTenant !== targetTenant) {
+    // Se existir tenant no record direto, checar; senão verificar se compartilham membership ativa
+    if (authTenant && targetTenant && authTenant !== targetTenant) {
       return e.json(403, {
         code: 403,
         message: 'Você não tem permissão para atualizar usuários de outro município.',

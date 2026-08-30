@@ -53,19 +53,19 @@ export default function OrgLoginPage() {
     if (isLocked) return
     setError('')
     setSubmitting(true)
-    const { error: loginError } = await login(email, password)
+    const { error: loginError, user: loggedInUser } = await login(email, password, slug)
     if (loginError) {
       const newAttempts = failedAttempts + 1
       setFailedAttempts(newAttempts)
       if (newAttempts >= 3) {
         setError('Muitas tentativas. Aguarde 15 minutos.')
       } else {
-        setError('Email ou senha incorretos. Tente novamente.')
+        setError(loginError.message || 'Email ou senha incorretos. Tente novamente.')
       }
       setSubmitting(false)
     } else {
       setFailedAttempts(0)
-      const role = (pb.authStore.record as any)?.role || 'servidor'
+      const role = loggedInUser?.role || (pb.authStore.record as any)?.role || 'servidor'
       if (role === 'superadmin') {
         navigate('/superadmin')
       } else {
@@ -211,6 +211,19 @@ export default function OrgLoginPage() {
                 )}
               </Button>
             </form>
+
+            <div className="mt-6 pt-4 border-t border-gray-100 text-center">
+              <p className="text-xs text-gray-500 mb-2">Não possui acesso a este município?</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => navigate(`/cadastro/${slug}`)}
+                className="w-full text-xs font-semibold text-[#1c2a3e] hover:bg-slate-50"
+              >
+                Solicitar Acesso / Auto-cadastro
+              </Button>
+            </div>
           </CardContent>
         </Card>
 

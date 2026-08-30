@@ -34,16 +34,31 @@ onRecordCreateRequest((e) => {
       })
     }
 
+    // Verificar se usuário tem status ativo no users ou vínculo ativo em user_memberships no mentionTenant
+    let isUserActiveInTenant = false
+
+    // Verificar campo direto caso ainda exista
     const userStatus = targetUser.getString('status')
-    if (userStatus !== 'ativo') {
-      return e.json(400, {
-        code: 400,
-        message: 'Não foi possível adicionar uma ou mais menções.',
-      })
+    const userTenant = targetUser.getString('tenant')
+    if (userStatus === 'ativo' && userTenant && userTenant === mentionTenant) {
+      isUserActiveInTenant = true
+    } else {
+      // Verificar em user_memberships
+      try {
+        const memberships = $app.findRecordsByFilter(
+          'user_memberships',
+          "user = '" + targetUserId + "' && tenant = '" + mentionTenant + "' && status = 'ativo'",
+          '',
+          1,
+          0,
+        )
+        if (memberships.length > 0) {
+          isUserActiveInTenant = true
+        }
+      } catch (_) {}
     }
 
-    const userTenant = targetUser.getString('tenant')
-    if (!userTenant || userTenant !== mentionTenant) {
+    if (!isUserActiveInTenant) {
       return e.json(400, {
         code: 400,
         message: 'Não foi possível adicionar uma ou mais menções.',

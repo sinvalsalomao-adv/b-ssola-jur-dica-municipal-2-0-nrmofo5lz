@@ -26,6 +26,22 @@ export const getAllTenantsForReports = async () => {
 }
 
 export const getUsersByRole = async (tenantId: string): Promise<Record<string, number>> => {
+  try {
+    const memberships = await pb.collection('user_memberships').getFullList({
+      filter: `tenant = "${tenantId}" && status = "ativo"`,
+    })
+    if (memberships.length > 0) {
+      const counts: Record<string, number> = {}
+      memberships.forEach((m: any) => {
+        const role = m.role || 'servidor'
+        counts[role] = (counts[role] || 0) + 1
+      })
+      return counts
+    }
+  } catch {
+    /* intentionally ignored */
+  }
+
   const records = await pb.collection('users').getFullList({
     filter: `tenant = "${tenantId}" && status = "ativo"`,
   })

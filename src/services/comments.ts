@@ -152,13 +152,31 @@ export const createProjectComment = async (data: {
     for (const mentionedId of uniqueMentionIds) {
       try {
         const targetUser = await pb.collection('users').getOne(mentionedId)
-        const hasValidTenant =
-          typeof targetUser?.tenant === 'string' &&
-          targetUser.tenant.trim() !== '' &&
-          targetUser.tenant === data.tenantId
-        const isUserActive = targetUser?.status === 'ativo'
+        let isEligible = false
 
-        if (!targetUser || !isUserActive || !hasValidTenant) {
+        // Checar campo direto se presente
+        if (
+          typeof targetUser.tenant === 'string' &&
+          targetUser.tenant.trim() !== '' &&
+          targetUser.tenant === data.tenantId &&
+          targetUser.status === 'ativo'
+        ) {
+          isEligible = true
+        } else {
+          // Checar em user_memberships
+          try {
+            const mems = await pb.collection('user_memberships').getFullList({
+              filter: `user = "${mentionedId}" && tenant = "${data.tenantId}" && status = "ativo"`,
+            })
+            if (mems.length > 0) {
+              isEligible = true
+            }
+          } catch {
+            /* intentionally ignored */
+          }
+        }
+
+        if (!isEligible) {
           throw new Error('Não foi possível adicionar uma ou mais menções.')
         }
 

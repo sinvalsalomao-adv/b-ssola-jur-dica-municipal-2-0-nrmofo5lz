@@ -30,15 +30,30 @@ routerAdd(
 
     const password = $security.randomString(12)
     const usersCol = $app.findCollectionByNameOrId('_pb_users_auth_')
-    const user = new Record(usersCol)
-    user.setEmail(inv.getString('email'))
-    user.setPassword(password)
-    user.setVerified(true)
-    user.set('name', inv.getString('name'))
-    user.set('role', inv.getString('role'))
-    user.set('status', 'ativo')
-    user.set('tenant', inv.getString('tenant'))
-    $app.save(user)
+    let user
+    try {
+      user = $app.findAuthRecordByEmail('_pb_users_auth_', inv.getString('email'))
+    } catch (_) {
+      user = new Record(usersCol)
+      user.setEmail(inv.getString('email'))
+      user.setPassword(password)
+      user.setVerified(true)
+      user.set('name', inv.getString('name'))
+      user.set('role', inv.getString('role'))
+      user.set('status', 'ativo')
+      user.set('tenant', inv.getString('tenant'))
+      $app.save(user)
+    }
+
+    try {
+      const memCol = $app.findCollectionByNameOrId('user_memberships')
+      const mem = new Record(memCol)
+      mem.set('user', user.id)
+      mem.set('tenant', inv.getString('tenant'))
+      mem.set('role', inv.getString('role'))
+      mem.set('status', 'ativo')
+      $app.save(mem)
+    } catch (_) {}
 
     inv.set('status', 'activated')
     $app.save(inv)

@@ -21,6 +21,35 @@ export const getUsers = async (): Promise<GlobalUser[]> => {
 }
 
 export const getUsersByTenant = async (tenantId: string): Promise<GlobalUser[]> => {
+  try {
+    // 1. Buscar via user_memberships para refletir o modelo novo
+    const memberships = await pb.collection('user_memberships').getFullList({
+      filter: `tenant = "${tenantId}" && status = "ativo"`,
+      expand: 'user,tenant',
+      sort: 'user.name',
+    })
+
+    if (memberships.length > 0) {
+      return memberships.map((m: any) => {
+        const u = m.expand?.user || {}
+        const t = m.expand?.tenant || {}
+        return {
+          id: u.id || m.user,
+          name: u.name || u.email || '—',
+          email: u.email || '',
+          prefeituraName: t.name || '—',
+          prefeituraSlug: t.slug || '',
+          role: (m.role || 'servidor') as UserRole,
+          status: (m.status === 'ativo' ? 'ativo' : 'inativo') as UserStatus,
+          lastAccess: m.updated || m.created || '—',
+        }
+      })
+    }
+  } catch (err) {
+    console.warn('Erro ao consultar user_memberships, tentando fallback em users:', err)
+  }
+
+  // Fallback: consulta direta em users
   const records = await pb.collection('users').getFullList({
     filter: `tenant = "${tenantId}"`,
     expand: 'tenant',

@@ -110,7 +110,24 @@ export const getNotificationReadStats = async (
       sort: 'created',
     }),
     tenantId
-      ? pb.collection('users').getFullList({ filter: `tenant = "${tenantId}" && status = 'ativo'` })
+      ? pb
+          .collection('user_memberships')
+          .getFullList({
+            filter: `tenant = "${tenantId}" && status = 'ativo'`,
+            expand: 'user',
+          })
+          .then((mems) =>
+            mems.map((m: any) => ({
+              id: m.expand?.user?.id || m.user,
+              name: m.expand?.user?.name || m.expand?.user?.email || '—',
+              email: m.expand?.user?.email || '',
+            })),
+          )
+          .catch(async () => {
+            return pb
+              .collection('users')
+              .getFullList({ filter: `tenant = "${tenantId}" && status = 'ativo'` })
+          })
       : [],
   ])
 

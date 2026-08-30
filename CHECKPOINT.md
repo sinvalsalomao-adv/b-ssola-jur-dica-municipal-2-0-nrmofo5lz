@@ -92,3 +92,14 @@
   - Integridade de todas as coleções do banco e preservação do histórico de menções e comentários já existentes sem deleções ou migrações destrutivas.
   - Threading de comentários em 1 nível, edição, soft delete e permissões RLS.
 - **Propósito:** Ponto de restauração antes de aplicar correções de segurança obrigatórias de atomicidade completa (nenhum comentário, menção, notificação ou log criado se alguma menção for inválida), allowlist estrita `status === 'ativo'` em substituição a `status !== 'inativo'`, mensagem de erro genérica uniforme (`'Não foi possível adicionar uma ou mais menções.'`) sem vazamento de existência, status ou tenant alheio, e testes automatizados de atomicidade e segurança.
+
+## Checkpoint 8: Ponto de Restauração — Modelo de Identidade Única com Vínculos Múltiplos (Multi-tenant v2.0)
+
+- **Data/Hora:** 2026-07-31
+- **Versão:** 0.0.54
+- **Módulos:** Autenticação, `user_memberships`, `users`, `AuthContext`, `OrgLoginPage`, Auto-cadastro público, Gestão de Usuários (Aprovações Pendentes & Criação Direta), RLS e Regras de Segurança.
+- **Estado preservado:**
+  - Todos os dados existentes de usuários, tenants, projetos, DFDs, checklists, documentos, comentários, notificações e preferências.
+  - Comportamento e permissões completas do Superadmin (acesso irrestrito global e capacidade de impersonar/gerenciar qualquer prefeitura).
+  - Isolamento multi-tenant, regras de RLS e proteções de auditoria.
+- **Propósito:** Ponto de restauração antes de criar a coleção `user_memberships`, migrar os dados atuais de usuários para vínculos ativos, desacoplar papel e prefeitura da tabela `users`, e implementar o fluxo de login contextual e auto-cadastro público com aprovações.
