@@ -1,6 +1,6 @@
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Plus, ArrowLeftRight, Pencil, History } from 'lucide-react'
+import { Plus, ArrowLeftRight, Pencil, History, Clock } from 'lucide-react'
 
 interface LogEntry {
   id: string
@@ -15,6 +15,21 @@ const ACTION_CONFIG: Record<string, { icon: typeof Plus; color: string; bg: stri
   'Criou card': { icon: Plus, color: 'text-emerald-600', bg: 'bg-emerald-50' },
   'Moveu card': { icon: ArrowLeftRight, color: 'text-amber-600', bg: 'bg-amber-50' },
   'Editou card': { icon: Pencil, color: 'text-violet-600', bg: 'bg-violet-50' },
+  'Adicionou documento': { icon: Plus, color: 'text-blue-600', bg: 'bg-blue-50' },
+  'Nova versão documento': { icon: Pencil, color: 'text-violet-600', bg: 'bg-violet-50' },
+  'Arquivou documento': { icon: ArrowLeftRight, color: 'text-amber-600', bg: 'bg-amber-50' },
+  'Restaurou documento': { icon: Plus, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+  'Visualizou documento': { icon: Clock, color: 'text-sky-600', bg: 'bg-sky-50' },
+  'Baixou documento': { icon: Clock, color: 'text-slate-600', bg: 'bg-slate-50' },
+  'Adicionou participante': { icon: Plus, color: 'text-cyan-600', bg: 'bg-cyan-50' },
+  'Removeu participante': { icon: ArrowLeftRight, color: 'text-rose-600', bg: 'bg-rose-50' },
+  'Criou comentário': { icon: Plus, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+  'Editou comentário': { icon: Pencil, color: 'text-violet-600', bg: 'bg-violet-50' },
+  'Removeu comentário': { icon: ArrowLeftRight, color: 'text-rose-600', bg: 'bg-rose-50' },
+  'Criou resposta': { icon: Plus, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+  'Editou resposta': { icon: Pencil, color: 'text-violet-600', bg: 'bg-violet-50' },
+  'Removeu resposta': { icon: ArrowLeftRight, color: 'text-rose-600', bg: 'bg-rose-50' },
+  'Mencionou usuário': { icon: Plus, color: 'text-blue-600', bg: 'bg-blue-50' },
 }
 
 interface Props {

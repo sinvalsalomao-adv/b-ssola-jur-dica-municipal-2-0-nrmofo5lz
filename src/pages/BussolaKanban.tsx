@@ -32,6 +32,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { getUsersByTenant } from '@/services/users'
+import { getParticipantsByTenant } from '@/services/participants'
+import { getAvatarUrl } from '@/services/profile'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Users } from 'lucide-react'
+import type { ProjectParticipant } from '@/types/project'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CORREÇÕES APLICADAS vs. versão original:
@@ -78,26 +83,31 @@ export default function BussolaKanban() {
   const [responsibleFilter, setResponsibleFilter] = useState('Todos')
   const [sortBy, setSortBy] = useState<SortOption>('prazo')
   const [users, setUsers] = useState<{ id: string; name: string }[]>([])
+  const [participantsMap, setParticipantsMap] = useState<Record<string, ProjectParticipant[]>>({})
 
-  // CORREÇÃO 2: carrega apenas usuários do tenant correto
+  // CORREÇÃO 2: carrega apenas usuários do tenant correto e participantes para o Kanban
   useEffect(() => {
     if (!user) return
-    const loadUsers = async () => {
+    const loadUsersAndParticipants = async () => {
       try {
         if (user.role === 'superadmin') {
           const { getUsers } = await import('@/services/users')
           const data = await getUsers()
           setUsers(data.map((u) => ({ id: u.id, name: u.name })))
+          const pMap = await getParticipantsByTenant()
+          setParticipantsMap(pMap)
         } else if (user.tenantId) {
           const data = await getUsersByTenant(user.tenantId)
           setUsers(data.map((u) => ({ id: u.id, name: u.name })))
+          const pMap = await getParticipantsByTenant(user.tenantId)
+          setParticipantsMap(pMap)
         }
       } catch {
-        // silencioso — filtro de responsável simplesmente fica sem opções
+        // silencioso
       }
     }
-    loadUsers()
-  }, [user])
+    loadUsersAndParticipants()
+  }, [user, projects])
 
   // CORREÇÃO 1: prefeituras dinâmicas do banco
   const prefeituraOptions = useMemo(() => {
@@ -425,6 +435,44 @@ export default function BussolaKanban() {
                           <h4 className="font-bold text-sm text-[#1c2a3e] group-hover:text-[#3b82f6] transition-colors leading-snug">
                             {project.title}
                           </h4>
+
+                          {/* Seção de Participantes nos cards do Kanban (até 3 avatares + N) */}
+                          {participantsMap[project.id] &&
+                            participantsMap[project.id].length > 0 && (
+                              <div className="flex items-center gap-1.5 pt-1">
+                                <div className="flex items-center -space-x-1.5 overflow-hidden">
+                                  {participantsMap[project.id].slice(0, 3).map((part) => {
+                                    const avatarSrc =
+                                      part.userAvatar && part.userId
+                                        ? getAvatarUrl(part.userId, part.userAvatar)
+                                        : null
+                                    return (
+                                      <Avatar
+                                        key={part.id}
+                                        className="w-5 h-5 border border-white ring-1 ring-slate-200"
+                                        title={`Participante: ${part.userName}`}
+                                      >
+                                        {avatarSrc ? (
+                                          <AvatarImage src={avatarSrc} alt={part.userName} />
+                                        ) : null}
+                                        <AvatarFallback className="text-[8px] bg-slate-700 text-white font-bold">
+                                          {part.userName.slice(0, 2).toUpperCase()}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                    )
+                                  })}
+                                </div>
+                                {participantsMap[project.id].length > 3 && (
+                                  <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded-full">
+                                    +{participantsMap[project.id].length - 3}
+                                  </span>
+                                )}
+                                <span className="text-[10px] text-gray-400 ml-auto flex items-center gap-0.5">
+                                  <Users className="w-2.5 h-2.5" />
+                                  {participantsMap[project.id].length}
+                                </span>
+                              </div>
+                            )}
 
                           <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-xs text-gray-500">
                             <div className="flex items-center gap-1">

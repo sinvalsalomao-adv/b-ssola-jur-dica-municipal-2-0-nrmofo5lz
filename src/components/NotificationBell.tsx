@@ -45,12 +45,26 @@ export function NotificationBell() {
 
   const handleClick = async (n: NotificationItem) => {
     try {
-      await markNotificationAsRead(n.id)
+      await markNotificationAsRead(n.id, user?.id, user?.tenantId)
     } catch {
       /* ignore */
     }
     loadNotifications()
-    navigate('/bussola')
+
+    if (n.projetoId) {
+      navigate('/bussola')
+      const targetTab = n.alertType === 'Mencao' ? 'comments' : 'details'
+      // Disparar evento para abrir projeto e aba correta
+      setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent('openProjectById', {
+            detail: { projectId: n.projetoId, tab: targetTab },
+          }),
+        )
+      }, 150)
+    } else {
+      navigate('/bussola')
+    }
   }
 
   return (
@@ -75,6 +89,7 @@ export function NotificationBell() {
         ) : (
           notifications.map((n) => {
             const isFatal = n.alertType === 'Prazo Fatal'
+            const isMention = n.alertType === 'Mencao'
             return (
               <DropdownMenuItem
                 key={n.id}
@@ -82,7 +97,11 @@ export function NotificationBell() {
                 className="flex flex-col items-start gap-1 py-2.5 cursor-pointer"
               >
                 <div className="flex items-center gap-2 w-full">
-                  {isFatal ? (
+                  {isMention ? (
+                    <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-700 font-bold text-[10px] flex items-center justify-center shrink-0">
+                      @
+                    </span>
+                  ) : isFatal ? (
                     <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />
                   ) : (
                     <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
@@ -92,12 +111,14 @@ export function NotificationBell() {
                   </span>
                   <Badge
                     className={`text-[9px] px-1.5 py-0 ${
-                      isFatal
-                        ? 'bg-red-100 text-red-700 border-red-200'
-                        : 'bg-amber-100 text-amber-700 border-amber-200'
+                      isMention
+                        ? 'bg-blue-100 text-blue-700 border-blue-200'
+                        : isFatal
+                          ? 'bg-red-100 text-red-700 border-red-200'
+                          : 'bg-amber-100 text-amber-700 border-amber-200'
                     }`}
                   >
-                    {n.alertType}
+                    {isMention ? 'Menção' : n.alertType}
                   </Badge>
                 </div>
                 {n.mensagem && (

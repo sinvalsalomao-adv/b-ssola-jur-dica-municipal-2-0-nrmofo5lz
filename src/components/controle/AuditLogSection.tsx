@@ -18,6 +18,15 @@ const ACTION_CONFIG: Record<string, { icon: React.ElementType; color: string; bg
   'Restaurou documento': { icon: Plus, color: 'text-emerald-600', bg: 'bg-emerald-50' },
   'Visualizou documento': { icon: History, color: 'text-sky-600', bg: 'bg-sky-50' },
   'Baixou documento': { icon: History, color: 'text-slate-600', bg: 'bg-slate-50' },
+  'Adicionou participante': { icon: Plus, color: 'text-cyan-600', bg: 'bg-cyan-50' },
+  'Removeu participante': { icon: ArrowLeftRight, color: 'text-rose-600', bg: 'bg-rose-50' },
+  'Criou comentário': { icon: Plus, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+  'Editou comentário': { icon: Pencil, color: 'text-violet-600', bg: 'bg-violet-50' },
+  'Removeu comentário': { icon: ArrowLeftRight, color: 'text-rose-600', bg: 'bg-rose-50' },
+  'Criou resposta': { icon: Plus, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+  'Editou resposta': { icon: Pencil, color: 'text-violet-600', bg: 'bg-violet-50' },
+  'Removeu resposta': { icon: ArrowLeftRight, color: 'text-rose-600', bg: 'bg-rose-50' },
+  'Mencionou usuário': { icon: Plus, color: 'text-blue-600', bg: 'bg-blue-50' },
 }
 
 export const AuditLogSection: React.FC = () => {

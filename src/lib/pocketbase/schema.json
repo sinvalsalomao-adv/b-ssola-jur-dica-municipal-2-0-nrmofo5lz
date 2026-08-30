@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-30T00:48:04.872Z",
+  "generatedAt": "2026-08-30T01:10:07.922Z",
   "collections": [
     {
       "name": "users",
@@ -373,7 +373,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["Gargalo", "Prazo Fatal", "Aviso Interno"]
+          "selectValues": ["Gargalo", "Prazo Fatal", "Aviso Interno", "Mencao"]
         },
         {
           "name": "scheduled_for",
@@ -445,6 +445,13 @@
           "required": false,
           "system": false,
           "collectionRef": "notifications"
+        },
+        {
+          "name": "target_user",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
         }
       ],
       "indexes": [
@@ -715,7 +722,16 @@
             "Arquivou documento",
             "Restaurou documento",
             "Visualizou documento",
-            "Baixou documento"
+            "Baixou documento",
+            "Adicionou participante",
+            "Removeu participante",
+            "Criou comentário",
+            "Editou comentário",
+            "Removeu comentário",
+            "Criou resposta",
+            "Editou resposta",
+            "Removeu resposta",
+            "Mencionou usuário"
           ]
         },
         {
@@ -1632,6 +1648,245 @@
         "CREATE INDEX idx_checklist_items_projeto ON checklist_items (projeto_id)",
         "CREATE INDEX idx_checklist_items_tenant ON checklist_items (tenant)",
         "CREATE INDEX idx_checklist_items_responsible ON checklist_items (responsible_user)"
+      ]
+    },
+    {
+      "name": "project_participants",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "view": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "create": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "update": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "delete": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')"
+      },
+      "fields": [
+        {
+          "name": "project_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "projects"
+        },
+        {
+          "name": "user_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "tenant",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "tenants"
+        },
+        {
+          "name": "added_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "role",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_proj_part_project ON project_participants (project_id)",
+        "CREATE INDEX idx_proj_part_user ON project_participants (user_id)",
+        "CREATE INDEX idx_proj_part_tenant ON project_participants (tenant)",
+        "CREATE UNIQUE INDEX idx_proj_part_unique ON project_participants (project_id, user_id)"
+      ]
+    },
+    {
+      "name": "project_comments",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "view": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "create": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "update": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "delete": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')"
+      },
+      "fields": [
+        {
+          "name": "project_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "projects"
+        },
+        {
+          "name": "user_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "author_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "content",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "parent_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "is_edited",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "edited_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "deleted",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "deleted_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "deleted_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "tenant",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "tenants"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_proj_comm_project ON project_comments (project_id)",
+        "CREATE INDEX idx_proj_comm_user ON project_comments (user_id)",
+        "CREATE INDEX idx_proj_comm_parent ON project_comments (parent_id)",
+        "CREATE INDEX idx_proj_comm_deleted ON project_comments (deleted)",
+        "CREATE INDEX idx_proj_comm_tenant ON project_comments (tenant)"
+      ]
+    },
+    {
+      "name": "comment_mentions",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "view": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "create": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "update": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "delete": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')"
+      },
+      "fields": [
+        {
+          "name": "comment_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "project_comments"
+        },
+        {
+          "name": "project_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "projects"
+        },
+        {
+          "name": "mentioned_user_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "author_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "tenant",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "tenants"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_mentions_comment ON comment_mentions (comment_id)",
+        "CREATE INDEX idx_mentions_project ON comment_mentions (project_id)",
+        "CREATE INDEX idx_mentions_user ON comment_mentions (mentioned_user_id)",
+        "CREATE INDEX idx_mentions_tenant ON comment_mentions (tenant)"
       ]
     }
   ]

@@ -11,6 +11,53 @@ export type ColumnType =
 
 export type Prefecture = 'Florânia' | 'Tangará' | 'Parazinho'
 
+export interface ProjectParticipant {
+  id: string
+  projectId: string
+  userId: string
+  userName: string
+  userEmail?: string
+  userRole?: string
+  userAvatar?: string | null
+  tenantId: string
+  addedBy?: string
+  role?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CommentMention {
+  id: string
+  commentId: string
+  projectId: string
+  mentionedUserId: string
+  mentionedUserName?: string
+  authorId: string
+  tenantId: string
+  createdAt: string
+}
+
+export interface ProjectComment {
+  id: string
+  projectId: string
+  userId: string
+  authorName: string
+  authorRole?: string
+  authorAvatar?: string | null
+  content: string
+  parentId?: string | null
+  isEdited?: boolean
+  editedAt?: string | null
+  deleted?: boolean
+  deletedAt?: string | null
+  deletedBy?: string | null
+  tenantId: string
+  createdAt: string
+  updatedAt: string
+  replies?: ProjectComment[]
+  mentions?: CommentMention[]
+}
+
 export interface Project {
   id: string
   title: string
@@ -21,8 +68,10 @@ export interface Project {
   priority: Priority
   column: ColumnType
   prefeitura: string
+  tenantId?: string
   objeto?: string
   justificativa?: string
+  participants?: ProjectParticipant[]
   createdAt: string
   updatedAt: string
 }

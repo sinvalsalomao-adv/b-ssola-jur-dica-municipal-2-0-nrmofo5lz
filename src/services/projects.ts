@@ -40,6 +40,7 @@ export function normalizeProject(r: any): Project {
     prefeitura: r.expand?.tenant?.name || r.prefeitura || '',
     objeto: r.objeto || '',
     justificativa: r.justificativa || '',
+    tenantId: r.tenant || r.expand?.tenant?.id || '',
     createdAt: r.created || r.createdAt || new Date().toISOString(),
     updatedAt: r.updated || r.updatedAt || new Date().toISOString(),
   }
@@ -120,6 +121,15 @@ export const createAuditLog = async (data: {
     | 'Restaurou documento'
     | 'Visualizou documento'
     | 'Baixou documento'
+    | 'Adicionou participante'
+    | 'Removeu participante'
+    | 'Criou comentário'
+    | 'Editou comentário'
+    | 'Removeu comentário'
+    | 'Criou resposta'
+    | 'Editou resposta'
+    | 'Removeu resposta'
+    | 'Mencionou usuário'
     | string
   description: string
   projectTitle: string

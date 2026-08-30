@@ -29,21 +29,13 @@ export function getErrorMessage(error: unknown): string {
 }
 
 export function getSafeDiagnosticInfo(error: unknown) {
-  if (error instanceof ClientResponseError) {
-    return {
-      status: error.status,
-      method: (error.response as any)?.config?.method || 'GET',
-      endpoint: error.url,
-      requestId: (error.response as any)?.headers?.['x-request-id'] || '',
-      bodyStructureSummary: (error.response as any)?.data || {},
-    }
-  }
-  const errObj = (error || {}) as Record<string, any>
+  const errObj = typeof error === 'object' && error !== null ? (error as Record<string, any>) : {}
   return {
-    status: errObj.status || 500,
-    method: errObj.method || 'GET',
-    endpoint: errObj.url || '',
-    requestId: errObj.requestId || '',
-    bodyStructureSummary: errObj.request?.body || {},
+    status: errObj.status || errObj.statusCode || 0,
+    method: errObj.method || errObj.response?.config?.method || '',
+    endpoint: errObj.url || errObj.response?.url || '',
+    requestId: errObj.requestId || errObj.request_id || '',
+    message: getErrorMessage(error),
+    bodyStructureSummary: errObj.request?.body || errObj.body || null,
   }
 }

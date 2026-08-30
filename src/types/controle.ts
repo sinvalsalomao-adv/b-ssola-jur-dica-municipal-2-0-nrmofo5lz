@@ -1,6 +1,6 @@
 import { ColumnType } from '@/types/project'
 
-export type AlertType = 'Gargalo' | 'Prazo Fatal' | 'Aviso Interno'
+export type AlertType = 'Gargalo' | 'Prazo Fatal' | 'Aviso Interno' | 'Mencao'
 export type DeliveryStatus = 'enviada' | 'agendada' | 'cancelada'
 
 export interface NotificationItem {
@@ -26,6 +26,7 @@ export interface NotificationItem {
   videoUrl?: string
   parentNotification?: string
   recorrenciaAtiva?: boolean
+  targetUserId?: string
 }
 
 export interface CalendarEvent {
@@ -67,6 +68,15 @@ export type AuditActionType =
   | 'Restaurou documento'
   | 'Visualizou documento'
   | 'Baixou documento'
+  | 'Adicionou participante'
+  | 'Removeu participante'
+  | 'Criou comentário'
+  | 'Editou comentário'
+  | 'Removeu comentário'
+  | 'Criou resposta'
+  | 'Editou resposta'
+  | 'Removeu resposta'
+  | 'Mencionou usuário'
 
 export interface AuditLogEntry {
   id: string

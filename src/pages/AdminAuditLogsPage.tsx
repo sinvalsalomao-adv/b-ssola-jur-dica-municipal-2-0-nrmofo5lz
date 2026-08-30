@@ -15,6 +15,21 @@ const ACTION_CONFIG: Record<string, { color: string; bg: string }> = {
   'Criou card': { color: 'text-emerald-600', bg: 'bg-emerald-50' },
   'Moveu card': { color: 'text-amber-600', bg: 'bg-amber-50' },
   'Editou card': { color: 'text-violet-600', bg: 'bg-violet-50' },
+  'Adicionou documento': { color: 'text-blue-600', bg: 'bg-blue-50' },
+  'Nova versão documento': { color: 'text-violet-600', bg: 'bg-violet-50' },
+  'Arquivou documento': { color: 'text-amber-600', bg: 'bg-amber-50' },
+  'Restaurou documento': { color: 'text-emerald-600', bg: 'bg-emerald-50' },
+  'Visualizou documento': { color: 'text-sky-600', bg: 'bg-sky-50' },
+  'Baixou documento': { color: 'text-slate-600', bg: 'bg-slate-50' },
+  'Adicionou participante': { color: 'text-cyan-600', bg: 'bg-cyan-50' },
+  'Removeu participante': { color: 'text-rose-600', bg: 'bg-rose-50' },
+  'Criou comentário': { color: 'text-indigo-600', bg: 'bg-indigo-50' },
+  'Editou comentário': { color: 'text-violet-600', bg: 'bg-violet-50' },
+  'Removeu comentário': { color: 'text-rose-600', bg: 'bg-rose-50' },
+  'Criou resposta': { color: 'text-indigo-600', bg: 'bg-indigo-50' },
+  'Editou resposta': { color: 'text-violet-600', bg: 'bg-violet-50' },
+  'Removeu resposta': { color: 'text-rose-600', bg: 'bg-rose-50' },
+  'Mencionou usuário': { color: 'text-blue-600', bg: 'bg-blue-50' },
 }
 
 export default function AdminAuditLogsPage() {

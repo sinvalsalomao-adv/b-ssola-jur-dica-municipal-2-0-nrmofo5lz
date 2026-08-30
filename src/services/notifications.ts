@@ -16,6 +16,7 @@ function enrichNotification(r: any): NotificationItem {
     videoUrl: r.video_url || '',
     parentNotification: r.parent_notification || '',
     recorrenciaAtiva: r.recorrencia_ativa ?? true,
+    targetUserId: r.target_user || '',
   }
 }
 

@@ -115,6 +115,30 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     setIsSidePanelOpen(true)
   }
 
+  // Ouvir evento customizado para abrir projeto específico e opcionalmente selecionar aba
+  useEffect(() => {
+    const handleOpenProjectById = (e: any) => {
+      const { projectId, tab } = e.detail || {}
+      if (!projectId) return
+
+      const target = projects.find((p) => p.id === projectId)
+      if (target) {
+        setSelectedProject(target)
+        setIsSidePanelOpen(true)
+        if (tab) {
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('openProjectSidePanelTab', { detail: { tab } }))
+          }, 50)
+        }
+      }
+    }
+
+    window.addEventListener('openProjectById', handleOpenProjectById)
+    return () => {
+      window.removeEventListener('openProjectById', handleOpenProjectById)
+    }
+  }, [projects])
+
   const resolveTenantId = async (
     inputTenantId?: string,
     prefeituraName?: string,
