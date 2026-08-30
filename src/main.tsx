@@ -6,6 +6,7 @@ import { initGlobalErrorSanitizer } from '@/lib/globalErrorHandler'
 import { runSanitizerSecurityTests } from '@/lib/sanitizerSecurityTests'
 import { runDocumentModuleTests } from '@/services/documents.test'
 import { runCommentsAndParticipantsTests } from '@/services/comments.test'
+import { runMembershipModuleTests } from '@/services/memberships.test'
 
 // Ativa proteção central de sanitização de erros e logs de runtime
 initGlobalErrorSanitizer()
@@ -26,6 +27,10 @@ if (import.meta.env.DEV) {
       '[Comments] Comments and participants tests reported issues:',
       commentsTests.results,
     )
+  }
+  const membershipTests = runMembershipModuleTests()
+  if (!membershipTests.passed) {
+    console.warn('[Memberships] Membership tests reported issues:', membershipTests.results)
   }
 }
 

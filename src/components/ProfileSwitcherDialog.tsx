@@ -39,22 +39,59 @@ export function ProfileSwitcherDialog({ open, onOpenChange }: ProfileSwitcherDia
   useEffect(() => {
     if (!open) return
     setLoading(true)
-    pb.collection('users')
-      .getFullList({
+
+    // Buscar memberships ativas e usuários para permitir impersonação em qualquer município
+    Promise.all([
+      pb.collection('user_memberships').getFullList({
+        filter: 'status = "ativo"',
+        expand: 'user,tenant',
+        sort: 'user.name',
+      }),
+      pb.collection('users').getFullList({
         filter: 'status = "ativo" && role != "superadmin"',
         expand: 'tenant',
         sort: 'name',
-      })
-      .then((records) => {
-        setProfiles(
-          records.map((record: any) => ({
-            id: record.id,
-            name: record.name || record.email || 'Usuário',
-            email: record.email || '',
-            role: record.role || 'servidor',
-            prefeitura: record.expand?.tenant?.name || 'Sem prefeitura',
-          })),
-        )
+      }),
+    ])
+      .then(([memberships, userRecords]) => {
+        const profileList: ProfileOption[] = []
+        const seenKeys = new Set<string>()
+
+        // 1. Adicionar perfis a partir de user_memberships
+        memberships.forEach((m: any) => {
+          const u = m.expand?.user
+          const t = m.expand?.tenant
+          if (u && u.id && u.role !== 'superadmin') {
+            const key = `${u.id}_${t?.id || ''}`
+            if (!seenKeys.has(key)) {
+              seenKeys.add(key)
+              profileList.push({
+                id: u.id,
+                name: u.name || u.email || 'Usuário',
+                email: u.email || '',
+                role: m.role || u.role || 'servidor',
+                prefeitura: t?.name || 'Sem prefeitura',
+              })
+            }
+          }
+        })
+
+        // 2. Adicionar usuários diretos que ainda não estejam listados
+        userRecords.forEach((record: any) => {
+          const key = `${record.id}_${record.expand?.tenant?.id || ''}`
+          if (!seenKeys.has(key)) {
+            seenKeys.add(key)
+            profileList.push({
+              id: record.id,
+              name: record.name || record.email || 'Usuário',
+              email: record.email || '',
+              role: record.role || 'servidor',
+              prefeitura: record.expand?.tenant?.name || 'Sem prefeitura',
+            })
+          }
+        })
+
+        setProfiles(profileList)
       })
       .catch(() => toast.error('Não foi possível carregar os perfis.'))
       .finally(() => setLoading(false))

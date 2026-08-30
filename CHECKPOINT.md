@@ -103,3 +103,15 @@
   - Comportamento e permissões completas do Superadmin (acesso irrestrito global e capacidade de impersonar/gerenciar qualquer prefeitura).
   - Isolamento multi-tenant, regras de RLS e proteções de auditoria.
 - **Propósito:** Ponto de restauração antes de criar a coleção `user_memberships`, migrar os dados atuais de usuários para vínculos ativos, desacoplar papel e prefeitura da tabela `users`, e implementar o fluxo de login contextual e auto-cadastro público com aprovações.
+
+## Checkpoint 9: Ponto de Restauração — Conclusão do Auto-cadastro Público, Aprovações Pendentes e Criação Direta com Vínculos Ativos
+
+- **Data/Hora:** 2026-08-01
+- **Versão:** 0.0.55 (Avançando para v0.0.56)
+- **Módulos:** `App.tsx`, `PublicRegisterPage.tsx`, `TenantUsersManager.tsx`, `TenantUserCreateModal.tsx`, `CreateUserModal.tsx`, `memberships.ts`, `users.ts`, `AuthContext.tsx`, testes automatizados.
+- **Estado preservado:**
+  - Coleção `user_memberships` populada com migração 0021 e índices otimizados.
+  - Login multi-tenant com contexto e verificação de vínculo ativo.
+  - Poderes irrestritos do Superadmin (visão global, impersonação, gestão de prefeituras e configurações da plataforma).
+  - Regras de segurança inegociáveis: sem fallback de primeiro município (`tenants[0]`), menções com allowlist estrita `status === 'ativo'`, segredos mascarados e proteção contra auto-promoção de role.
+- **Propósito:** Ponto de restauração antes da conclusão das etapas 1, 2, 3 e 4 do modelo de Identidade Única com Vínculos Múltiplos (tela `/cadastro/:slug`, aba Aprovações Pendentes em `/usuarios` com ações de aprovar/rejeitar, criação direta com geração de vínculo ativo e suporte a e-mail global já existente, e garantia de poderes do Superadmin).

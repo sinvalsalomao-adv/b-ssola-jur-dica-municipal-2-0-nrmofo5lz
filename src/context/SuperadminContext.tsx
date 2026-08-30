@@ -171,15 +171,69 @@ export const SuperadminProvider: React.FC<{ children: ReactNode }> = ({ children
   const addGlobalUser: SuperadminContextType['addGlobalUser'] = async (data) => {
     const pwd = data.password || 'Skip@Pass'
     const tId = data.tenantId || prefeituras.find((p) => p.slug === data.prefeituraSlug)?.id || null
-    await pb.collection('users').create({
-      name: data.name,
-      email: data.email,
-      role: data.role,
-      status: data.status || 'ativo',
-      tenant: tId,
-      password: pwd,
-      passwordConfirm: pwd,
-    })
+    const cleanEmail = data.email.trim().toLowerCase()
+
+    // 1. Verificar se usuário com este e-mail já existe
+    let userRecord: any = null
+    try {
+      const existing = await pb.collection('users').getFullList({
+        filter: `email = "${cleanEmail}"`,
+      })
+      if (existing.length > 0) {
+        userRecord = existing[0]
+      }
+    } catch {
+      /* ignore */
+    }
+
+    if (!userRecord) {
+      userRecord = await pb.collection('users').create({
+        name: data.name,
+        email: cleanEmail,
+        role: data.role,
+        status: data.status || 'ativo',
+        tenant: tId,
+        password: pwd,
+        passwordConfirm: pwd,
+      })
+    } else {
+      // Se usuário já existia, atualizar nome se fornecido
+      if (data.name && data.name.trim()) {
+        try {
+          await pb.collection('users').update(userRecord.id, {
+            name: data.name.trim(),
+          })
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+
+    // 2. Se for selecionado um tenant, criar ou ativar o vínculo em user_memberships
+    if (tId) {
+      try {
+        const mems = await pb.collection('user_memberships').getFullList({
+          filter: `user = "${userRecord.id}" && tenant = "${tId}"`,
+        })
+        const membershipRole = data.role === 'superadmin' ? 'admin' : data.role || 'servidor'
+        if (mems.length > 0) {
+          await pb.collection('user_memberships').update(mems[0].id, {
+            role: membershipRole,
+            status: data.status === 'inativo' ? 'inativo' : 'ativo',
+          })
+        } else {
+          await pb.collection('user_memberships').create({
+            user: userRecord.id,
+            tenant: tId,
+            role: membershipRole,
+            status: data.status === 'inativo' ? 'inativo' : 'ativo',
+          })
+        }
+      } catch (err) {
+        console.error('Erro ao vincular membership no addGlobalUser:', err)
+      }
+    }
+
     await fetchUsers()
   }
 

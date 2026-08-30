@@ -103,7 +103,7 @@ export const CreateUserModal: React.FC<Props> = ({ open, onOpenChange }) => {
         password,
         tenantId,
       })
-      toast.success('Usuário criado com sucesso!')
+      toast.success('Usuário criado/vinculado com sucesso!')
       onOpenChange(false)
     } catch (err) {
       const fieldErrs = extractFieldErrors(err)

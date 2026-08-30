@@ -337,6 +337,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         isImpersonating,
         loading,
         login,
+        setTenantContext,
         switchProfile,
         restoreProfile,
         logout,

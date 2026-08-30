@@ -77,8 +77,15 @@ export default function PublicRegisterPage() {
     setLoading(true)
     setNotFound(false)
     setGeneralError('')
+    setOrg(null)
     getOrganizacaoBySlug(slug)
-      .then((data) => setOrg(data))
+      .then((data) => {
+        if (!data || !data.id) {
+          setNotFound(true)
+        } else {
+          setOrg(data)
+        }
+      })
       .catch((err: any) => {
         if (err?.status === 404) {
           setNotFound(true)
@@ -122,7 +129,7 @@ export default function PublicRegisterPage() {
       const cleanEmail = sanitizeInput(email.trim().toLowerCase())
       const cleanName = sanitizeInput(name.trim())
 
-      // 1. Verificar se o usuário global já existe
+      // 1. Verificar se o usuário global já existe pelo e-mail
       let userRecord: any = null
       try {
         const usersList = await pb.collection('users').getFullList({

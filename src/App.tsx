@@ -15,6 +15,7 @@ import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { MainLayout } from '@/components/MainLayout'
 import LoginPage from '@/pages/LoginPage'
 import OrgLoginPage from '@/pages/OrgLoginPage'
+import PublicRegisterPage from '@/pages/PublicRegisterPage'
 import Dashboard from '@/pages/Dashboard'
 
 import BussolaKanban from '@/pages/BussolaKanban'
@@ -42,6 +43,7 @@ const App = () => (
               <Routes>
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/login/:slug" element={<OrgLoginPage />} />
+                <Route path="/cadastro/:slug" element={<PublicRegisterPage />} />
                 <Route
                   element={
                     <ProtectedRoute>

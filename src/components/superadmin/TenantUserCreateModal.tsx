@@ -32,18 +32,22 @@ interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   onCreated: () => void
+  defaultTenantId?: string
 }
 
 const ROLES: { value: UserRole; label: string }[] = [
-  { value: 'admin', label: 'Admin' },
-  { value: 'servidor', label: 'Servidor' },
-  { value: 'gestor', label: 'Gestor' },
-  { value: 'secretario', label: 'Secretário' },
-  { value: 'procurador', label: 'Procurador' },
+  { value: 'admin', label: 'Admin (Administrador Local)' },
+  { value: 'servidor', label: 'Servidor Público' },
+  { value: 'gestor', label: 'Gestor de Contratos' },
+  { value: 'secretario', label: 'Secretário / Diretor' },
+  { value: 'procurador', label: 'Procurador / Jurídico' },
 ]
 
-export function TenantUserCreateModal({ open, onOpenChange, onCreated }: Props) {
+export function TenantUserCreateModal({ open, onOpenChange, onCreated, defaultTenantId }: Props) {
   const { user } = useAuth()
+  const isSuperadmin = user?.role === 'superadmin'
+  const [tenants, setTenants] = useState<{ id: string; name: string }[]>([])
+  const [selectedTenantId, setSelectedTenantId] = useState('')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<UserRole>('servidor')
@@ -51,6 +55,18 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated }: Props) 
   const [confirm, setConfirm] = useState('')
   const [errors, setErrors] = useState<FieldErrors>({})
   const [submitting, setSubmitting] = useState(false)
+
+  // Carregar lista de prefeituras se for superadmin
+  useEffect(() => {
+    if (open && isSuperadmin) {
+      pb.collection('tenants')
+        .getFullList({ filter: 'status = "ativa"', sort: 'name' })
+        .then((records) => {
+          setTenants(records.map((r: any) => ({ id: r.id, name: r.name })))
+        })
+        .catch(() => {})
+    }
+  }, [open, isSuperadmin])
 
   useEffect(() => {
     if (open) {
@@ -60,14 +76,21 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated }: Props) 
       setPassword('')
       setConfirm('')
       setErrors({})
+      const initialTenant = defaultTenantId || user?.tenantId || ''
+      setSelectedTenantId(initialTenant)
     }
-  }, [open])
+  }, [open, defaultTenantId, user?.tenantId])
 
   const validate = () => {
     const e: FieldErrors = {}
     if (!name.trim()) e.name = 'Nome é obrigatório.'
     if (!email.trim()) e.email = 'Email é obrigatório.'
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = 'Email inválido.'
+
+    if (!selectedTenantId) {
+      e.tenant = 'O município/prefeitura é obrigatório.'
+    }
+
     if (!password) {
       e.password = 'Senha é obrigatória.'
     } else {
@@ -83,19 +106,58 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated }: Props) 
 
   const handleSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault()
-    if (!validate() || !user?.tenantId) return
+    if (!validate() || !selectedTenantId) return
     setSubmitting(true)
     try {
-      await pb.collection('users').create({
-        name: sanitizeInput(name.trim()),
-        email: sanitizeInput(email.trim()),
-        role,
-        status: 'ativo',
-        tenant: user.tenantId,
-        password,
-        passwordConfirm: confirm,
+      const cleanEmail = sanitizeInput(email.trim().toLowerCase())
+      const cleanName = sanitizeInput(name.trim())
+
+      // 1. Verificar se usuário global com este e-mail já existe
+      let userRecord: any = null
+      try {
+        const usersList = await pb.collection('users').getFullList({
+          filter: `email = "${cleanEmail}"`,
+        })
+        if (usersList.length > 0) {
+          userRecord = usersList[0]
+        }
+      } catch {
+        /* ignore */
+      }
+
+      // 2. Se não existir, criar a conta global do usuário
+      if (!userRecord) {
+        userRecord = await pb.collection('users').create({
+          name: cleanName,
+          email: cleanEmail,
+          password: password,
+          passwordConfirm: confirm,
+          role: role,
+          status: 'ativo',
+          tenant: selectedTenantId,
+        })
+      }
+
+      // 3. Gerar automaticamente vínculo 'ativo' no município selecionado
+      const existingMems = await pb.collection('user_memberships').getFullList({
+        filter: `user = "${userRecord.id}" && tenant = "${selectedTenantId}"`,
       })
-      toast.success('Usuário criado com sucesso!')
+
+      if (existingMems.length > 0) {
+        await pb.collection('user_memberships').update(existingMems[0].id, {
+          role: role,
+          status: 'ativo',
+        })
+      } else {
+        await pb.collection('user_memberships').create({
+          user: userRecord.id,
+          tenant: selectedTenantId,
+          role: role,
+          status: 'ativo',
+        })
+      }
+
+      toast.success('Usuário vinculado e ativado com sucesso!')
       onOpenChange(false)
       onCreated()
     } catch (err) {
@@ -118,8 +180,34 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated }: Props) 
           <DialogTitle className="text-lg font-bold text-[#1c2a3e]">Criar Usuário</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3 py-1">
+          {/* Campo Município / Prefeitura */}
           <div>
-            <Label className="text-xs font-semibold text-gray-700">Nome *</Label>
+            <Label className="text-xs font-semibold text-gray-700">Município / Prefeitura *</Label>
+            {isSuperadmin ? (
+              <Select value={selectedTenantId} onValueChange={setSelectedTenantId}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Selecione o município..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {tenants.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input
+                value={user?.prefeitura || 'Município atual'}
+                disabled
+                className="mt-1 bg-slate-50 text-gray-600 cursor-not-allowed"
+              />
+            )}
+            {errors.tenant && <p className="text-xs text-red-500 mt-1">{errors.tenant}</p>}
+          </div>
+
+          <div>
+            <Label className="text-xs font-semibold text-gray-700">Nome Completo *</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1" />
             {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name}</p>}
           </div>
