@@ -128,24 +128,125 @@ export function runCommentsAndParticipantsTests(): CommentsModuleTestResult {
     )
   })
 
-  // 3. Bloquear menção a usuário sem acesso/inativo ou de outro tenant
-  test('Deve bloquear e filtrar menções a usuários inativos ou pertencentes a outro tenant', () => {
+  // 3. Bloquear menção a usuário sem acesso/inativo, sem tenant ou de outro tenant
+  test('Deve bloquear e filtrar menções a usuários sem tenant, inativos ou pertencentes a outro tenant', () => {
     const currentTenant = 'tenant_florania'
     const systemUsers = [
       { id: 'u1', name: 'Maria Servidora', tenant: 'tenant_florania', status: 'ativo' },
       { id: 'u2', name: 'João Inativo', tenant: 'tenant_florania', status: 'inativo' },
       { id: 'u3', name: 'Pedro Outro Município', tenant: 'tenant_tangara', status: 'ativo' },
+      { id: 'u4', name: 'Superadmin Sem Tenant', tenant: '', status: 'ativo' },
+      { id: 'u5', name: 'Superadmin Null Tenant', tenant: null as any, status: 'ativo' },
+      { id: 'u6', name: 'Superadmin Undefined Tenant', tenant: undefined as any, status: 'ativo' },
     ]
 
-    const eligibleUsers = systemUsers.filter(
-      (u) => u.tenant === currentTenant && u.status === 'ativo',
-    )
+    function validateMentionSecurity(
+      user:
+        | { id?: string; name?: string; tenant?: string | null; status?: string }
+        | null
+        | undefined,
+      targetTenantId: string,
+    ): boolean {
+      if (!user || !user.id) return false
+      if (user.status === 'inativo') return false
+      if (!user.tenant || typeof user.tenant !== 'string' || user.tenant.trim() === '') return false
+      return user.tenant === targetTenantId
+    }
+
+    // Validações individuais dos cenários obrigatórios
+    const isSameTenantActiveAllowed = validateMentionSecurity(systemUsers[0], currentTenant)
+    const isInactiveBlocked = !validateMentionSecurity(systemUsers[1], currentTenant)
+    const isOtherTenantBlocked = !validateMentionSecurity(systemUsers[2], currentTenant)
+    const isNoTenantBlocked = !validateMentionSecurity(systemUsers[3], currentTenant)
+    const isNullTenantBlocked = !validateMentionSecurity(systemUsers[4], currentTenant)
+    const isUndefinedTenantBlocked = !validateMentionSecurity(systemUsers[5], currentTenant)
+    const isNonExistentBlocked = !validateMentionSecurity(null, currentTenant)
+
+    const eligibleUsers = systemUsers.filter((u) => validateMentionSecurity(u, currentTenant))
 
     return (
+      isSameTenantActiveAllowed &&
+      isInactiveBlocked &&
+      isOtherTenantBlocked &&
+      isNoTenantBlocked &&
+      isNullTenantBlocked &&
+      isUndefinedTenantBlocked &&
+      isNonExistentBlocked &&
       eligibleUsers.length === 1 &&
       eligibleUsers[0].id === 'u1' &&
       !eligibleUsers.some((u) => u.id === 'u2') &&
-      !eligibleUsers.some((u) => u.id === 'u3')
+      !eligibleUsers.some((u) => u.id === 'u3') &&
+      !eligibleUsers.some((u) => u.id === 'u4') &&
+      !eligibleUsers.some((u) => u.id === 'u5') &&
+      !eligibleUsers.some((u) => u.id === 'u6')
+    )
+  })
+
+  // 3.1 Testes obrigatórios adicionais para comentários e respostas com menções válidas e inválidas
+  test('Deve validar menções em comentários principais e respostas (permitir válida e rejeitar inválida)', () => {
+    const projectTenant = 'tenant_florania'
+    const validUser = {
+      id: 'u_valido',
+      name: 'Servidor Florânia',
+      tenant: 'tenant_florania',
+      status: 'ativo',
+    }
+    const noTenantUser = { id: 'u_super', name: 'Superadmin Global', tenant: '', status: 'ativo' }
+    const otherTenantUser = {
+      id: 'u_outro',
+      name: 'Servidor Tangará',
+      tenant: 'tenant_tangara',
+      status: 'ativo',
+    }
+    const inactiveUser = {
+      id: 'u_inativo',
+      name: 'Servidor Inativo',
+      tenant: 'tenant_florania',
+      status: 'inativo',
+    }
+
+    function filterValidMentions(
+      mentionedIds: string[],
+      usersDb: Array<{ id: string; name: string; tenant: string | null; status: string }>,
+      tenantId: string,
+    ): string[] {
+      return mentionedIds.filter((id) => {
+        const u = usersDb.find((item) => item.id === id)
+        if (!u) return false
+        if (u.status === 'inativo') return false
+        if (!u.tenant || u.tenant !== tenantId) return false
+        return true
+      })
+    }
+
+    const allDbUsers = [validUser, noTenantUser, otherTenantUser, inactiveUser]
+
+    // Comentário sem menção: permitido
+    const commentWithoutMentions: string[] = []
+    const validNoMentions = filterValidMentions(commentWithoutMentions, allDbUsers, projectTenant)
+
+    // Comentário ou resposta com menção válida
+    const replyWithValidMention = [validUser.id]
+    const filteredValidReply = filterValidMentions(replyWithValidMention, allDbUsers, projectTenant)
+
+    // Comentário ou resposta com menções inválidas (sem tenant, outro tenant, inativo, inexistente)
+    const replyWithInvalidMentions = [
+      noTenantUser.id,
+      otherTenantUser.id,
+      inactiveUser.id,
+      'u_fantasma',
+    ]
+    const filteredInvalidReply = filterValidMentions(
+      replyWithInvalidMentions,
+      allDbUsers,
+      projectTenant,
+    )
+
+    return (
+      validNoMentions.length === 0 &&
+      filteredValidReply.length === 1 &&
+      filteredValidReply[0] === validUser.id &&
+      filteredInvalidReply.length === 0
     )
   })
 

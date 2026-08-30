@@ -64,3 +64,20 @@
      - `mask_settings_secrets.js` enriquecido para mascarar `ai_api_key` em `tenant_settings` e `platform_settings`.
      - Preservação de segredos no update quando máscara é submetida.
      - UI da plataforma e configurações de tenant não retêm chaves em claro no estado do cliente.
+
+## Checkpoint 6: Ponto de Restauração — Correção de Segurança em Menções Multi-Tenant v0.0.52
+
+- **Data/Hora:** 2025-05-23
+- **Versão:** 0.0.52
+- **Módulos:** `src/services/comments.ts`, `pocketbase/hooks/mention_security_guard.js`, `src/components/ProjectSidePanel.tsx`, `src/components/ProjectCommentsSection.tsx`, `src/services/comments.test.ts`
+- **Estado preservado:**
+  - Login `/login/:slug`, kanban, DFDs, documentos, comentários/menções/participantes, histórico, 3 perfis (superadmin, admin, servidor)
+  - Integridade de todas as coleções existentes (`project_comments`, `comment_mentions`, `users`, `project_participants`, `notifications`, `audit_logs`, `checklists`, `documents`, `projects`, `tenants`)
+  - Threading em 1 nível, soft delete, edição, notificações internas e logs de auditoria intactos
+  - Menções e comentários antigos já salvos preservados sem alterações ou deleções
+- **Correção de segurança aplicada:**
+  1. Proibição de menção a usuários sem tenant ou de tenant divergente:
+     - Validação estrita: `targetUser.tenant && targetUser.tenant === data.tenantId`
+     - Usuário sem tenant, de outro município/tenant, inativo ou inexistente é rejeitado tanto na camada de frontend quanto no serviço e backend hook.
+     - Superadmin sem tenant pode comentar quando autorizado mas não pode ser mencionado sem tenant correspondente.
+     - Sugestões de menção restritas a usuários ativos do tenant do projeto.

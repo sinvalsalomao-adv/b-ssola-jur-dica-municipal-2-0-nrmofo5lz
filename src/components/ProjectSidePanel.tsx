@@ -36,7 +36,7 @@ import {
   CheckSquare,
   FileText,
 } from 'lucide-react'
-import { getUsers } from '@/services/users'
+import { getUsers, getUsersByTenant } from '@/services/users'
 import { getAuditLogsByProjectTitle } from '@/services/projects'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
@@ -96,21 +96,30 @@ export const ProjectSidePanel: React.FC = () => {
 
   useEffect(() => {
     if (isSidePanelOpen) {
-      getUsers()
+      const effectiveTenant = selectedProject?.tenantId || user?.tenantId
+      const fetchUsersPromise = effectiveTenant
+        ? getUsersByTenant(effectiveTenant)
+        : isSuperadmin
+          ? getUsers()
+          : Promise.resolve([])
+
+      fetchUsersPromise
         .then((data) =>
           setUsers(
-            data.map((u) => ({
-              id: u.id,
-              name: u.name,
-              email: u.email,
-              role: u.role,
-              status: u.status,
-            })),
+            data
+              .filter((u) => u.status !== 'inativo')
+              .map((u) => ({
+                id: u.id,
+                name: u.name,
+                email: u.email,
+                role: u.role,
+                status: u.status,
+              })),
           ),
         )
         .catch(() => {})
     }
-  }, [isSidePanelOpen])
+  }, [isSidePanelOpen, selectedProject?.tenantId, user?.tenantId, isSuperadmin])
 
   useEffect(() => {
     if (selectedProject) {

@@ -154,10 +154,12 @@ export const createProjectComment = async (data: {
     if (!mentionedId || mentionedId === data.userId) continue
 
     try {
-      // Validar se o usuário mencionado pertence ao mesmo tenant e está ativo
+      // Validar se o usuário mencionado existe, está ativo e possui tenant estritamente igual ao do projeto
       const targetUser = await pb.collection('users').getOne(mentionedId)
-      const belongsToTenant = !targetUser.tenant || targetUser.tenant === data.tenantId
-      if (targetUser && targetUser.status !== 'inativo' && belongsToTenant) {
+      const hasValidTenant = !!targetUser?.tenant && targetUser.tenant === data.tenantId
+      const isUserActive = targetUser && targetUser.status !== 'inativo'
+
+      if (targetUser && isUserActive && hasValidTenant) {
         const mentionRecord = await pb.collection('comment_mentions').create(
           {
             comment_id: commentRecord.id,
@@ -195,6 +197,10 @@ export const createProjectComment = async (data: {
           projectTitle: data.projectTitle,
           tenantId: data.tenantId,
         })
+      } else {
+        console.warn(
+          `Menção ignorada por política de segurança: usuário ${mentionedId} sem tenant, de outro município ou inativo.`,
+        )
       }
     } catch (mErr) {
       console.error('Erro ao processar menção:', mErr)
