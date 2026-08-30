@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-26T19:56:37.230Z",
+  "generatedAt": "2026-08-30T00:06:38.233Z",
   "collections": [
     {
       "name": "users",
@@ -1408,6 +1408,148 @@
         "CREATE INDEX idx_notification_reads_tenant ON notification_reads (tenant)",
         "CREATE INDEX idx_notification_reads_user ON notification_reads (user)",
         "CREATE INDEX idx_notification_reads_notif ON notification_reads (notification)"
+      ]
+    },
+    {
+      "name": "checklists",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "view": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "create": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "update": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "delete": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')"
+      },
+      "fields": [
+        {
+          "name": "titulo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "projeto_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "projects"
+        },
+        {
+          "name": "tenant",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "tenants"
+        },
+        {
+          "name": "ordem",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_checklists_projeto ON checklists (projeto_id)",
+        "CREATE INDEX idx_checklists_tenant ON checklists (tenant)"
+      ]
+    },
+    {
+      "name": "checklist_items",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "view": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "create": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "update": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "delete": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')"
+      },
+      "fields": [
+        {
+          "name": "texto",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "concluido",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "checklist_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "checklists"
+        },
+        {
+          "name": "projeto_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "projects"
+        },
+        {
+          "name": "responsible_user",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "prazo",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ordem",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tenant",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "tenants"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_checklist_items_checklist ON checklist_items (checklist_id)",
+        "CREATE INDEX idx_checklist_items_projeto ON checklist_items (projeto_id)",
+        "CREATE INDEX idx_checklist_items_tenant ON checklist_items (tenant)",
+        "CREATE INDEX idx_checklist_items_responsible ON checklist_items (responsible_user)"
       ]
     }
   ]

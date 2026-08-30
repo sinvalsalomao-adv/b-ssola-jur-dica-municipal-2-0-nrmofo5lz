@@ -27,6 +27,32 @@ export interface Project {
   updatedAt: string
 }
 
+export interface ChecklistItem {
+  id: string
+  checklistId: string
+  projetoId: string
+  texto: string
+  concluido: boolean
+  responsibleUserId?: string
+  responsibleUserName?: string
+  prazo?: string
+  ordem: number
+  tenantId: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Checklist {
+  id: string
+  titulo: string
+  projetoId: string
+  tenantId: string
+  ordem: number
+  items: ChecklistItem[]
+  createdAt: string
+  updatedAt: string
+}
+
 export const COLUMNS: ColumnType[] = [
   'Ideação',
   'Projeto Executivo',

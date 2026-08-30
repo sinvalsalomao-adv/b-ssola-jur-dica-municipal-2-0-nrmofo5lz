@@ -33,12 +33,14 @@ import {
   Loader2,
   History,
   Clock,
+  CheckSquare,
 } from 'lucide-react'
 import { getUsers } from '@/services/users'
 import { getAuditLogsByProjectTitle } from '@/services/projects'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { formatDate, normalizeDateForInput } from '@/lib/dateUtils'
+import { ProjectChecklistSection } from '@/components/ProjectChecklistSection'
 
 interface AuditEntry {
   id: string
@@ -61,7 +63,7 @@ export const ProjectSidePanel: React.FC = () => {
   const { user } = useAuth()
   const isSuperadmin = user?.role === 'superadmin'
 
-  const [activeTab, setActiveTab] = useState<'details' | 'history'>('details')
+  const [activeTab, setActiveTab] = useState<'details' | 'checklist' | 'history'>('details')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [responsibleUserId, setResponsibleUserId] = useState('')
@@ -191,10 +193,17 @@ export const ProjectSidePanel: React.FC = () => {
             </SheetDescription>
           </SheetHeader>
 
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'details' | 'history')}>
-            <TabsList className="grid grid-cols-2 mb-4">
+          <Tabs
+            value={activeTab}
+            onValueChange={(v) => setActiveTab(v as 'details' | 'checklist' | 'history')}
+          >
+            <TabsList className="grid grid-cols-3 mb-4">
               <TabsTrigger value="details" className="text-xs">
                 Detalhes
+              </TabsTrigger>
+              <TabsTrigger value="checklist" className="text-xs flex items-center gap-1.5">
+                <CheckSquare className="w-3.5 h-3.5" />
+                Checklist
               </TabsTrigger>
               <TabsTrigger value="history" className="text-xs flex items-center gap-1.5">
                 <History className="w-3.5 h-3.5" />
@@ -326,6 +335,14 @@ export const ProjectSidePanel: React.FC = () => {
               <div className="pt-1 text-[11px] text-gray-400">
                 Última atualização: {formattedUpdated}
               </div>
+            </TabsContent>
+
+            <TabsContent value="checklist" className="space-y-4">
+              <ProjectChecklistSection
+                project={selectedProject}
+                users={users}
+                onHistoryUpdate={() => loadHistory(title.trim() || selectedProject.title)}
+              />
             </TabsContent>
 
             <TabsContent value="history" className="space-y-3">
