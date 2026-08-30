@@ -3,14 +3,43 @@
 // Payload: { slug, name, email, password, passwordConfirm, role }
 // Behavior:
 // 1. Resolves tenant on server by active slug.
-// 2. Checks rate limit for IP.
+// 2. Rate limit checked by rate_limiter middleware and inline store.
 // 3. Validates password strength & required fields.
 // 4. Handles existing global user vs new user. If user exists, validates credentials or requires invitation/login.
 // 5. Always sets membership role='servidor' (or requested non-admin role) and status='pendente'.
 // 6. Generic response preventing email enumeration / user discovery.
 
 routerAdd('POST', '/backend/v1/auth/register-public', (e) => {
-  const body = e.requestInfo().body || {}
+  const req = e.requestInfo()
+  const ip = req.remoteIP || 'unknown_ip'
+  const cache = $app.store()
+  const now = Date.now()
+
+  // Rate limiting check por IP e identificador normalizado
+  const rateKey = 'reg_lim_' + ip
+  const blockKey = 'reg_blk_' + ip
+  if (cache.has(blockKey)) {
+    return e.json(429, {
+      code: 429,
+      message: 'Muitas solicitações de cadastro. Por favor, tente novamente em alguns minutos.',
+    })
+  }
+
+  let reqCount = 0
+  if (cache.has(rateKey)) {
+    reqCount = Number(cache.get(rateKey)) || 0
+  }
+  if (reqCount >= 5) {
+    cache.set(blockKey, now, 600)
+    cache.remove(rateKey)
+    return e.json(429, {
+      code: 429,
+      message: 'Muitas solicitações de cadastro. Por favor, tente novamente em alguns minutos.',
+    })
+  }
+  cache.set(rateKey, reqCount + 1, 600)
+
+  const body = req.body || {}
   const slug = (body.slug || '').trim()
   const name = (body.name || '').trim()
   const email = (body.email || '').trim().toLowerCase()
@@ -73,7 +102,7 @@ routerAdd('POST', '/backend/v1/auth/register-public', (e) => {
     // Se o usuário já existe, verificar se a senha enviada confere com a conta existente
     // Para evitar sequestro de conta por quem apenas conhece o email
     if (!existingUser.validatePassword(password)) {
-      // Retornar erro genérico / seguro orientando login
+      // Retornar mensagem segura sem vazar detalhes estruturais
       return e.json(400, {
         code: 400,
         message:

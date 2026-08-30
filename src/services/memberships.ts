@@ -208,3 +208,21 @@ export async function registerPublicUser(payload: {
     headers: { 'Content-Type': 'application/json' },
   })
 }
+
+/**
+ * Criação e vinculação transacional segura de usuário por Admin local ou Superadmin
+ */
+export async function createTenantUserSecure(payload: {
+  name: string
+  email: string
+  tenant: string
+  role: UserRole
+  password?: string
+  passwordConfirm?: string
+}): Promise<{ success: boolean; message: string; user?: any; membership?: any }> {
+  return await pb.send('/backend/v1/tenant-users/create', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+  })
+}

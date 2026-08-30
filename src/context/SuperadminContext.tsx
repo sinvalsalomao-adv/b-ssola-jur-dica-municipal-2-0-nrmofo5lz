@@ -169,7 +169,6 @@ export const SuperadminProvider: React.FC<{ children: ReactNode }> = ({ children
   }
 
   const addGlobalUser: SuperadminContextType['addGlobalUser'] = async (data) => {
-    const pwd = data.password || 'Skip@Pass'
     const tId = data.tenantId || prefeituras.find((p) => p.slug === data.prefeituraSlug)?.id || null
     const cleanEmail = data.email.trim().toLowerCase()
 
@@ -187,6 +186,10 @@ export const SuperadminProvider: React.FC<{ children: ReactNode }> = ({ children
     }
 
     if (!userRecord) {
+      const pwd = data.password
+      if (!pwd) {
+        throw new Error('Senha é obrigatória para cadastrar um novo usuário.')
+      }
       userRecord = await pb.collection('users').create({
         name: data.name,
         email: cleanEmail,

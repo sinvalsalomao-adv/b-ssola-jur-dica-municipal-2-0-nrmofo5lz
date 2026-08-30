@@ -1,4 +1,4 @@
-// Rate limiting middleware for authentication and sensitive record creation
+// Rate limiting middleware for authentication, public registration, and sensitive record creation
 routerUse((e) => {
   const req = e.requestInfo()
   const path = req.url ? req.url.path : ''
@@ -70,7 +70,40 @@ routerUse((e) => {
     return
   }
 
-  // 2. Rate limiting on creation of sensitive records (DFDs, projects, notifications)
+  // 2. Rate limiting on public auto-registration (/backend/v1/auth/register-public)
+  // Max 5 registrations per IP per 10 minutes (600 seconds)
+  if (path.includes('/backend/v1/auth/register-public') && method === 'POST') {
+    const key = 'rate_reg_' + ip
+    const blockKey = 'rate_reg_blocked_' + ip
+
+    if (cache.has(blockKey)) {
+      return e.json(429, {
+        code: 429,
+        message:
+          'Muitas tentativas de cadastro a partir deste endereço. Por favor, tente novamente mais tarde.',
+      })
+    }
+
+    let attempts = 0
+    if (cache.has(key)) {
+      attempts = Number(cache.get(key)) || 0
+    }
+
+    if (attempts >= 5) {
+      cache.set(blockKey, now, 600)
+      cache.remove(key)
+      return e.json(429, {
+        code: 429,
+        message:
+          'Muitas tentativas de cadastro a partir deste endereço. Por favor, tente novamente mais tarde.',
+      })
+    }
+
+    cache.set(key, attempts + 1, 600)
+    return e.next()
+  }
+
+  // 3. Rate limiting on creation of sensitive records (DFDs, projects, notifications)
   // Max 30 requests per minute per authenticated user
   const isSensitiveCreate =
     method === 'POST' &&

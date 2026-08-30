@@ -19,83 +19,45 @@ onRecordUpdateRequest((e) => {
   const targetId = record.id
   const isSelf = authId === targetId
 
-  // 1. Superadmin pode atualizar qualquer usuário (exceto auto-rebaixar role se não quiser)
+  // 1. Superadmin pode atualizar qualquer usuário
   if (authRole === 'superadmin') {
     return e.next()
   }
 
-  // 2. Autoatualização (usuário comum atualizando o próprio perfil)
-  if (isSelf) {
-    // Proibir alteração de campos privilegiados / estruturais
-    if (body.role !== undefined && body.role !== null && body.role !== record.getString('role')) {
-      return e.json(403, {
-        code: 403,
-        message: 'Você não tem permissão para alterar o seu próprio papel de acesso.',
-      })
-    }
-    if (
-      body.tenant !== undefined &&
-      body.tenant !== null &&
-      body.tenant !== record.getString('tenant')
-    ) {
-      return e.json(403, {
-        code: 403,
-        message: 'Você não tem permissão para alterar o seu município associado.',
-      })
-    }
-    if (
-      body.status !== undefined &&
-      body.status !== null &&
-      body.status !== record.getString('status')
-    ) {
-      return e.json(403, {
-        code: 403,
-        message: 'Você não tem permissão para alterar seu próprio status de conta.',
-      })
-    }
-    return e.next()
-  }
-
-  // 3. Admin atualizando outro usuário:
-  // Verificar se o autenticado é admin ativo em algum tenant compartilhado com o target user
-  let isAuthorizedAdmin = false
-  try {
-    const adminMemberships = $app.findRecordsByFilter(
-      'user_memberships',
-      "user = '" + authId + "' && role = 'admin' && status = 'ativo'",
-      '',
-      0,
-      0,
-    )
-    for (let i = 0; i < adminMemberships.length; i++) {
-      const tId = adminMemberships[i].getString('tenant')
-      // Checar se o target tem vínculo nesse tenant
-      const targetMems = $app.findRecordsByFilter(
-        'user_memberships',
-        "user = '" + targetId + "' && tenant = '" + tId + "'",
-        '',
-        1,
-        0,
-      )
-      if (targetMems.length > 0) {
-        isAuthorizedAdmin = true
-        break
-      }
-    }
-  } catch (_) {}
-
-  if (!isAuthorizedAdmin) {
+  // 2. Bloqueio para qualquer usuário não-superadmin atualizar terceiros diretamente
+  if (!isSelf) {
     return e.json(403, {
       code: 403,
-      message: 'Você não tem permissão para atualizar usuários fora da sua prefeitura.',
+      message: 'Você não tem permissão para alterar dados de outros usuários diretamente.',
     })
   }
 
-  // Admin local não pode promover ninguém para superadmin
-  if (body.role === 'superadmin') {
+  // 3. Autoatualização (usuário comum atualizando o próprio perfil)
+  // Proibir expressamente alteração de campos privilegiados / estruturais
+  if (body.role !== undefined && body.role !== null && body.role !== record.getString('role')) {
     return e.json(403, {
       code: 403,
-      message: 'Apenas superadministradores podem definir perfis superadmin.',
+      message: 'Você não tem permissão para alterar o seu próprio papel de acesso.',
+    })
+  }
+  if (
+    body.tenant !== undefined &&
+    body.tenant !== null &&
+    body.tenant !== record.getString('tenant')
+  ) {
+    return e.json(403, {
+      code: 403,
+      message: 'Você não tem permissão para alterar o seu município associado.',
+    })
+  }
+  if (
+    body.status !== undefined &&
+    body.status !== null &&
+    body.status !== record.getString('status')
+  ) {
+    return e.json(403, {
+      code: 403,
+      message: 'Você não tem permissão para alterar seu próprio status de conta.',
     })
   }
 
@@ -110,7 +72,6 @@ onRecordCreateRequest((e) => {
   }
 
   const authRole = auth.getString('role')
-  const body = e.requestInfo().body || {}
 
   // Apenas superadmin pode criar usuários diretamente via REST na coleção users
   if (authRole !== 'superadmin') {
@@ -134,7 +95,6 @@ onRecordCreateRequest((e) => {
   const authId = auth.id
   const body = e.requestInfo().body || {}
   const targetTenant = body.tenant
-  const targetUser = body.user
 
   if (authRole === 'superadmin') {
     return e.next()
@@ -171,7 +131,6 @@ onRecordCreateRequest((e) => {
     })
   }
 
-  // Se for criação do próprio vínculo pelo admin, não permitir se auto-aprovar se não for admin autorizado
   return e.next()
 }, 'user_memberships')
 
@@ -231,9 +190,12 @@ onRecordUpdateRequest((e) => {
     })
   }
 
-  // Admin não pode se auto-promover para roles inexistentes ou alterar seu próprio status se for o único admin
-  if (isSelf && body.status && body.status !== 'ativo') {
-    // Bloquear auto-desativação acidental se necessário ou permitir apenas se seguro
+  // Admin local não pode se auto-promover ou alterar o próprio status para inativo/rejeitado
+  if (isSelf && body.status && body.status !== record.getString('status')) {
+    return e.json(403, {
+      code: 403,
+      message: 'Você não pode alterar o status do seu próprio vínculo.',
+    })
   }
 
   return e.next()

@@ -132,3 +132,20 @@
   - ALT-2: Correção do script de teste no `package.json` removendo `2>/dev/null` e `|| echo "Tests validated"`, garantindo exit code != 0 em falhas.
   - ALT-3: Remoção de senha fixa `Skip@Pass` em `create_tenant.js` (geração criptográfica segura por `$security.randomString`).
   - ALT-4: Remoção de retorno de senha em texto claro em `activate_invitation.js`.
+
+## Checkpoint 11: Ponto de Restauração — Correção de Segurança Residual da Auditoria v0.0.57
+
+- **Data/Hora:** 2026-09-01
+- **Versão:** 0.0.57 (Avançando para v0.0.58)
+- **Módulos:** Regras RLS (`users`, `user_memberships`), Migration 0023, Hooks (`user_security_guard.js`, `tenant_user_create.js`, `public_register.js`, `rate_limiter.js`), `TenantUserCreateModal.tsx`, `SuperadminContext.tsx`, `memberships.ts`, testes de integração HTTP reais.
+- **Estado preservado:**
+  - Preservação estrita de todos os dados existentes: `users`, `user_memberships`, `tenants`, `projects`, `dfds`, `documents`, `audit_logs`, `notifications`, `document_templates`, `checklists`, `agenda_events`, `frases_salvas` etc.
+  - Migrações 0001 a 0022 aplicadas e inalteradas.
+  - Zero exposição de segredos, senhas e PII em logs e respostas de API.
+- **Achados da Auditoria v0.0.57 corrigidos:**
+  1. CRÍTICO: Remoção da condição tautológica em `users` (`@collection.user_memberships.tenant ?= @collection.user_memberships.tenant`). Isolamento estrito de `users` no banco (acesso direto restrito ao Superadmin e ao próprio usuário; admins e servidores acessam via memberships expandidas ou endpoints autorizados no backend).
+  2. ALTO: Criação de endpoint backend transacional seguro (`/backend/v1/tenant-users/create`) para Admin local criar/vincular usuários com tenant derivado e validado no servidor, sem reabrir `users.createRule` e sem vazamento de senhas.
+  3. ALTO: Remoção COMPLETA de senhas fixas e fallbacks (`Skip@Pass`, fallbacks em `SuperadminContext.addGlobalUser`), exigindo senha explícita que passa por política de segurança ou geração criptográfica segura.
+  4. MÉDIO: Bloqueio estrito no hook `user_security_guard.js` impedindo alteração direta do campo `tenant` e de `role`/`status` de usuários por terceiros.
+  5. MÉDIO: Implementação de Rate Limiting real e persistente no `$app.store()` para `/backend/v1/auth/register-public`.
+  6. MÉDIO: Testes de segurança e integração via chamadas HTTP reais contra regras, endpoints e isolamento multi-tenant do PocketBase.

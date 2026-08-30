@@ -63,18 +63,14 @@ export const NewPrefeituraModal: React.FC<Props> = ({ open, onOpenChange }) => {
       adminName: cleanAdminName,
       cidade: '',
       estado: '',
-    }).then(() => {
-      addGlobalUser({
-        name: cleanAdminName,
-        email: `admin@${prefSlug}.gov.br`,
-        prefeituraName: prefName,
-        prefeituraSlug: prefSlug,
-        role: 'admin',
-        status: 'ativo',
-      })
-      toast.success(`Prefeitura "${prefName}" criada com sucesso!`)
-      onOpenChange(false)
     })
+      .then(() => {
+        toast.success(`Prefeitura "${prefName}" criada com sucesso!`)
+        onOpenChange(false)
+      })
+      .catch((err: any) => {
+        toast.error(err?.message || 'Erro ao criar prefeitura.')
+      })
   }
 
   return (

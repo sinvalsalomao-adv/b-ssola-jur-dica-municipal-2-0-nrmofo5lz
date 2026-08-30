@@ -27,6 +27,7 @@ import {
   validatePasswordStrength,
 } from '@/components/PasswordStrengthIndicator'
 import { sanitizeInput } from '@/lib/sanitize'
+import { createTenantUserSecure } from '@/services/memberships'
 
 interface Props {
   open: boolean
@@ -112,61 +113,26 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated, defaultTe
       const cleanEmail = sanitizeInput(email.trim().toLowerCase())
       const cleanName = sanitizeInput(name.trim())
 
-      // 1. Verificar se usuário global com este e-mail já existe
-      let userRecord: any = null
-      try {
-        const usersList = await pb.collection('users').getFullList({
-          filter: `email = "${cleanEmail}"`,
-        })
-        if (usersList.length > 0) {
-          userRecord = usersList[0]
-        }
-      } catch {
-        /* ignore */
-      }
-
-      // 2. Se não existir, criar a conta global do usuário
-      if (!userRecord) {
-        userRecord = await pb.collection('users').create({
-          name: cleanName,
-          email: cleanEmail,
-          password: password,
-          passwordConfirm: confirm,
-          role: role,
-          status: 'ativo',
-          tenant: selectedTenantId,
-        })
-      }
-
-      // 3. Gerar automaticamente vínculo 'ativo' no município selecionado
-      const existingMems = await pb.collection('user_memberships').getFullList({
-        filter: `user = "${userRecord.id}" && tenant = "${selectedTenantId}"`,
+      // Chamar endpoint backend transacional seguro que funciona tanto para admin local quanto superadmin
+      const res = await createTenantUserSecure({
+        name: cleanName,
+        email: cleanEmail,
+        tenant: selectedTenantId,
+        role,
+        password,
+        passwordConfirm: confirm,
       })
 
-      if (existingMems.length > 0) {
-        await pb.collection('user_memberships').update(existingMems[0].id, {
-          role: role,
-          status: 'ativo',
-        })
-      } else {
-        await pb.collection('user_memberships').create({
-          user: userRecord.id,
-          tenant: selectedTenantId,
-          role: role,
-          status: 'ativo',
-        })
-      }
-
-      toast.success('Usuário vinculado e ativado com sucesso!')
+      toast.success(res.message || 'Usuário vinculado e ativado com sucesso!')
       onOpenChange(false)
       onCreated()
-    } catch (err) {
+    } catch (err: any) {
       const fe = extractFieldErrors(err)
       if (Object.keys(fe).length > 0) {
         setErrors(fe)
         toast.error(Object.values(fe).join(' '))
       } else {
-        toast.error(getErrorMessage(err))
+        toast.error(getErrorMessage(err) || err?.message || 'Erro ao criar usuário.')
       }
     } finally {
       setSubmitting(false)
