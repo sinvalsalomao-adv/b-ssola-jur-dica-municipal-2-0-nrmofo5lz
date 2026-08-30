@@ -38,10 +38,18 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
   const { user } = useAuth()
   const navigate = useNavigate()
 
-  const [selectedTenantId, setSelectedTenantId] = useState(
-    dfd?.tenantId || user?.tenantId || (tenants.length > 0 ? tenants[0].id : ''),
-  )
+  const isSuperadmin = user?.role === 'superadmin'
   const isEditing = !!dfd
+
+  // Para Superadmin: inicia sem seleção a menos que o DFD já tenha ou haja impersonação explícita
+  // Para Admin / Servidor: exclusivamente o tenantId autenticado do usuário
+  const initialTenantId = isEditing
+    ? dfd?.tenantId || user?.tenantId || ''
+    : isSuperadmin
+      ? user?.tenantId || '' // context do superadmin se impersonando, senão vazio
+      : user?.tenantId || ''
+
+  const [selectedTenantId, setSelectedTenantId] = useState(initialTenantId)
 
   const [title, setTitle] = useState(dfd?.title || '')
   const [objeto, setObjeto] = useState(dfd?.objeto || '')
@@ -58,18 +66,14 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
   const [submitting, setSubmitting] = useState(false)
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
 
-  // Keep selectedTenantId updated if user's tenant or tenants list loads
+  // Keep selectedTenantId updated if editing an existing DFD or if non-superadmin user tenant loads
   useEffect(() => {
-    if (!selectedTenantId) {
-      if (dfd?.tenantId) {
-        setSelectedTenantId(dfd.tenantId)
-      } else if (user?.tenantId) {
-        setSelectedTenantId(user.tenantId)
-      } else if (tenants.length > 0) {
-        setSelectedTenantId(tenants[0].id)
-      }
+    if (isEditing && dfd?.tenantId) {
+      setSelectedTenantId(dfd.tenantId)
+    } else if (!isSuperadmin && user?.tenantId) {
+      setSelectedTenantId(user.tenantId)
     }
-  }, [user?.tenantId, tenants, dfd?.tenantId, selectedTenantId])
+  }, [isEditing, dfd?.tenantId, isSuperadmin, user?.tenantId])
 
   // Load users and phrases whenever the effective tenant changes
   useEffect(() => {
@@ -153,26 +157,16 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
     }
     setSubmitting(true)
     try {
-      // Resolve effective tenant
-      let effectiveTenantId = selectedTenantId || user?.tenantId || dfd?.tenantId || ''
-      if (!effectiveTenantId) {
-        if (tenants.length > 0) {
-          effectiveTenantId = tenants[0].id
-        } else {
-          try {
-            const { getTenants } = await import('@/services/projects')
-            const list = await getTenants()
-            if (list.length > 0) effectiveTenantId = list[0].id
-          } catch {
-            // ignore
-          }
-        }
-      }
+      // Resolve effective tenant: Superadmin MUST have explicitly selected or have impersonation context; Admin/Servidor MUST use authenticated tenant
+      const effectiveTenantId = isSuperadmin
+        ? selectedTenantId || (isEditing ? dfd?.tenantId || '' : '')
+        : user?.tenantId || (isEditing ? dfd?.tenantId || '' : '')
 
-      if (!effectiveTenantId) {
-        throw new Error(
-          'Prefeitura (Tenant) não identificada. Por favor, selecione uma prefeitura.',
+      if (!effectiveTenantId || effectiveTenantId.trim() === '') {
+        toast.error(
+          'Prefeitura (Tenant) não identificada. Por favor, selecione uma prefeitura antes de salvar.',
         )
+        return
       }
 
       // Resolve effective responsible user
@@ -354,11 +348,13 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {user?.role === 'superadmin' && tenants.length > 0 && (
+          {isSuperadmin && (
             <div>
               <Label className="text-xs font-semibold text-gray-700">Prefeitura (Tenant) *</Label>
               <Select value={selectedTenantId} onValueChange={setSelectedTenantId}>
-                <SelectTrigger className="mt-1">
+                <SelectTrigger
+                  className={`mt-1 ${!selectedTenantId ? 'border-amber-400 bg-amber-50/20' : ''}`}
+                >
                   <SelectValue placeholder="Selecione a prefeitura..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -369,9 +365,14 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
                   ))}
                 </SelectContent>
               </Select>
+              {!selectedTenantId && (
+                <p className="text-[10px] text-amber-600 mt-1 font-medium">
+                  Seleção obrigatória para Superadmin
+                </p>
+              )}
             </div>
           )}
-          <div className={user?.role === 'superadmin' && tenants.length > 0 ? '' : 'sm:col-span-1'}>
+          <div className={isSuperadmin ? '' : 'sm:col-span-1'}>
             <Label className="text-xs font-semibold text-gray-700">Responsável pelo DFD</Label>
             <Select value={responsibleUserId} onValueChange={setResponsibleUserId}>
               <SelectTrigger className="mt-1">
@@ -386,7 +387,7 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
               </SelectContent>
             </Select>
           </div>
-          <div className={user?.role === 'superadmin' && tenants.length > 0 ? '' : 'sm:col-span-1'}>
+          <div className={isSuperadmin ? '' : 'sm:col-span-1'}>
             <Label className="text-xs font-semibold text-gray-700">Prazo para Conclusão *</Label>
             <Input
               type="date"
@@ -402,7 +403,7 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
             type="button"
             variant="outline"
             onClick={() => handleSave(true)}
-            disabled={submitting}
+            disabled={submitting || (isSuperadmin && !selectedTenantId)}
             className="flex-1 border-[#4a6fa5] text-[#4a6fa5] hover:bg-[#4a6fa5] hover:text-white"
           >
             {submitting ? 'Salvando...' : 'Salvar Rascunho'}
@@ -410,7 +411,7 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
           <Button
             type="button"
             onClick={() => handleSave(false)}
-            disabled={submitting}
+            disabled={submitting || (isSuperadmin && !selectedTenantId)}
             className="flex-1 bg-[#2e7d32] hover:bg-[#1b5e20] text-white"
           >
             {submitting ? 'Finalizando...' : 'Finalizar DFD'}

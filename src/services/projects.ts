@@ -65,6 +65,18 @@ export const createProject = async (data: Record<string, any>): Promise<Project>
   if (payload.justificativa !== undefined)
     payload.justificativa = sanitizeInput(payload.justificativa)
 
+  // Validação estrita de tenant: para não-superadmin forçar tenant autenticado
+  const authRecord = pb.authStore.record
+  if (authRecord && authRecord.role !== 'superadmin') {
+    if (authRecord.tenant) {
+      payload.tenant = authRecord.tenant
+    }
+  }
+
+  if (!payload.tenant || String(payload.tenant).trim() === '') {
+    throw new Error('Tenant obrigatório para criação do projeto.')
+  }
+
   if (
     !payload.responsible_user ||
     payload.responsible_user === 'none' ||

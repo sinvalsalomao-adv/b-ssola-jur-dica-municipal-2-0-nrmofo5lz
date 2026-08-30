@@ -210,8 +210,39 @@ export const SuperadminProvider: React.FC<{ children: ReactNode }> = ({ children
       })
   }
 
-  const updatePlatformConfig = (updates: Partial<PlatformConfig>) => {
+  const updatePlatformConfig = async (updates: Partial<PlatformConfig>) => {
     setPlatformConfig((prev) => ({ ...prev, ...updates }))
+    try {
+      const records = await pb.collection('platform_settings').getFullList()
+      const apiData: Record<string, any> = {}
+      if (updates.stallLimits !== undefined) apiData.stall_limits = updates.stallLimits
+      if (
+        updates.smtpServer !== undefined ||
+        updates.smtpPort !== undefined ||
+        updates.smtpUsername !== undefined ||
+        updates.smtpPassword !== undefined ||
+        updates.senderEmail !== undefined
+      ) {
+        apiData.smtp_config = {
+          server: updates.smtpServer ?? platformConfig.smtpServer,
+          port: updates.smtpPort ?? platformConfig.smtpPort,
+          username: updates.smtpUsername ?? platformConfig.smtpUsername,
+          password: updates.smtpPassword ?? platformConfig.smtpPassword,
+          senderEmail: updates.senderEmail ?? platformConfig.senderEmail,
+        }
+      }
+      if (updates.aiApiKey !== undefined && updates.aiApiKey.trim() !== '') {
+        apiData.ai_api_key = updates.aiApiKey.trim()
+      }
+
+      if (records.length > 0) {
+        await pb.collection('platform_settings').update(records[0].id, apiData)
+      } else {
+        await pb.collection('platform_settings').create(apiData)
+      }
+    } catch (err) {
+      console.error('Falha ao persistir platform_settings:', err)
+    }
   }
 
   return (

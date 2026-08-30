@@ -18,9 +18,16 @@ export const PlatformConfigTab: React.FC = () => {
     password: platformConfig.smtpPassword,
     senderEmail: platformConfig.senderEmail,
   })
-  const [aiKey, setAiKey] = useState(platformConfig.aiApiKey)
+  const [aiKey, setAiKey] = useState('')
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null)
+
+  const isAiConfigured =
+    Boolean(
+      platformConfig.aiApiKey &&
+      platformConfig.aiApiKey.trim() !== '' &&
+      platformConfig.aiApiKey !== '••••••••',
+    ) || platformConfig.aiApiKey === '••••••••'
 
   const saveLimits = () => {
     updatePlatformConfig({ stallLimits: limits })
@@ -31,8 +38,13 @@ export const PlatformConfigTab: React.FC = () => {
     toast.success('Configurações de e-mail salvas!')
   }
   const saveAiKey = () => {
+    if (!aiKey.trim()) {
+      toast.error('Digite uma nova chave para atualizar a API Key.')
+      return
+    }
     updatePlatformConfig({ aiApiKey: aiKey })
-    toast.success('Chave da API de IA salva!')
+    setAiKey('')
+    toast.success('Chave da API de IA salva com sucesso!')
   }
 
   const testConnection = () => {
@@ -140,13 +152,23 @@ export const PlatformConfigTab: React.FC = () => {
           <h4 className="text-sm font-bold text-[#1c2a3e]">Chave da API de IA</h4>
         </div>
         <div>
-          <Label className="text-xs font-semibold text-gray-700">API Key</Label>
+          <div className="flex items-center justify-between">
+            <Label className="text-xs font-semibold text-gray-700">API Key</Label>
+            {isAiConfigured && (
+              <span className="text-[11px] font-medium text-emerald-600 flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Chave configurada (armazenada de forma
+                segura)
+              </span>
+            )}
+          </div>
           <Input
             type="password"
             value={aiKey}
             onChange={(e) => setAiKey(e.target.value)}
             className="mt-1"
-            placeholder="sk-..."
+            placeholder={
+              isAiConfigured ? '•••••••• (Digite apenas se desejar substituir)' : 'sk-...'
+            }
           />
         </div>
         <div className="flex items-center gap-3">
@@ -154,7 +176,7 @@ export const PlatformConfigTab: React.FC = () => {
             {testing ? 'Testando...' : 'Testar Conexão'}
           </Button>
           <Button className="bg-[#3b82f6] hover:bg-[#2563eb] text-white" onClick={saveAiKey}>
-            Salvar Chave
+            Salvar Nova Chave
           </Button>
           {testResult === 'success' && (
             <span className="flex items-center gap-1 text-xs text-emerald-600">

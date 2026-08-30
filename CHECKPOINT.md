@@ -44,3 +44,23 @@
   - Migrações 0001 a 0019 aplicadas
   - Estrutura de dados preservada sem perda de registros
 - **Propósito:** Ponto de restauração antes da aplicação do pacote de correções de segurança aprovadas pela auditoria técnica (P0: escalada de privilégio em users, vazamento de credenciais platform_settings, rotas desprotegidas no App.tsx; P1: tenant_settings restrito a admin/superadmin e mascaramento de segredos, validação de tenant em menções, remoção de fallbacks de primeiro tenant e role fallback; P2: normalização de datas no Dashboard, tenant no audit_log_create, remoção de mock de convite para servidor).
+
+## Checkpoint 5: Ponto de Restauração — Correções Residuais da Auditoria Final v0.0.51
+
+- **Data/Hora:** 2025-05-22
+- **Versão:** 0.0.51
+- **Módulos:** DfdForm, NewProjectModal, mask_settings_secrets.js, PlatformConfigTab, ConfiguracoesPage, ProjectContext, dfds.ts, projects.ts
+- **Estado preservado:**
+  - Login, perfis, autenticação e isolamento multi-tenant
+  - Dashboard, Bússola Kanban, DFDs, Checklist, Documentos, Comentários, Relatórios e Educação
+  - Coleções do PocketBase e integridade dos dados existentes
+  - Preservação estrita de segredos: sem persistência de máscaras e sem vazamento em logs/respostas
+- **Correções aplicadas:**
+  1. Proibição absoluta de fallback de primeiro município (`tenants[0]`, `getFirstListItem` sem filtro):
+     - Superadmin sem contexto municipal explícito inicia sem seleção e é bloqueado até seleção explícita.
+     - Admin e Servidor utilizam exclusivamente o tenant autenticado.
+     - Validação estrita de tenant nos serviços `createProject` e `createDfd`.
+  2. Mascaramento e proteção de `ai_api_key`:
+     - `mask_settings_secrets.js` enriquecido para mascarar `ai_api_key` em `tenant_settings` e `platform_settings`.
+     - Preservação de segredos no update quando máscara é submetida.
+     - UI da plataforma e configurações de tenant não retêm chaves em claro no estado do cliente.

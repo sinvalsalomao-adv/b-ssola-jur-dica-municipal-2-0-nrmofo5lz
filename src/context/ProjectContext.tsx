@@ -143,7 +143,15 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     inputTenantId?: string,
     prefeituraName?: string,
   ): Promise<string> => {
+    // Para não-superadmin: usar exclusivamente o tenant autenticado
+    if (user && user.role !== 'superadmin' && user.tenantId) {
+      return user.tenantId
+    }
+
+    // Para superadmin: usar inputTenantId explícito
     if (inputTenantId && inputTenantId.trim() !== '') return inputTenantId
+
+    // Se houver impersonação (user.tenantId presente no superadmin impersonando)
     if (user?.tenantId && user.tenantId.trim() !== '') return user.tenantId
 
     const currentTenants = tenants.length > 0 ? tenants : await getTenants().catch(() => [])
@@ -151,7 +159,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       setTenants(currentTenants)
     }
 
-    if (prefeituraName) {
+    if (prefeituraName && prefeituraName.trim() !== '') {
       const prefLower = prefeituraName.toLowerCase().trim()
       const found = currentTenants.find(
         (t) =>

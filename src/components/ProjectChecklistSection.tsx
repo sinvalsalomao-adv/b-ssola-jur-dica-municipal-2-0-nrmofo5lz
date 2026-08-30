@@ -135,7 +135,7 @@ export const ProjectChecklistSection: React.FC<ProjectChecklistSectionProps> = (
   const completionPercentage = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0
 
   const logAudit = async (actionDesc: string, fallbackTenant?: string) => {
-    const tenantId = user?.tenantId || (checklists[0]?.tenantId ?? '') || fallbackTenant || ''
+    const tenantId = project?.tenantId || user?.tenantId || fallbackTenant || ''
     try {
       if (tenantId) {
         await createAuditLog({

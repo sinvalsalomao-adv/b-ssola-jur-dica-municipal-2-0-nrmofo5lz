@@ -35,6 +35,8 @@ export default function ConfiguracoesPage() {
     senderEmail: '',
     senderName: '',
   })
+  const [newSmtpPassword, setNewSmtpPassword] = useState('')
+  const [isSmtpConfigured, setIsSmtpConfigured] = useState(false)
   const [settingsId, setSettingsId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -49,7 +51,10 @@ export default function ConfiguracoesPage() {
           setSettingsId(ts.id)
           setLimits(parseStallLimits(ts.stall_limits))
           const parsed = parseSmtpConfig(ts.smtp_config)
-          setSmtp({ ...parsed, senderName: parsed.senderName || '' })
+          setSmtp({ ...parsed, password: '', senderName: parsed.senderName || '' })
+          if (parsed.password === '••••••••' || (parsed.password && parsed.password.length > 0)) {
+            setIsSmtpConfigured(true)
+          }
           if (ts.proximity_days && ts.proximity_days > 0) setProximityDays(ts.proximity_days)
         } else {
           const ps = await getPlatformSettings()
@@ -92,15 +97,23 @@ export default function ConfiguracoesPage() {
     if (!user?.tenantId) return
     setSavingSmtp(true)
     try {
+      const smtpPayload = {
+        ...smtp,
+        password: newSmtpPassword.trim() ? newSmtpPassword.trim() : '••••••••',
+      }
       const data = {
         tenant: user.tenantId,
-        smtp_config: JSON.stringify(smtp),
+        smtp_config: JSON.stringify(smtpPayload),
       }
       if (settingsId) {
         await saveTenantSettings(settingsId, data)
       } else {
         const created = await createTenantSettings(data)
         setSettingsId(created.id)
+      }
+      if (newSmtpPassword.trim()) {
+        setIsSmtpConfigured(true)
+        setNewSmtpPassword('')
       }
       toast.success('Configurações de e-mail salvas com sucesso!')
     } catch (err) {
@@ -222,11 +235,16 @@ export default function ConfiguracoesPage() {
               />
             </div>
             <div>
-              <Label className="text-xs font-semibold text-gray-700">Senha</Label>
+              <Label className="text-xs font-semibold text-gray-700">
+                Senha {isSmtpConfigured && '(Configurada)'}
+              </Label>
               <Input
                 type="password"
-                value={smtp.password}
-                onChange={(e) => setSmtp({ ...smtp, password: e.target.value })}
+                value={newSmtpPassword}
+                onChange={(e) => setNewSmtpPassword(e.target.value)}
+                placeholder={
+                  isSmtpConfigured ? '•••••••• (Preencha para alterar)' : 'Senha do servidor SMTP'
+                }
                 className="mt-1"
               />
             </div>

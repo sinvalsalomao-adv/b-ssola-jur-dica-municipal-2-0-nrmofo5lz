@@ -26,10 +26,15 @@ export function normalizeDfd(r: any): DfdRecord {
 }
 
 async function resolveFallbackTenant(tenantId?: string): Promise<string> {
+  const authRecord = pb.authStore.record
+  if (authRecord && authRecord.role !== 'superadmin' && authRecord.tenant) {
+    return authRecord.tenant
+  }
+
   if (tenantId && tenantId.trim() !== '') return tenantId
 
-  if (pb.authStore.record?.tenant) {
-    return pb.authStore.record.tenant
+  if (authRecord?.tenant) {
+    return authRecord.tenant
   }
 
   return ''
@@ -62,12 +67,21 @@ export const createDfd = async (data: Record<string, any>): Promise<DfdRecord> =
   if (payload.justificativa !== undefined)
     payload.justificativa = sanitizeInput(payload.justificativa)
 
-  // Ensure tenant is populated
-  if (!payload.tenant || String(payload.tenant).trim() === '') {
+  // Ensure tenant is populated strictly
+  const authRecord = pb.authStore.record
+  if (authRecord && authRecord.role !== 'superadmin') {
+    if (authRecord.tenant) {
+      payload.tenant = authRecord.tenant
+    }
+  } else if (!payload.tenant || String(payload.tenant).trim() === '') {
     const resolvedTenant = await resolveFallbackTenant()
     if (resolvedTenant) {
       payload.tenant = resolvedTenant
     }
+  }
+
+  if (!payload.tenant || String(payload.tenant).trim() === '') {
+    throw new Error('Tenant obrigatório para criação do DFD.')
   }
 
   // Ensure responsible_user is handled properly

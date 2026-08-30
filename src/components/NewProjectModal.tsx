@@ -38,7 +38,10 @@ export const NewProjectModal: React.FC = () => {
   const [users, setUsers] = useState<{ id: string; name: string }[]>([])
   const [deadline, setDeadline] = useState('')
   const [column, setColumn] = useState<ColumnType>('Ideação')
-  const [prefeitura, setPrefeitura] = useState('Florânia')
+  // Para Superadmin sem impersonação: iniciar vazio (sem seleção padrão). Para Admin/Servidor: usar a prefeitura do usuário autenticado.
+  const [selectedTenantId, setSelectedTenantId] = useState(
+    isSuperadmin ? user?.tenantId || '' : user?.tenantId || '',
+  )
   const [priority, setPriority] = useState<Priority>('Baixa')
   const [objeto, setObjeto] = useState('')
   const [justificativa, setJustificativa] = useState('')
@@ -52,13 +55,13 @@ export const NewProjectModal: React.FC = () => {
         })
         .catch(() => {})
 
-      if (user?.prefeitura) {
-        setPrefeitura(user.prefeitura)
-      } else if (tenants.length > 0) {
-        setPrefeitura(tenants[0].name)
+      if (isSuperadmin) {
+        setSelectedTenantId(user?.tenantId || '')
+      } else {
+        setSelectedTenantId(user?.tenantId || '')
       }
     }
-  }, [isNewModalOpen, user, tenants])
+  }, [isNewModalOpen, user?.tenantId, isSuperadmin])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -71,16 +74,17 @@ export const NewProjectModal: React.FC = () => {
       return
     }
 
-    try {
-      const selectedTenant = tenants.find(
-        (t) =>
-          t.name.toLowerCase().trim() === prefeitura.toLowerCase().trim() ||
-          t.name.toLowerCase().includes(prefeitura.toLowerCase().trim()) ||
-          prefeitura.toLowerCase().includes(t.name.toLowerCase().trim()),
-      )
-      const resolvedTenantId =
-        selectedTenant?.id || user?.tenantId || (tenants.length > 0 ? tenants[0].id : undefined)
+    // Validação estrita do Tenant/Prefeitura
+    const resolvedTenantId = isSuperadmin ? selectedTenantId : user?.tenantId
+    if (!resolvedTenantId || resolvedTenantId.trim() === '') {
+      toast.error('Por favor, selecione uma prefeitura obrigatória antes de criar o projeto.')
+      return
+    }
 
+    const tenantObj = tenants.find((t) => t.id === resolvedTenantId)
+    const resolvedPrefeituraName = tenantObj?.name || user?.prefeitura || ''
+
+    try {
       await addProject({
         title: sanitizeInput(title.trim()),
         description: sanitizeInput(description.trim()),
@@ -88,8 +92,7 @@ export const NewProjectModal: React.FC = () => {
         responsibleUserId: responsibleUserId === 'none' ? '' : responsibleUserId,
         deadline,
         column,
-        prefeitura:
-          prefeitura || user?.prefeitura || (tenants.length > 0 ? tenants[0].name : 'Florânia'),
+        prefeitura: resolvedPrefeituraName,
         tenantId: resolvedTenantId,
         priority,
         objeto: sanitizeInput(objeto.trim()),
@@ -109,7 +112,7 @@ export const NewProjectModal: React.FC = () => {
     setResponsibleUserId('')
     setDeadline('')
     setColumn('Ideação')
-    setPrefeitura(user?.prefeitura || (tenants.length > 0 ? tenants[0].name : 'Florânia'))
+    setSelectedTenantId(isSuperadmin ? user?.tenantId || '' : user?.tenantId || '')
     setPriority('Baixa')
     setObjeto('')
     setJustificativa('')
@@ -182,31 +185,37 @@ export const NewProjectModal: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-3 gap-3">
-            <div>
-              <Label className="text-xs font-semibold text-gray-700">Prefeitura</Label>
-              <Select
-                value={prefeitura}
-                onValueChange={setPrefeitura}
-                disabled={!isSuperadmin && tenants.length <= 1}
-              >
-                <SelectTrigger className="mt-1 text-xs">
-                  <SelectValue placeholder="Prefeitura" />
-                </SelectTrigger>
-                <SelectContent>
-                  {tenants.length > 0
-                    ? tenants.map((t) => (
-                        <SelectItem key={t.id} value={t.name}>
-                          {t.name}
-                        </SelectItem>
-                      ))
-                    : PREFEITURAS.map((pref) => (
-                        <SelectItem key={pref} value={pref}>
-                          {pref}
-                        </SelectItem>
-                      ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {isSuperadmin ? (
+              <div>
+                <Label className="text-xs font-semibold text-gray-700">Prefeitura *</Label>
+                <Select value={selectedTenantId} onValueChange={setSelectedTenantId}>
+                  <SelectTrigger
+                    className={`mt-1 text-xs ${!selectedTenantId ? 'border-amber-400 bg-amber-50/20' : ''}`}
+                  >
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tenants.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {!selectedTenantId && (
+                  <p className="text-[10px] text-amber-600 mt-0.5 font-medium">Obrigatório</p>
+                )}
+              </div>
+            ) : (
+              <div>
+                <Label className="text-xs font-semibold text-gray-700">Prefeitura</Label>
+                <Input
+                  value={user?.prefeitura || 'Sua Prefeitura'}
+                  disabled
+                  className="mt-1 text-xs bg-slate-100 text-slate-700"
+                />
+              </div>
+            )}
 
             <div>
               <Label className="text-xs font-semibold text-gray-700">Coluna Inicial</Label>
@@ -299,7 +308,7 @@ export const NewProjectModal: React.FC = () => {
             </Button>
             <Button
               type="submit"
-              disabled={saving}
+              disabled={saving || (isSuperadmin && !selectedTenantId)}
               className="bg-[#3b82f6] hover:bg-[#2563eb] text-white"
             >
               {saving && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
