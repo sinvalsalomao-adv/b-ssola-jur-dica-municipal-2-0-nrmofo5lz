@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react'
 import { AlertTriangle, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { sanitizeError, sanitizeString } from '@/lib/errorSanitizer'
 
 interface Props {
   children: ReactNode
@@ -18,15 +19,25 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error }
+    return { hasError: true, error: sanitizeError(error) }
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Uncaught Error Boundary error:', error, errorInfo)
+    const safeError = sanitizeError(error)
+    const safeComponentStack = errorInfo?.componentStack
+      ? sanitizeString(errorInfo.componentStack)
+      : undefined
+    console.error('Uncaught Error Boundary error:', safeError, {
+      componentStack: safeComponentStack,
+    })
   }
 
   public render() {
     if (this.state.hasError) {
+      const safeMessage = this.state.error?.message
+        ? sanitizeString(this.state.error.message)
+        : 'Erro inesperado de renderização.'
+
       return (
         <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
           <div className="max-w-md w-full bg-white rounded-xl shadow-lg border border-slate-200 p-6 text-center space-y-4">
@@ -34,16 +45,14 @@ export class ErrorBoundary extends Component<Props, State> {
               <AlertTriangle className="w-6 h-6" />
             </div>
             <h2 className="text-lg font-bold text-slate-900">
-              {this.state.error?.message?.includes('removeChild') ||
-              this.state.error?.message?.includes('Node')
+              {safeMessage.includes('removeChild') || safeMessage.includes('Node')
                 ? 'Falha de Sincronização de Interface'
                 : 'Ocorreu um erro na aplicação'}
             </h2>
             <p className="text-xs text-slate-600 leading-relaxed">
-              {this.state.error?.message?.includes('removeChild') ||
-              this.state.error?.message?.includes('Node')
+              {safeMessage.includes('removeChild') || safeMessage.includes('Node')
                 ? 'Detectada alteração de nós do navegador (ex: tradução automática ativada). Clique abaixo para recarregar.'
-                : this.state.error?.message || 'Erro inesperado de renderização.'}
+                : safeMessage}
             </p>
             <Button
               onClick={() => {
