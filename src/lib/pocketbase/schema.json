@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-30T00:35:51.850Z",
+  "generatedAt": "2026-08-30T00:48:04.872Z",
   "collections": [
     {
       "name": "users",
@@ -605,11 +605,83 @@
           "type": "text",
           "required": false,
           "system": false
+        },
+        {
+          "name": "categoria",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "Edital / Termo de Referência",
+            "Parecer Jurídico",
+            "Contrato / Aditivo",
+            "Nota de Empenho / Fiscal",
+            "DFD / Estudo Técnico Preliminar",
+            "Publicação / Diário Oficial",
+            "Planilha Orçamentária",
+            "Outro"
+          ]
+        },
+        {
+          "name": "etapa",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "Ideação",
+            "Projeto Executivo",
+            "Elaborar DFD",
+            "Procedimentos Internos",
+            "Execução",
+            "Prestação de Contas",
+            "Marketing"
+          ]
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "versao",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "parent_document_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "documents"
+        },
+        {
+          "name": "is_latest_version",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "arquivado",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "user_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
         }
       ],
       "indexes": [
         "CREATE INDEX idx_documents_tenant ON documents (tenant)",
-        "CREATE INDEX `idx_documents_projeto_id` ON `documents` (projeto_id)"
+        "CREATE INDEX `idx_documents_projeto_id` ON `documents` (projeto_id)",
+        "CREATE INDEX `idx_documents_arquivado` ON `documents` (arquivado)",
+        "CREATE INDEX `idx_documents_parent` ON `documents` (parent_document_id)",
+        "CREATE INDEX `idx_documents_latest` ON `documents` (is_latest_version)"
       ]
     },
     {
@@ -634,7 +706,17 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["Criou card", "Moveu card", "Editou card"]
+          "selectValues": [
+            "Criou card",
+            "Moveu card",
+            "Editou card",
+            "Adicionou documento",
+            "Nova versão documento",
+            "Arquivou documento",
+            "Restaurou documento",
+            "Visualizou documento",
+            "Baixou documento"
+          ]
         },
         {
           "name": "description",

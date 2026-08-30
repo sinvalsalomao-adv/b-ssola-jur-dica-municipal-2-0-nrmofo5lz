@@ -8,13 +8,16 @@ import { getAllAuditLogs } from '@/services/projects'
 import { useAuth } from '@/context/AuthContext'
 import { useRealtime } from '@/hooks/use-realtime'
 
-const ACTION_CONFIG: Record<
-  AuditActionType,
-  { icon: React.ElementType; color: string; bg: string }
-> = {
+const ACTION_CONFIG: Record<string, { icon: React.ElementType; color: string; bg: string }> = {
   'Criou card': { icon: Plus, color: 'text-emerald-600', bg: 'bg-emerald-50' },
   'Moveu card': { icon: ArrowLeftRight, color: 'text-amber-600', bg: 'bg-amber-50' },
   'Editou card': { icon: Pencil, color: 'text-violet-600', bg: 'bg-violet-50' },
+  'Adicionou documento': { icon: Plus, color: 'text-blue-600', bg: 'bg-blue-50' },
+  'Nova versão documento': { icon: Pencil, color: 'text-violet-600', bg: 'bg-violet-50' },
+  'Arquivou documento': { icon: ArrowLeftRight, color: 'text-amber-600', bg: 'bg-amber-50' },
+  'Restaurou documento': { icon: Plus, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+  'Visualizou documento': { icon: History, color: 'text-sky-600', bg: 'bg-sky-50' },
+  'Baixou documento': { icon: History, color: 'text-slate-600', bg: 'bg-slate-50' },
 }
 
 export const AuditLogSection: React.FC = () => {

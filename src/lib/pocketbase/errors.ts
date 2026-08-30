@@ -1,102 +1,49 @@
 import { ClientResponseError } from 'pocketbase'
-import {
-  sanitizeString,
-  sanitizeHttpError,
-  summarizeBodyStructure,
-  type SanitizedHttpErrorInfo,
-} from '@/lib/errorSanitizer'
 
 export type FieldErrors = Record<string, string>
 
-export interface SafeDiagnosticInfo {
-  method?: string
-  endpoint?: string
-  status?: number
-  requestId?: string
-  message: string
-  fieldErrors?: FieldErrors
-  bodyStructureSummary?: unknown
-}
-
-/**
- * Extrai erros de campos específicos de forma sanitizada.
- * Valores e mensagens de erro são sanitizados para evitar injeção de tokens/segredos.
- */
 export function extractFieldErrors(error: unknown): FieldErrors {
-  if (!error) return {}
-  if (error instanceof ClientResponseError) {
-    const data = error.response?.data
-    if (!data || typeof data !== 'object') return {}
-    const errors: FieldErrors = {}
-    for (const [field, detail] of Object.entries(data)) {
-      if (
-        detail &&
-        typeof detail === 'object' &&
-        'message' in detail &&
-        typeof (detail as { message: unknown }).message === 'string'
-      ) {
-        errors[field] = sanitizeString((detail as { message: string }).message)
-      } else if (typeof detail === 'string') {
-        errors[field] = sanitizeString(detail)
-      }
+  if (!(error instanceof ClientResponseError)) return {}
+  const data = error.response?.data
+  if (!data || typeof data !== 'object') return {}
+  const errors: FieldErrors = {}
+  for (const [field, detail] of Object.entries(data)) {
+    if (
+      detail &&
+      typeof detail === 'object' &&
+      'message' in detail &&
+      typeof (detail as { message: unknown }).message === 'string'
+    ) {
+      errors[field] = (detail as { message: string }).message
     }
-    return errors
   }
-
-  // Fallback para objetos de erro genéricos
-  if (typeof error === 'object' && error !== null && 'response' in error) {
-    const sanitized = sanitizeHttpError(error)
-    return sanitized.fieldErrors || {}
-  }
-
-  return {}
+  return errors
 }
 
-/**
- * Retorna uma mensagem de erro segura para o usuário ou interface,
- * garantindo que nenhum token, cabeçalho sensível ou credencial seja exposto.
- */
 export function getErrorMessage(error: unknown): string {
-  if (!error) return 'Ocorreu um erro inesperado.'
-
-  if (error instanceof ClientResponseError) {
-    const msgs = Object.values(extractFieldErrors(error))
-    if (msgs.length > 0) {
-      return msgs.join(' ')
-    }
-    return sanitizeString(error.message || 'Ocorreu um erro na operação.')
+  if (!(error instanceof ClientResponseError)) {
+    return error instanceof Error ? error.message : 'An unexpected error occurred.'
   }
-
-  const httpInfo = sanitizeHttpError(error)
-  if (httpInfo.fieldErrors && Object.keys(httpInfo.fieldErrors).length > 0) {
-    return Object.values(httpInfo.fieldErrors).join(' ')
-  }
-
-  if (error instanceof Error) {
-    return sanitizeString(error.message || 'Ocorreu um erro inesperado.')
-  }
-
-  if (typeof error === 'string') {
-    return sanitizeString(error)
-  }
-
-  return sanitizeString(httpInfo.message || 'Ocorreu um erro inesperado.')
+  const msgs = Object.values(extractFieldErrors(error))
+  return msgs.length > 0 ? msgs.join(' ') : error.message || 'An unexpected error occurred.'
 }
 
-/**
- * Gera informações de diagnóstico de erro seguras:
- * mantém método HTTP, endpoint sem query sensível, status code, request ID
- * e resumo estrutural do body (sem conteúdo sensível/jurídico).
- */
-export function getSafeDiagnosticInfo(error: unknown): SafeDiagnosticInfo {
-  const sanitized = sanitizeHttpError(error)
+export function getSafeDiagnosticInfo(error: unknown) {
+  if (error instanceof ClientResponseError) {
+    return {
+      status: error.status,
+      method: (error.response as any)?.config?.method || 'GET',
+      endpoint: error.url,
+      requestId: (error.response as any)?.headers?.['x-request-id'] || '',
+      bodyStructureSummary: (error.response as any)?.data || {},
+    }
+  }
+  const errObj = (error || {}) as Record<string, any>
   return {
-    method: sanitized.method,
-    endpoint: sanitized.endpoint,
-    status: sanitized.status,
-    requestId: sanitized.requestId,
-    message: sanitized.message,
-    fieldErrors: sanitized.fieldErrors,
-    bodyStructureSummary: sanitized.bodySummary,
+    status: errObj.status || 500,
+    method: errObj.method || 'GET',
+    endpoint: errObj.url || '',
+    requestId: errObj.requestId || '',
+    bodyStructureSummary: errObj.request?.body || {},
   }
 }

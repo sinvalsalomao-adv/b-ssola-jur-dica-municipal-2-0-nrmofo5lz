@@ -44,9 +44,29 @@ export interface DocumentItem {
   uploadDate: string
   uploader: string
   pdfUrl: string
+  projectId?: string
+  tenantId?: string
+  categoria?: string
+  etapa?: string
+  descricao?: string
+  versao?: number
+  parentDocumentId?: string | null
+  isLatestVersion?: boolean
+  arquivado?: boolean
+  userId?: string
+  file?: string
 }
 
-export type AuditActionType = 'Criou card' | 'Moveu card' | 'Editou card'
+export type AuditActionType =
+  | 'Criou card'
+  | 'Moveu card'
+  | 'Editou card'
+  | 'Adicionou documento'
+  | 'Nova versão documento'
+  | 'Arquivou documento'
+  | 'Restaurou documento'
+  | 'Visualizou documento'
+  | 'Baixou documento'
 
 export interface AuditLogEntry {
   id: string

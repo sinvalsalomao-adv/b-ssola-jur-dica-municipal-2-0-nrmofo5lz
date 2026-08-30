@@ -110,7 +110,17 @@ export const getTenants = async (): Promise<{ id: string; name: string }[]> => {
 
 export const createAuditLog = async (data: {
   userName: string
-  actionType: 'Criou card' | 'Moveu card' | 'Editou card'
+  actionType:
+    | 'Criou card'
+    | 'Moveu card'
+    | 'Editou card'
+    | 'Adicionou documento'
+    | 'Nova versão documento'
+    | 'Arquivou documento'
+    | 'Restaurou documento'
+    | 'Visualizou documento'
+    | 'Baixou documento'
+    | string
   description: string
   projectTitle: string
   tenantId: string

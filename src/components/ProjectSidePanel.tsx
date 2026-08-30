@@ -34,6 +34,7 @@ import {
   History,
   Clock,
   CheckSquare,
+  FileText,
 } from 'lucide-react'
 import { getUsers } from '@/services/users'
 import { getAuditLogsByProjectTitle } from '@/services/projects'
@@ -41,6 +42,7 @@ import { toast } from 'sonner'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { formatDate, normalizeDateForInput } from '@/lib/dateUtils'
 import { ProjectChecklistSection } from '@/components/ProjectChecklistSection'
+import { ProjectDocumentsSection } from '@/components/ProjectDocumentsSection'
 
 interface AuditEntry {
   id: string
@@ -63,7 +65,9 @@ export const ProjectSidePanel: React.FC = () => {
   const { user } = useAuth()
   const isSuperadmin = user?.role === 'superadmin'
 
-  const [activeTab, setActiveTab] = useState<'details' | 'checklist' | 'history'>('details')
+  const [activeTab, setActiveTab] = useState<'details' | 'checklist' | 'documents' | 'history'>(
+    'details',
+  )
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [responsibleUserId, setResponsibleUserId] = useState('')
@@ -156,9 +160,21 @@ export const ProjectSidePanel: React.FC = () => {
   const getActionBadge = (actionType: string) => {
     switch (actionType) {
       case 'Criou card':
-        return <Badge className="bg-emerald-500 text-white text-[10px]">Criou</Badge>
+        return <Badge className="bg-emerald-500 text-white text-[10px]">Criou card</Badge>
       case 'Moveu card':
         return <Badge className="bg-blue-500 text-white text-[10px]">Moveu</Badge>
+      case 'Adicionou documento':
+        return <Badge className="bg-blue-600 text-white text-[10px]">Doc Anexado</Badge>
+      case 'Nova versão documento':
+        return <Badge className="bg-violet-600 text-white text-[10px]">Nova Versão</Badge>
+      case 'Arquivou documento':
+        return <Badge className="bg-amber-600 text-white text-[10px]">Doc Arquivado</Badge>
+      case 'Restaurou documento':
+        return <Badge className="bg-emerald-600 text-white text-[10px]">Doc Restaurado</Badge>
+      case 'Visualizou documento':
+        return <Badge className="bg-sky-500 text-white text-[10px]">Visualizou</Badge>
+      case 'Baixou documento':
+        return <Badge className="bg-slate-600 text-white text-[10px]">Baixou</Badge>
       default:
         return <Badge className="bg-amber-500 text-white text-[10px]">Editou</Badge>
     }
@@ -195,15 +211,21 @@ export const ProjectSidePanel: React.FC = () => {
 
           <Tabs
             value={activeTab}
-            onValueChange={(v) => setActiveTab(v as 'details' | 'checklist' | 'history')}
+            onValueChange={(v) =>
+              setActiveTab(v as 'details' | 'checklist' | 'documents' | 'history')
+            }
           >
-            <TabsList className="grid grid-cols-3 mb-4">
+            <TabsList className="grid grid-cols-4 mb-4">
               <TabsTrigger value="details" className="text-xs">
                 Detalhes
               </TabsTrigger>
               <TabsTrigger value="checklist" className="text-xs flex items-center gap-1.5">
                 <CheckSquare className="w-3.5 h-3.5" />
                 Checklist
+              </TabsTrigger>
+              <TabsTrigger value="documents" className="text-xs flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5" />
+                Documentos
               </TabsTrigger>
               <TabsTrigger value="history" className="text-xs flex items-center gap-1.5">
                 <History className="w-3.5 h-3.5" />
@@ -341,6 +363,13 @@ export const ProjectSidePanel: React.FC = () => {
               <ProjectChecklistSection
                 project={selectedProject}
                 users={users}
+                onHistoryUpdate={() => loadHistory(title.trim() || selectedProject.title)}
+              />
+            </TabsContent>
+
+            <TabsContent value="documents" className="space-y-4">
+              <ProjectDocumentsSection
+                project={selectedProject}
                 onHistoryUpdate={() => loadHistory(title.trim() || selectedProject.title)}
               />
             </TabsContent>
