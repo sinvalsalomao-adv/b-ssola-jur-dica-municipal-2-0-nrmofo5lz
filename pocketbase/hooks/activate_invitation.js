@@ -28,7 +28,7 @@ routerAdd(
       return e.badRequestError('Email já cadastrado no sistema')
     } catch (_) {}
 
-    const password = $security.randomString(12)
+    const password = $security.randomString(16) + 'A1!'
     const usersCol = $app.findCollectionByNameOrId('_pb_users_auth_')
     let user
     try {
@@ -58,10 +58,13 @@ routerAdd(
     inv.set('status', 'activated')
     $app.save(inv)
 
+    // Não retornar senha em texto claro na resposta
     return e.json(200, {
-      password: password,
+      id: inv.id,
+      status: 'activated',
       email: inv.getString('email'),
       name: inv.getString('name'),
+      message: 'Convite ativado com sucesso. O usuário foi provisionado.',
     })
   },
   $apis.requireAuth(),

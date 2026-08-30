@@ -1,15 +1,15 @@
 {
-  "generatedAt": "2026-08-30T12:25:34.881Z",
+  "generatedAt": "2026-08-30T22:54:35.987Z",
   "collections": [
     {
       "name": "users",
       "type": "auth",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || id = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo' && @collection.user_memberships.tenant ?= @collection.user_memberships.tenant && @collection.user_memberships.user ?= id))",
+        "view": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || id = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo' && @collection.user_memberships.tenant ?= @collection.user_memberships.tenant && @collection.user_memberships.user ?= id))",
+        "create": "@request.auth.id != '' && @request.auth.role = 'superadmin'",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || id = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo' && @collection.user_memberships.tenant ?= @collection.user_memberships.tenant && @collection.user_memberships.user ?= id))",
+        "delete": "@request.auth.id != '' && @request.auth.role = 'superadmin'"
       },
       "fields": [
         {
@@ -1893,11 +1893,11 @@
       "name": "user_memberships",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "list": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || @collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo')",
+        "view": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || @collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo')",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= @request.body.tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+        "delete": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))"
       },
       "fields": [
         {

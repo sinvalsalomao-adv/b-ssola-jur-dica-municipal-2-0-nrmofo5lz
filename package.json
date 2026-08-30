@@ -14,7 +14,7 @@
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "preview": "vite preview",
-    "test": "node --import tsx/esm -e \"Promise.all([import('./src/lib/sanitizerSecurityTests.ts'), import('./src/services/documents.test.ts'), import('./src/services/comments.test.ts')]).then(([san, doc, comm]) => { const r1 = san.runSanitizerSecurityTests(); const r2 = doc.runDocumentModuleTests(); const r3 = comm.runCommentsAndParticipantsTests(); console.log(JSON.stringify({ sanitizer: r1, documents: r2, comments: r3 })); if (!r1.passed || !r2.passed || !r3.passed) process.exit(1); })\" 2>/dev/null || echo \"Tests validated\"",
+    "test": "node --import tsx/esm -e \"Promise.all([import('./src/lib/sanitizerSecurityTests.ts'), import('./src/services/documents.test.ts'), import('./src/services/comments.test.ts'), import('./src/services/memberships.test.ts')]).then(([san, doc, comm, mem]) => { const r1 = san.runSanitizerSecurityTests(); const r2 = doc.runDocumentModuleTests(); const r3 = comm.runCommentsAndParticipantsTests(); const r4 = mem.runMembershipModuleTests(); console.log(JSON.stringify({ sanitizer: r1, documents: r2, comments: r3, memberships: r4 }, null, 2)); if (!r1.passed || !r2.passed || !r3.passed || !r4.passed) process.exit(1); })\"",
     "test:watch": "echo \"there are no tests for this project\" && exit 0"
   },
   "dependencies": {

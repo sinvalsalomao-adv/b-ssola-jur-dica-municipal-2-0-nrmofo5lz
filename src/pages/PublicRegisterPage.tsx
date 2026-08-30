@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/select'
 import pb from '@/lib/pocketbase/client'
 import { getOrganizacaoBySlug, type Organizacao } from '@/services/organizacoes'
-import { createMembership } from '@/services/memberships'
+import { registerPublicUser } from '@/services/memberships'
 import {
   PasswordStrengthIndicator,
   validatePasswordStrength,
@@ -122,74 +122,21 @@ export default function PublicRegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setGeneralError('')
-    if (!validate() || !org) return
+    if (!validate() || !org || !slug) return
 
     setSubmitting(true)
     try {
       const cleanEmail = sanitizeInput(email.trim().toLowerCase())
       const cleanName = sanitizeInput(name.trim())
 
-      // 1. Verificar se o usuário global já existe pelo e-mail
-      let userRecord: any = null
-      try {
-        const usersList = await pb.collection('users').getFullList({
-          filter: `email = "${cleanEmail}"`,
-        })
-        if (usersList.length > 0) {
-          userRecord = usersList[0]
-        }
-      } catch {
-        /* intentionally ignored */
-      }
-
-      // 2. Se não existir, criar a conta global do usuário
-      if (!userRecord) {
-        userRecord = await pb.collection('users').create({
-          name: cleanName,
-          email: cleanEmail,
-          password: password,
-          passwordConfirm: confirmPassword,
-          role: role,
-          status: 'ativo',
-          tenant: org.id,
-        })
-      }
-
-      // 3. Verificar se já existe vínculo deste usuário com esta prefeitura
-      const existingMemberships = await pb.collection('user_memberships').getFullList({
-        filter: `user = "${userRecord.id}" && tenant = "${org.id}"`,
+      await registerPublicUser({
+        slug,
+        name: cleanName,
+        email: cleanEmail,
+        password,
+        passwordConfirm: confirmPassword,
+        role,
       })
-
-      if (existingMemberships.length > 0) {
-        const currentMem = existingMemberships[0]
-        if (currentMem.status === 'ativo') {
-          setGeneralError(
-            'Você já possui um cadastro ativo neste município. Faça login diretamente.',
-          )
-          setSubmitting(false)
-          return
-        }
-        if (currentMem.status === 'pendente') {
-          setGeneralError(
-            'Você já possui uma solicitação de acesso pendente de aprovação para este município.',
-          )
-          setSubmitting(false)
-          return
-        }
-        // Se estava inativo ou rejeitado, reabrir como pendente
-        await pb.collection('user_memberships').update(currentMem.id, {
-          status: 'pendente',
-          role: role,
-        })
-      } else {
-        // 4. Criar o vínculo com status 'pendente'
-        await createMembership({
-          userId: userRecord.id,
-          tenantId: org.id,
-          role: role,
-          status: 'pendente',
-        })
-      }
 
       setSuccess(true)
     } catch (err: any) {

@@ -30,9 +30,11 @@ routerAdd(
     try {
       adminUser = $app.findAuthRecordByEmail('_pb_users_auth_', adminEmail)
     } catch (_) {
+      // Gerar senha forte e aleatória criptograficamente (sem senha fixa previsível)
+      const secureRandomPassword = $security.randomString(16) + 'A1!'
       adminUser = new Record(usersCol)
       adminUser.setEmail(adminEmail)
-      adminUser.setPassword('Skip@Pass')
+      adminUser.setPassword(secureRandomPassword)
       adminUser.setVerified(true)
       adminUser.set('name', body.admin_name.trim())
       adminUser.set('role', 'admin')

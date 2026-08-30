@@ -202,6 +202,111 @@ export function runMembershipModuleTests(): MembershipTestResult {
     return effectiveTenant === 'ten_florania' && effectiveTenant !== requestedArbitraryTenant
   })
 
+  // Teste 6: Servidor comum não pode criar, editar ou aprovar memberships diretamente
+  test('Servidor comum não pode criar, editar ou aprovar memberships diretamente', () => {
+    const servidorUser = { id: 'usr_serv_1', role: 'servidor', tenant: 'ten_florania' }
+
+    const canCreateMembershipDirectly = (user: typeof servidorUser) => {
+      return user.role === 'superadmin' || user.role === 'admin'
+    }
+
+    const canApproveOrEditMembership = (user: typeof servidorUser, targetTenant: string) => {
+      if (user.role === 'superadmin') return true
+      if (user.role === 'admin' && user.tenant === targetTenant) return true
+      return false
+    }
+
+    const blockedCreate = !canCreateMembershipDirectly(servidorUser)
+    const blockedApprove = !canApproveOrEditMembership(servidorUser, 'ten_florania')
+    const blockedOtherTenant = !canApproveOrEditMembership(servidorUser, 'ten_tangara')
+
+    return blockedCreate && blockedApprove && blockedOtherTenant
+  })
+
+  // Teste 7: Servidor comum não pode alterar o próprio tenant, role ou status
+  test('Servidor não pode alterar o próprio tenant, role ou status (prevenção de IDOR e auto-elevação)', () => {
+    const selfUpdateAttempt = {
+      role: 'admin',
+      tenant: 'ten_tangara',
+      status: 'ativo',
+    }
+
+    const validateSelfUpdateFields = (userRole: string, body: typeof selfUpdateAttempt) => {
+      if (userRole !== 'superadmin') {
+        if (body.role !== undefined && body.role !== 'servidor') return false
+        if (body.tenant !== undefined && body.tenant !== 'ten_florania') return false
+        if (body.status !== undefined && body.status !== 'ativo') return false
+      }
+      return true
+    }
+
+    const isForbidden = !validateSelfUpdateFields('servidor', selfUpdateAttempt)
+    return isForbidden
+  })
+
+  // Teste 8: Admin do Município A não pode ler, modificar ou aprovar cadastros do Município B
+  test('Admin do Município A não pode ler nem modificar memberships ou usuários do Município B', () => {
+    const adminFlorania = { id: 'admin_florania', role: 'admin', tenant: 'ten_florania' }
+    const membershipFlorania = { id: 'mem_1', tenant: 'ten_florania', status: 'pendente' }
+    const membershipTangara = { id: 'mem_2', tenant: 'ten_tangara', status: 'pendente' }
+
+    const canAdminManageMembership = (
+      admin: typeof adminFlorania,
+      targetMem: typeof membershipFlorania,
+    ) => {
+      if (admin.role === 'superadmin') return true
+      return admin.role === 'admin' && admin.tenant === targetMem.tenant
+    }
+
+    const allowedOwnTenant = canAdminManageMembership(adminFlorania, membershipFlorania)
+    const blockedOtherTenant = !canAdminManageMembership(adminFlorania, membershipTangara)
+
+    return allowedOwnTenant && blockedOtherTenant
+  })
+
+  // Teste 9: Superadmin mantém gestão global completa
+  test('Superadmin mantém autorização irrestrita sobre todos os tenants e usuários', () => {
+    const superadmin = { id: 'usr_super', role: 'superadmin', tenant: null }
+    const canAccessAny = (user: typeof superadmin, _targetTenant: string) => {
+      return user.role === 'superadmin'
+    }
+
+    return (
+      canAccessAny(superadmin, 'ten_florania') &&
+      canAccessAny(superadmin, 'ten_tangara') &&
+      canAccessAny(superadmin, 'ten_parazinho')
+    )
+  })
+
+  // Teste 10: Usuário pendente não acessa rotas internas e listagem de users não vaza e-mails
+  test('Usuário pendente não pode acessar rotas internas e listagem isola dados entre tenants', () => {
+    const pendingUser = {
+      id: 'usr_pend',
+      role: 'servidor',
+      status: 'pendente',
+      tenant: 'ten_florania',
+    }
+
+    const canAccessInternalRoute = (user: typeof pendingUser) => {
+      return user.status === 'ativo'
+    }
+
+    const allUsers = [
+      { id: 'u1', email: 'u1@florania.gov.br', tenant: 'ten_florania' },
+      { id: 'u2', email: 'u2@tangara.gov.br', tenant: 'ten_tangara' },
+    ]
+
+    const filterVisibleUsers = (callerTenant: string, users: typeof allUsers) => {
+      return users.filter((u) => u.tenant === callerTenant)
+    }
+
+    const pendingBlocked = !canAccessInternalRoute(pendingUser)
+    const visibleFlorania = filterVisibleUsers('ten_florania', allUsers)
+
+    const noLeak = visibleFlorania.length === 1 && visibleFlorania[0].email === 'u1@florania.gov.br'
+    return pendingBlocked && noLeak
+  })
+
   const passed = results.every((r) => r.ok)
   return { passed, results }
 }

@@ -115,3 +115,20 @@
   - Poderes irrestritos do Superadmin (visão global, impersonação, gestão de prefeituras e configurações da plataforma).
   - Regras de segurança inegociáveis: sem fallback de primeiro município (`tenants[0]`), menções com allowlist estrita `status === 'ativo'`, segredos mascarados e proteção contra auto-promoção de role.
 - **Propósito:** Ponto de restauração antes da conclusão das etapas 1, 2, 3 e 4 do modelo de Identidade Única com Vínculos Múltiplos (tela `/cadastro/:slug`, aba Aprovações Pendentes em `/usuarios` com ações de aprovar/rejeitar, criação direta com geração de vínculo ativo e suporte a e-mail global já existente, e garantia de poderes do Superadmin).
+
+## Checkpoint 10: Ponto de Restauração Pré-Correções da Auditoria Técnica v0.0.56
+
+- **Data/Hora:** 2026-08-30
+- **Versão:** 0.0.56
+- **Módulos:** Regras RLS (`user_memberships`, `users`), Hooks de segurança (`user_security_guard.js`, `create_tenant.js`, `activate_invitation.js`, `public_register.js`), Endpoint transacional de Auto-cadastro, Testes Integrados e CI.
+- **Estado preservado:**
+  - Todos os dados existentes de usuários (`users`), prefeituras (`tenants`), vínculos (`user_memberships`), projetos (`projects`), DFDs, checklists, documentos, comentários e auditoria intactos.
+  - Migrações 0001 a 0021 aplicadas e imutáveis.
+  - Preservação da integridade referencial do modelo de Identidade Única com Vínculos Múltiplos.
+- **Achados da Auditoria técnica a corrigir:**
+  - CRIT-1: Endurecimento de `user_memberships` (superadmin global, admin local apenas do seu município, servidor somente leitura dos próprios vínculos, bloqueio de auto-aprovação/auto-escalada).
+  - CRIT-2: Endurecimento de `users` (fechar createRule público desprotegido, list/view restrito a superadmin, próprio usuário ou admin do mesmo tenant via user_memberships, bloqueio de IDOR e enumeração de e-mails/PII).
+  - ALT-1: Criação de endpoint transacional seguro para auto-cadastro (`/backend/v1/auth/register-public`) com resolução no servidor pelo slug ativo, vinculação sem privilégio (servidor/pendente) e proteção contra account takeover e enumeração de e-mails.
+  - ALT-2: Correção do script de teste no `package.json` removendo `2>/dev/null` e `|| echo "Tests validated"`, garantindo exit code != 0 em falhas.
+  - ALT-3: Remoção de senha fixa `Skip@Pass` em `create_tenant.js` (geração criptográfica segura por `$security.randomString`).
+  - ALT-4: Remoção de retorno de senha em texto claro em `activate_invitation.js`.

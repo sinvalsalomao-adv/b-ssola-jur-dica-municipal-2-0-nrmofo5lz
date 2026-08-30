@@ -190,3 +190,21 @@ export async function createMembership(data: {
   )
   return normalizeMembership(record)
 }
+
+/**
+ * Endpoint seguro e transacional para auto-cadastro público
+ */
+export async function registerPublicUser(payload: {
+  slug: string
+  name: string
+  email: string
+  password: string
+  passwordConfirm: string
+  role?: UserRole
+}): Promise<{ success: boolean; status: string; message: string }> {
+  return await pb.send('/backend/v1/auth/register-public', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
