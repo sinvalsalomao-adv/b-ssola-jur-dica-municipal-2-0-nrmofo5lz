@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-31T11:05:05.149Z",
+  "generatedAt": "2026-08-31T21:48:18.903Z",
   "collections": [
     {
       "name": "users",
@@ -1948,6 +1948,54 @@
         "CREATE INDEX idx_user_membership_tenant ON user_memberships (tenant)",
         "CREATE INDEX idx_user_membership_user ON user_memberships (user)",
         "CREATE INDEX idx_user_membership_status ON user_memberships (status)"
+      ]
+    },
+    {
+      "name": "security_audit_markers",
+      "type": "base",
+      "apiRules": {
+        "list": null,
+        "view": null,
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "marker_key",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "version",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "details",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_security_audit_marker_key ON security_audit_markers (marker_key)"
       ]
     }
   ]
