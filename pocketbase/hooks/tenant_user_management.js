@@ -1,9 +1,11 @@
-// Dedicated Backend Endpoints for Tenant User Management
+// Dedicated Backend Endpoints for Tenant User Management & Memberships
 // Routes:
-// 1. GET  /backend/v1/tenant-users/list   -> Lists/searches active or pending users/memberships of authorized tenant
-// 2. GET  /backend/v1/tenant-users/view   -> Gets minimized details of a specific user in caller's tenant
-// 3. POST /backend/v1/tenant-users/update -> Updates profile name and membership role/status with transaction
-// 4. POST /backend/v1/tenant-users/delete -> Removes/unlinks user membership in caller's tenant (or deletes orphan user safely)
+// 1. GET  /backend/v1/tenant-users/list    -> Lists/searches users/memberships of authorized tenant (tenant required for non-superadmin)
+// 2. GET  /backend/v1/tenant-users/view    -> Gets minimized details of a specific user in requested tenant (tenant required for non-superadmin)
+// 3. POST /backend/v1/tenant-users/update  -> Updates profile name and membership role/status in requested tenant
+// 4. POST /backend/v1/tenant-users/delete  -> Removes/unlinks user membership in requested tenant (or safe delete)
+// 5. POST /backend/v1/tenant-users/approve -> Approves pending membership in requested tenant
+// 6. POST /backend/v1/tenant-users/reject  -> Rejects pending membership in requested tenant
 
 // --- 1. LIST USERS OF TENANT ---
 routerAdd(
@@ -18,87 +20,82 @@ routerAdd(
     const authId = auth.id
     const authRole = auth.getString('role')
     const query = e.requestInfo().query || {}
-    const requestedTenant = (query.tenant || '').trim()
-    const search = (query.search || query.q || '').trim().toLowerCase()
-    const statusFilter = (query.status || '').trim().toLowerCase() // 'ativo', 'pendente', 'inativo', or '' (all)
+    const requestedTenant = String(query.tenant || '').trim()
+    const search = String(query.search || query.q || '')
+      .trim()
+      .toLowerCase()
+    const statusFilter = String(query.status || '')
+      .trim()
+      .toLowerCase()
     const page = Math.max(1, parseInt(query.page || '1', 10) || 1)
     const perPage = Math.min(100, Math.max(1, parseInt(query.perPage || '50', 10) || 50))
 
-    // Determinação do tenant autorizado
+    // Validação de formato seguro para IDs/filtros
+    const safeIdRegex = /^[a-zA-Z0-9_-]{1,40}$/
+    if (requestedTenant && !safeIdRegex.test(requestedTenant)) {
+      return e.json(400, { code: 400, message: 'ID de município inválido.' })
+    }
+
+    const allowedStatuses = ['', 'ativo', 'pendente', 'inativo', 'rejeitado']
+    if (statusFilter && allowedStatuses.indexOf(statusFilter) === -1) {
+      return e.json(400, { code: 400, message: 'Filtro de status inválido.' })
+    }
+
     let effectiveTenantId = ''
     if (authRole === 'superadmin') {
-      effectiveTenantId = requestedTenant || auth.getString('tenant')
-      // Superadmin sem tenant selecionado pode listar tudo ou de um tenant
+      effectiveTenantId = requestedTenant || ''
     } else {
-      // Local Admin: deve ter membership ATIVA com role 'admin' no tenant solicitado (ou derivado de suas memberships)
-      let checkTenant = requestedTenant
-      if (!checkTenant) {
-        // Se não veio requestedTenant, buscar o tenant onde o usuário é admin ativo
-        try {
-          const myAdminMems = $app.findRecordsByFilter(
-            'user_memberships',
-            "user = '" + authId + "' && role = 'admin' && status = 'ativo'",
-            '-created',
-            1,
-            0,
-          )
-          if (myAdminMems.length > 0) {
-            checkTenant = myAdminMems[0].getString('tenant')
-          }
-        } catch (_) {}
-      }
-      if (!checkTenant) {
-        checkTenant = auth.getString('tenant')
+      if (!requestedTenant) {
+        return e.json(400, {
+          code: 400,
+          message: 'Parâmetro tenant é obrigatório para gestão municipal.',
+        })
       }
 
-      if (!checkTenant) {
-        return e.json(403, { code: 403, message: 'Acesso não autorizado.' })
-      }
+      // Revalida explicitamente que o autenticado possui membership admin ATIVA no tenant solicitado
+      const escapedAuthId = authId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const escapedTenant = requestedTenant.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const checkFilter =
+        "user = '" +
+        escapedAuthId +
+        "' && tenant = '" +
+        escapedTenant +
+        "' && role = 'admin' && status = 'ativo'"
 
       try {
-        const adminMems = $app.findRecordsByFilter(
-          'user_memberships',
-          "user = '" +
-            authId +
-            "' && tenant = '" +
-            checkTenant +
-            "' && role = 'admin' && status = 'ativo'",
-          '',
-          1,
-          0,
-        )
+        const adminMems = $app.findRecordsByFilter('user_memberships', checkFilter, '', 1, 0)
         if (adminMems.length === 0) {
-          return e.json(403, { code: 403, message: 'Acesso não autorizado.' })
+          return e.json(403, {
+            code: 403,
+            message: 'Você não possui permissão de Administrador ativo no município selecionado.',
+          })
         }
-        effectiveTenantId = checkTenant
+        effectiveTenantId = requestedTenant
       } catch (_) {
-        return e.json(403, { code: 403, message: 'Acesso não autorizado.' })
+        return e.json(403, { code: 403, message: 'Erro ao validar privilégios no município.' })
       }
     }
 
     try {
-      // Buscar memberships do tenant
-      let memFilter = ''
+      let memFilter = "id != ''"
       if (effectiveTenantId) {
-        memFilter = "tenant = '" + effectiveTenantId + "'"
-      } else {
-        memFilter = "id != ''" // Superadmin vendo todos
+        const safeEscapedTenant = effectiveTenantId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+        memFilter = "tenant = '" + safeEscapedTenant + "'"
       }
 
       if (statusFilter) {
-        memFilter += " && status = '" + statusFilter + "'"
+        const safeStatus = statusFilter.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+        memFilter += " && status = '" + safeStatus + "'"
       }
 
-      // Buscar todos os registros correspondentes ordenados por -created
       const memberships = $app.findRecordsByFilter(
         'user_memberships',
         memFilter,
         '-created',
-        500,
+        1000,
         0,
       )
 
-      // Carregar os dados dos usuários e tenants relacionados de forma eficiente
       const items = []
       const tenantsMap = {}
 
@@ -119,7 +116,7 @@ routerAdd(
         const mRole = m.getString('role')
         const mStatus = m.getString('status')
 
-        // Aplicar filtro de busca normalizada (nome / email)
+        // Filtro em memória de texto de busca seguro
         if (search) {
           const matchName = uName.toLowerCase().indexOf(search) !== -1
           const matchEmail = uEmail.toLowerCase().indexOf(search) !== -1
@@ -128,7 +125,6 @@ routerAdd(
           }
         }
 
-        // Cache do tenant para nome/slug
         if (!tenantsMap[tId]) {
           try {
             const tRec = $app.findFirstRecordByData('tenants', 'id', tId)
@@ -158,7 +154,6 @@ routerAdd(
         })
       }
 
-      // Paginação in-memory dos itens filtrados
       const totalItems = items.length
       const totalPages = Math.ceil(totalItems / perPage) || 1
       const offset = (page - 1) * perPage
@@ -191,69 +186,62 @@ routerAdd(
     const authId = auth.id
     const authRole = auth.getString('role')
     const query = e.requestInfo().query || {}
-    const targetUserId = (query.userId || query.id || '').trim()
-    const requestedTenant = (query.tenant || '').trim()
+    const targetUserId = String(query.userId || query.id || '').trim()
+    const requestedTenant = String(query.tenant || '').trim()
 
-    if (!targetUserId) {
-      return e.json(404, { code: 404, message: 'Usuário não encontrado.' })
+    const safeIdRegex = /^[a-zA-Z0-9_-]{1,40}$/
+    if (!targetUserId || !safeIdRegex.test(targetUserId)) {
+      return e.json(400, { code: 400, message: 'ID do usuário inválido ou não informado.' })
+    }
+    if (requestedTenant && !safeIdRegex.test(requestedTenant)) {
+      return e.json(400, { code: 400, message: 'ID de município inválido.' })
     }
 
     let effectiveTenantId = ''
     if (authRole === 'superadmin') {
-      effectiveTenantId = requestedTenant || auth.getString('tenant')
+      effectiveTenantId = requestedTenant || ''
     } else {
-      let checkTenant = requestedTenant
-      if (!checkTenant) {
-        try {
-          const myAdminMems = $app.findRecordsByFilter(
-            'user_memberships',
-            "user = '" + authId + "' && role = 'admin' && status = 'ativo'",
-            '-created',
-            1,
-            0,
-          )
-          if (myAdminMems.length > 0) {
-            checkTenant = myAdminMems[0].getString('tenant')
-          }
-        } catch (_) {}
+      if (!requestedTenant) {
+        return e.json(400, {
+          code: 400,
+          message: 'Parâmetro tenant é obrigatório para consulta municipal.',
+        })
       }
-      if (!checkTenant) checkTenant = auth.getString('tenant')
 
-      if (!checkTenant) {
-        return e.json(404, { code: 404, message: 'Usuário não encontrado.' })
-      }
+      const escapedAuthId = authId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const escapedTenant = requestedTenant.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const checkFilter =
+        "user = '" +
+        escapedAuthId +
+        "' && tenant = '" +
+        escapedTenant +
+        "' && role = 'admin' && status = 'ativo'"
 
       try {
-        const adminMems = $app.findRecordsByFilter(
-          'user_memberships',
-          "user = '" +
-            authId +
-            "' && tenant = '" +
-            checkTenant +
-            "' && role = 'admin' && status = 'ativo'",
-          '',
-          1,
-          0,
-        )
+        const adminMems = $app.findRecordsByFilter('user_memberships', checkFilter, '', 1, 0)
         if (adminMems.length === 0) {
-          return e.json(404, { code: 404, message: 'Usuário não encontrado.' })
+          return e.json(403, {
+            code: 403,
+            message: 'Você não possui permissão de Administrador ativo no município selecionado.',
+          })
         }
-        effectiveTenantId = checkTenant
+        effectiveTenantId = requestedTenant
       } catch (_) {
-        return e.json(404, { code: 404, message: 'Usuário não encontrado.' })
+        return e.json(403, { code: 403, message: 'Erro ao validar privilégios no município.' })
       }
     }
 
-    // Verificar se o targetUserId possui membership no effectiveTenantId
     try {
-      let filter = "user = '" + targetUserId + "'"
+      const escapedTargetUser = targetUserId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      let filter = "user = '" + escapedTargetUser + "'"
       if (effectiveTenantId) {
-        filter += " && tenant = '" + effectiveTenantId + "'"
+        const escapedEffectiveTenant = effectiveTenantId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+        filter += " && tenant = '" + escapedEffectiveTenant + "'"
       }
 
       const targetMems = $app.findRecordsByFilter('user_memberships', filter, '-created', 1, 0)
       if (targetMems.length === 0) {
-        return e.json(404, { code: 404, message: 'Usuário não encontrado.' })
+        return e.json(404, { code: 404, message: 'Usuário não encontrado no município.' })
       }
 
       const m = targetMems[0]
@@ -300,69 +288,67 @@ routerAdd(
     const authId = auth.id
     const authRole = auth.getString('role')
     const body = e.requestInfo().body || {}
-    const targetUserId = (body.userId || body.id || '').trim()
-    const requestedTenant = (body.tenant || '').trim()
+    const targetUserId = String(body.userId || body.id || '').trim()
+    const requestedTenant = String(body.tenant || '').trim()
 
-    if (!targetUserId) {
-      return e.json(400, { code: 400, message: 'ID do usuário é obrigatório.' })
+    const safeIdRegex = /^[a-zA-Z0-9_-]{1,40}$/
+    if (!targetUserId || !safeIdRegex.test(targetUserId)) {
+      return e.json(400, { code: 400, message: 'ID do usuário é obrigatório e inválido.' })
+    }
+    if (requestedTenant && !safeIdRegex.test(requestedTenant)) {
+      return e.json(400, { code: 400, message: 'ID de município inválido.' })
     }
 
     let effectiveTenantId = ''
     if (authRole === 'superadmin') {
-      effectiveTenantId = requestedTenant || auth.getString('tenant')
+      effectiveTenantId = requestedTenant || ''
+      if (!effectiveTenantId) {
+        return e.json(400, {
+          code: 400,
+          message: 'Município (tenant) é obrigatório para atualização de usuário.',
+        })
+      }
     } else {
-      let checkTenant = requestedTenant
-      if (!checkTenant) {
-        try {
-          const myAdminMems = $app.findRecordsByFilter(
-            'user_memberships',
-            "user = '" + authId + "' && role = 'admin' && status = 'ativo'",
-            '-created',
-            1,
-            0,
-          )
-          if (myAdminMems.length > 0) {
-            checkTenant = myAdminMems[0].getString('tenant')
-          }
-        } catch (_) {}
+      if (!requestedTenant) {
+        return e.json(400, {
+          code: 400,
+          message: 'Parâmetro tenant é obrigatório para operação municipal.',
+        })
       }
-      if (!checkTenant) checkTenant = auth.getString('tenant')
 
-      if (!checkTenant) {
-        return e.json(403, { code: 403, message: 'Acesso não autorizado.' })
-      }
+      const escapedAuthId = authId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const escapedTenant = requestedTenant.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const checkFilter =
+        "user = '" +
+        escapedAuthId +
+        "' && tenant = '" +
+        escapedTenant +
+        "' && role = 'admin' && status = 'ativo'"
 
       try {
-        const adminMems = $app.findRecordsByFilter(
-          'user_memberships',
-          "user = '" +
-            authId +
-            "' && tenant = '" +
-            checkTenant +
-            "' && role = 'admin' && status = 'ativo'",
-          '',
-          1,
-          0,
-        )
+        const adminMems = $app.findRecordsByFilter('user_memberships', checkFilter, '', 1, 0)
         if (adminMems.length === 0) {
-          return e.json(403, { code: 403, message: 'Acesso não autorizado.' })
+          return e.json(403, {
+            code: 403,
+            message: 'Você não possui permissão de Administrador ativo no município selecionado.',
+          })
         }
-        effectiveTenantId = checkTenant
+        effectiveTenantId = requestedTenant
       } catch (_) {
-        return e.json(403, { code: 403, message: 'Acesso não autorizado.' })
+        return e.json(403, { code: 403, message: 'Erro ao validar privilégios no município.' })
       }
     }
 
-    // Validações de segurança e integridade
-    const targetMems = $app.findRecordsByFilter(
-      'user_memberships',
-      "user = '" + targetUserId + "' && tenant = '" + effectiveTenantId + "'",
-      '-created',
-      1,
-      0,
-    )
+    const escapedTarget = targetUserId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const escapedEffectiveTenant = effectiveTenantId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const memFilter = "user = '" + escapedTarget + "' && tenant = '" + escapedEffectiveTenant + "'"
+
+    const targetMems = $app.findRecordsByFilter('user_memberships', memFilter, '-created', 1, 0)
     if (targetMems.length === 0) {
-      return e.json(404, { code: 404, message: 'Usuário não encontrado no município.' })
+      return e.json(404, {
+        code: 404,
+        message: 'Usuário não encontrado no município especificado.',
+      })
     }
 
     const targetMembership = targetMems[0]
@@ -381,7 +367,6 @@ routerAdd(
     const newStatus = body.status !== undefined ? String(body.status).trim() : currentStatus
     const newName = body.name !== undefined ? String(body.name).trim() : null
 
-    // Proibir promoção a superadmin
     if (newRole === 'superadmin') {
       return e.json(403, { code: 403, message: 'Papel de superadministrador não é permitido.' })
     }
@@ -396,14 +381,16 @@ routerAdd(
       return e.json(400, { code: 400, message: 'Status inválido especificado.' })
     }
 
-    // Regra do Último Admin Ativo: se estiver rebaixando role ou inativando/rejeitando status de um admin ativo
+    // Regra do Último Admin Ativo
     const isTargetActiveAdmin = currentRole === 'admin' && currentStatus === 'ativo'
     const willDemoteOrDeactivate = newRole !== 'admin' || newStatus !== 'ativo'
 
     if (isTargetActiveAdmin && willDemoteOrDeactivate) {
+      const activeAdminsFilter =
+        "tenant = '" + escapedEffectiveTenant + "' && role = 'admin' && status = 'ativo'"
       const activeAdmins = $app.findRecordsByFilter(
         'user_memberships',
-        "tenant = '" + effectiveTenantId + "' && role = 'admin' && status = 'ativo'",
+        activeAdminsFilter,
         '',
         10,
         0,
@@ -417,8 +404,12 @@ routerAdd(
       }
     }
 
-    // Admin local não pode rebaixar a si próprio se for deixar sem admin
-    if (isSelf && (newRole !== currentRole || newStatus !== currentStatus)) {
+    // Admin local não pode rebaixar a si próprio se não for superadmin
+    if (
+      authRole !== 'superadmin' &&
+      isSelf &&
+      (newRole !== currentRole || newStatus !== currentStatus)
+    ) {
       if (currentRole === 'admin' && newRole !== 'admin') {
         return e.json(403, {
           code: 403,
@@ -427,16 +418,13 @@ routerAdd(
       }
     }
 
-    // Execução atômica da atualização
     try {
       $app.runInTransaction((txApp) => {
-        // Atualizar nome no perfil se enviado
         if (newName && newName !== targetUserRec.getString('name')) {
           targetUserRec.set('name', newName)
           txApp.save(targetUserRec)
         }
 
-        // Atualizar membership
         if (newRole !== currentRole || newStatus !== currentStatus) {
           targetMembership.set('role', newRole)
           targetMembership.set('status', newStatus)
@@ -475,67 +463,62 @@ routerAdd(
     const authId = auth.id
     const authRole = auth.getString('role')
     const body = e.requestInfo().body || {}
-    const targetUserId = (body.userId || body.id || '').trim()
-    const requestedTenant = (body.tenant || '').trim()
+    const targetUserId = String(body.userId || body.id || '').trim()
+    const requestedTenant = String(body.tenant || '').trim()
 
-    if (!targetUserId) {
-      return e.json(400, { code: 400, message: 'ID do usuário é obrigatório.' })
+    const safeIdRegex = /^[a-zA-Z0-9_-]{1,40}$/
+    if (!targetUserId || !safeIdRegex.test(targetUserId)) {
+      return e.json(400, { code: 400, message: 'ID do usuário é obrigatório e inválido.' })
+    }
+    if (requestedTenant && !safeIdRegex.test(requestedTenant)) {
+      return e.json(400, { code: 400, message: 'ID de município inválido.' })
     }
 
     let effectiveTenantId = ''
     if (authRole === 'superadmin') {
-      effectiveTenantId = requestedTenant || auth.getString('tenant')
+      effectiveTenantId = requestedTenant || ''
+      if (!effectiveTenantId) {
+        return e.json(400, {
+          code: 400,
+          message: 'Município (tenant) é obrigatório para desvinculação.',
+        })
+      }
     } else {
-      let checkTenant = requestedTenant
-      if (!checkTenant) {
-        try {
-          const myAdminMems = $app.findRecordsByFilter(
-            'user_memberships',
-            "user = '" + authId + "' && role = 'admin' && status = 'ativo'",
-            '-created',
-            1,
-            0,
-          )
-          if (myAdminMems.length > 0) {
-            checkTenant = myAdminMems[0].getString('tenant')
-          }
-        } catch (_) {}
+      if (!requestedTenant) {
+        return e.json(400, {
+          code: 400,
+          message: 'Parâmetro tenant é obrigatório para desvinculação municipal.',
+        })
       }
-      if (!checkTenant) checkTenant = auth.getString('tenant')
 
-      if (!checkTenant) {
-        return e.json(403, { code: 403, message: 'Acesso não autorizado.' })
-      }
+      const escapedAuthId = authId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const escapedTenant = requestedTenant.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const checkFilter =
+        "user = '" +
+        escapedAuthId +
+        "' && tenant = '" +
+        escapedTenant +
+        "' && role = 'admin' && status = 'ativo'"
 
       try {
-        const adminMems = $app.findRecordsByFilter(
-          'user_memberships',
-          "user = '" +
-            authId +
-            "' && tenant = '" +
-            checkTenant +
-            "' && role = 'admin' && status = 'ativo'",
-          '',
-          1,
-          0,
-        )
+        const adminMems = $app.findRecordsByFilter('user_memberships', checkFilter, '', 1, 0)
         if (adminMems.length === 0) {
-          return e.json(403, { code: 403, message: 'Acesso não autorizado.' })
+          return e.json(403, {
+            code: 403,
+            message: 'Você não possui permissão de Administrador ativo no município selecionado.',
+          })
         }
-        effectiveTenantId = checkTenant
+        effectiveTenantId = requestedTenant
       } catch (_) {
-        return e.json(403, { code: 403, message: 'Acesso não autorizado.' })
+        return e.json(403, { code: 403, message: 'Erro ao validar privilégios no município.' })
       }
     }
 
-    // Verificar se o targetUserId possui membership no effectiveTenantId
-    const targetMems = $app.findRecordsByFilter(
-      'user_memberships',
-      "user = '" + targetUserId + "' && tenant = '" + effectiveTenantId + "'",
-      '-created',
-      1,
-      0,
-    )
+    const escapedTarget = targetUserId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const escapedEffectiveTenant = effectiveTenantId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const memFilter = "user = '" + escapedTarget + "' && tenant = '" + escapedEffectiveTenant + "'"
+
+    const targetMems = $app.findRecordsByFilter('user_memberships', memFilter, '-created', 1, 0)
     if (targetMems.length === 0) {
       return e.json(404, { code: 404, message: 'Usuário não encontrado no município.' })
     }
@@ -547,9 +530,11 @@ routerAdd(
 
     // Regra do Último Admin Ativo
     if (isTargetAdmin) {
+      const activeAdminsFilter =
+        "tenant = '" + escapedEffectiveTenant + "' && role = 'admin' && status = 'ativo'"
       const activeAdmins = $app.findRecordsByFilter(
         'user_memberships',
-        "tenant = '" + effectiveTenantId + "' && role = 'admin' && status = 'ativo'",
+        activeAdminsFilter,
         '',
         10,
         0,
@@ -562,7 +547,7 @@ routerAdd(
       }
     }
 
-    // Impedir auto-exclusão pelo admin local se não for superadmin
+    // Impedir auto-exclusão pelo admin local
     if (authRole !== 'superadmin' && authId === targetUserId) {
       return e.json(403, {
         code: 403,
@@ -572,19 +557,17 @@ routerAdd(
 
     try {
       $app.runInTransaction((txApp) => {
-        // 1. Remover o vínculo com o município
         txApp.delete(targetMembership)
 
-        // 2. Verificar se o usuário possui outros vínculos em outros municípios
+        const escapedTargetForOther = targetUserId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
         const otherMems = txApp.findRecordsByFilter(
           'user_memberships',
-          "user = '" + targetUserId + "'",
+          "user = '" + escapedTargetForOther + "'",
           '',
           10,
           0,
         )
 
-        // Se o usuário não possui mais NENHUM outro vínculo e não é superadmin, verificar se o registro auth pode ser removido
         if (otherMems.length === 0 && authRole === 'superadmin') {
           try {
             const uRec = txApp.findFirstRecordByData('users', 'id', targetUserId)
@@ -601,6 +584,278 @@ routerAdd(
       })
     } catch (err) {
       return e.json(500, { code: 500, message: 'Erro ao desvincular usuário.' })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// --- 5. APPROVE MEMBERSHIP IN TENANT ---
+routerAdd(
+  'POST',
+  '/backend/v1/tenant-users/approve',
+  (e) => {
+    const auth = e.auth
+    if (!auth) {
+      return e.json(401, { code: 401, message: 'Autenticação necessária.' })
+    }
+
+    const authId = auth.id
+    const authRole = auth.getString('role')
+    const body = e.requestInfo().body || {}
+    const membershipId = String(body.membershipId || body.id || '').trim()
+    const requestedTenant = String(body.tenant || body.tenantId || '').trim()
+    const requestedRole = body.role ? String(body.role).trim() : null
+
+    const safeIdRegex = /^[a-zA-Z0-9_-]{1,40}$/
+    if (!membershipId || !safeIdRegex.test(membershipId)) {
+      return e.json(400, { code: 400, message: 'ID da solicitação/membership inválido.' })
+    }
+    if (requestedTenant && !safeIdRegex.test(requestedTenant)) {
+      return e.json(400, { code: 400, message: 'ID de município inválido.' })
+    }
+
+    let targetMem = null
+    try {
+      targetMem = $app.findFirstRecordByData('user_memberships', 'id', membershipId)
+    } catch (_) {
+      return e.json(404, { code: 404, message: 'Solicitação de vínculo não encontrada.' })
+    }
+
+    const targetTenant = targetMem.getString('tenant')
+    const targetUserId = targetMem.getString('user')
+
+    let effectiveTenantId = ''
+    if (authRole === 'superadmin') {
+      effectiveTenantId = targetTenant
+    } else {
+      if (!requestedTenant) {
+        return e.json(400, {
+          code: 400,
+          message: 'Parâmetro tenant é obrigatório para aprovação municipal.',
+        })
+      }
+
+      if (requestedTenant !== targetTenant) {
+        return e.json(403, {
+          code: 403,
+          message: 'A solicitação não pertence ao município informado.',
+        })
+      }
+
+      const escapedAuthId = authId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const escapedTenant = requestedTenant.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const checkFilter =
+        "user = '" +
+        escapedAuthId +
+        "' && tenant = '" +
+        escapedTenant +
+        "' && role = 'admin' && status = 'ativo'"
+
+      try {
+        const adminMems = $app.findRecordsByFilter('user_memberships', checkFilter, '', 1, 0)
+        if (adminMems.length === 0) {
+          return e.json(403, {
+            code: 403,
+            message: 'Você não possui permissão de Administrador ativo neste município.',
+          })
+        }
+        effectiveTenantId = requestedTenant
+      } catch (_) {
+        return e.json(403, { code: 403, message: 'Erro ao validar privilégios no município.' })
+      }
+    }
+
+    // Proibir autopromoção / autoaprovação por usuário comum ou admin sem privilégio
+    if (
+      authRole !== 'superadmin' &&
+      authId === targetUserId &&
+      targetMem.getString('status') === 'pendente'
+    ) {
+      return e.json(403, {
+        code: 403,
+        message: 'Você não pode autoaprovar sua própria solicitação.',
+      })
+    }
+
+    const currentRole = targetMem.getString('role')
+    const finalRole = requestedRole || currentRole
+    if (finalRole === 'superadmin') {
+      return e.json(403, { code: 403, message: 'Papel de superadministrador não é permitido.' })
+    }
+
+    const allowedRoles = ['admin', 'servidor', 'gestor', 'secretario', 'procurador']
+    if (allowedRoles.indexOf(finalRole) === -1) {
+      return e.json(400, { code: 400, message: 'Papel inválido especificado.' })
+    }
+
+    try {
+      targetMem.set('status', 'ativo')
+      targetMem.set('role', finalRole)
+      $app.save(targetMem)
+
+      let uRec = null
+      try {
+        uRec = $app.findFirstRecordByData('users', 'id', targetUserId)
+      } catch (_) {}
+
+      let tRec = null
+      try {
+        tRec = $app.findFirstRecordByData('tenants', 'id', targetTenant)
+      } catch (_) {}
+
+      return e.json(200, {
+        success: true,
+        message: 'Vínculo aprovado com sucesso!',
+        membership: {
+          id: targetMem.id,
+          userId: targetUserId,
+          userName: uRec ? uRec.getString('name') : '—',
+          userEmail: uRec ? uRec.getString('email') : '',
+          tenantId: targetTenant,
+          tenantName: tRec ? tRec.getString('name') : '—',
+          tenantSlug: tRec ? tRec.getString('slug') : '',
+          role: finalRole,
+          status: 'ativo',
+          created: targetMem.getString('created'),
+          updated: targetMem.getString('updated'),
+        },
+      })
+    } catch (err) {
+      return e.json(500, { code: 500, message: 'Erro ao aprovar vínculo.' })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// --- 6. REJECT MEMBERSHIP IN TENANT ---
+routerAdd(
+  'POST',
+  '/backend/v1/tenant-users/reject',
+  (e) => {
+    const auth = e.auth
+    if (!auth) {
+      return e.json(401, { code: 401, message: 'Autenticação necessária.' })
+    }
+
+    const authId = auth.id
+    const authRole = auth.getString('role')
+    const body = e.requestInfo().body || {}
+    const membershipId = String(body.membershipId || body.id || '').trim()
+    const requestedTenant = String(body.tenant || body.tenantId || '').trim()
+
+    const safeIdRegex = /^[a-zA-Z0-9_-]{1,40}$/
+    if (!membershipId || !safeIdRegex.test(membershipId)) {
+      return e.json(400, { code: 400, message: 'ID da solicitação/membership inválido.' })
+    }
+    if (requestedTenant && !safeIdRegex.test(requestedTenant)) {
+      return e.json(400, { code: 400, message: 'ID de município inválido.' })
+    }
+
+    let targetMem = null
+    try {
+      targetMem = $app.findFirstRecordByData('user_memberships', 'id', membershipId)
+    } catch (_) {
+      return e.json(404, { code: 404, message: 'Solicitação de vínculo não encontrada.' })
+    }
+
+    const targetTenant = targetMem.getString('tenant')
+    const targetUserId = targetMem.getString('user')
+
+    if (authRole === 'superadmin') {
+      // Superadmin tem acesso total
+    } else {
+      if (!requestedTenant) {
+        return e.json(400, {
+          code: 400,
+          message: 'Parâmetro tenant é obrigatório para rejeição municipal.',
+        })
+      }
+
+      if (requestedTenant !== targetTenant) {
+        return e.json(403, {
+          code: 403,
+          message: 'A solicitação não pertence ao município informado.',
+        })
+      }
+
+      const escapedAuthId = authId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const escapedTenant = requestedTenant.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const checkFilter =
+        "user = '" +
+        escapedAuthId +
+        "' && tenant = '" +
+        escapedTenant +
+        "' && role = 'admin' && status = 'ativo'"
+
+      try {
+        const adminMems = $app.findRecordsByFilter('user_memberships', checkFilter, '', 1, 0)
+        if (adminMems.length === 0) {
+          return e.json(403, {
+            code: 403,
+            message: 'Você não possui permissão de Administrador ativo neste município.',
+          })
+        }
+      } catch (_) {
+        return e.json(403, { code: 403, message: 'Erro ao validar privilégios no município.' })
+      }
+    }
+
+    // Regra do último admin ativo (caso estivesse ativo e como admin)
+    const currentRole = targetMem.getString('role')
+    const currentStatus = targetMem.getString('status')
+    if (currentRole === 'admin' && currentStatus === 'ativo') {
+      const escapedTenantForAdmins = targetTenant.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const activeAdminsFilter =
+        "tenant = '" + escapedTenantForAdmins + "' && role = 'admin' && status = 'ativo'"
+      const activeAdmins = $app.findRecordsByFilter(
+        'user_memberships',
+        activeAdminsFilter,
+        '',
+        10,
+        0,
+      )
+      if (activeAdmins.length <= 1) {
+        return e.json(400, {
+          code: 400,
+          message:
+            'Não é permitido rejeitar/desativar o único Administrador ativo deste município.',
+        })
+      }
+    }
+
+    try {
+      targetMem.set('status', 'rejeitado')
+      $app.save(targetMem)
+
+      let uRec = null
+      try {
+        uRec = $app.findFirstRecordByData('users', 'id', targetUserId)
+      } catch (_) {}
+
+      let tRec = null
+      try {
+        tRec = $app.findFirstRecordByData('tenants', 'id', targetTenant)
+      } catch (_) {}
+
+      return e.json(200, {
+        success: true,
+        message: 'Vínculo rejeitado com sucesso.',
+        membership: {
+          id: targetMem.id,
+          userId: targetUserId,
+          userName: uRec ? uRec.getString('name') : '—',
+          userEmail: uRec ? uRec.getString('email') : '',
+          tenantId: targetTenant,
+          tenantName: tRec ? tRec.getString('name') : '—',
+          tenantSlug: tRec ? tRec.getString('slug') : '',
+          role: currentRole,
+          status: 'rejeitado',
+          created: targetMem.getString('created'),
+          updated: targetMem.getString('updated'),
+        },
+      })
+    } catch (err) {
+      return e.json(500, { code: 500, message: 'Erro ao rejeitar vínculo.' })
     }
   },
   $apis.requireAuth(),

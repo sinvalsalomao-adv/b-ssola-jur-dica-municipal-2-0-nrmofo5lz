@@ -22,16 +22,25 @@ routerAdd(
     const authRole = auth.getString('role')
     const body = e.requestInfo().body || {}
 
-    const name = (body.name || '').trim()
-    const email = (body.email || '').trim().toLowerCase()
+    const name = String(body.name || '').trim()
+    const email = String(body.email || '')
+      .trim()
+      .toLowerCase()
     const password = String(body.password || '')
     const passwordConfirm = String(body.passwordConfirm || '')
-    const requestedRole = (body.role || 'servidor').trim()
-    const requestedTenant = (body.tenant || '').trim()
+    const requestedRole = String(body.role || 'servidor').trim()
+    const requestedTenant = String(body.tenant || '').trim()
+
+    // Validação de formato seguro para IDs
+    const safeIdRegex = /^[a-zA-Z0-9_-]{1,40}$/
+    if (requestedTenant && !safeIdRegex.test(requestedTenant)) {
+      return e.badRequestError('ID de município inválido.')
+    }
 
     // 1. Validações de campos obrigatórios
     if (!name) return e.badRequestError('Nome completo é obrigatório.')
-    if (!email || !email.includes('@')) return e.badRequestError('Email válido é obrigatório.')
+    if (!email || !email.includes('@') || email.length > 255)
+      return e.badRequestError('Email válido é obrigatório.')
 
     // 2. Determinação e validação do Tenant
     let effectiveTenantId = ''
@@ -41,24 +50,22 @@ routerAdd(
         return e.badRequestError('Município/Tenant é obrigatório para criação pelo superadmin.')
       }
     } else {
-      // Para Admin local, verificar se possui membership ativa como admin no requestedTenant (ou no seu próprio tenant)
-      let checkTenant = requestedTenant || auth.getString('tenant')
+      let checkTenant = requestedTenant
       if (!checkTenant) {
         return e.badRequestError('Município/Tenant é obrigatório.')
       }
 
+      const escapedAuthId = authId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const escapedTenant = checkTenant.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const checkFilter =
+        "user = '" +
+        escapedAuthId +
+        "' && tenant = '" +
+        escapedTenant +
+        "' && role = 'admin' && status = 'ativo'"
+
       try {
-        const adminMems = $app.findRecordsByFilter(
-          'user_memberships',
-          "user = '" +
-            authId +
-            "' && tenant = '" +
-            checkTenant +
-            "' && role = 'admin' && status = 'ativo'",
-          '',
-          1,
-          0,
-        )
+        const adminMems = $app.findRecordsByFilter('user_memberships', checkFilter, '', 1, 0)
         if (adminMems.length === 0) {
           return e.json(403, {
             code: 403,
@@ -82,7 +89,6 @@ routerAdd(
 
     // 4. Verificar se o município está ativo
     try {
-      const tenantRec = $app.findCollectionByNameOrId('tenants')
       const tRec = $app.findFirstRecordByData('tenants', 'id', effectiveTenantId)
       if (tRec.getString('status') !== 'ativa') {
         return e.badRequestError('O município selecionado está inativo.')
@@ -101,7 +107,6 @@ routerAdd(
     } catch (_) {}
 
     if (!userRecord) {
-      // Para novo usuário, senha é obrigatória e deve ser validada
       if (!password) {
         return e.badRequestError('Senha é obrigatória para criar novo usuário.')
       }
@@ -136,8 +141,6 @@ routerAdd(
         return e.json(500, { code: 500, message: 'Erro ao criar conta do usuário.' })
       }
     } else {
-      // Usuário global já existe.
-      // Atualizar nome se fornecido e não preenchido
       if (name && !userRecord.getString('name')) {
         userRecord.set('name', name)
         try {
@@ -149,13 +152,11 @@ routerAdd(
     // 6. Criar ou ativar vínculo em user_memberships no effectiveTenantId
     let membershipRecord = null
     try {
-      const existingMems = $app.findRecordsByFilter(
-        'user_memberships',
-        "user = '" + userRecord.id + "' && tenant = '" + effectiveTenantId + "'",
-        '',
-        1,
-        0,
-      )
+      const escapedUserId = userRecord.id.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const escapedEffTenant = effectiveTenantId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const memFilter = "user = '" + escapedUserId + "' && tenant = '" + escapedEffTenant + "'"
+
+      const existingMems = $app.findRecordsByFilter('user_memberships', memFilter, '', 1, 0)
       if (existingMems.length > 0) {
         membershipRecord = existingMems[0]
         membershipRecord.set('role', requestedRole)

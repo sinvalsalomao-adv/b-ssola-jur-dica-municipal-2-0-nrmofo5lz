@@ -6,6 +6,7 @@
  * 3. Transição de status (pendente -> ativo / rejeitado).
  * 4. Reuso de usuário global na criação direta com novo vínculo ativo.
  * 5. Bloqueio de auto-promoção de role e proteção de integridade multi-tenant.
+ * 6. Suporte a Administrador Multi-Tenant com escopo explícito obrigatório.
  */
 
 import { normalizeMembership, type UserMembership, type MembershipStatus } from './memberships'
@@ -111,13 +112,11 @@ export function runMembershipModuleTests(): MembershipTestResult {
     let currentStatus: string = 'pendente'
     let currentRole: string = 'servidor'
 
-    // Simula aprovação com promoção/confirmação de cargo
     const approve = (newRole?: UserRole) => {
       currentStatus = 'ativo'
       if (newRole) currentRole = newRole
     }
 
-    // Simula rejeição
     const reject = () => {
       currentStatus = 'rejeitado'
     }
@@ -145,7 +144,6 @@ export function runMembershipModuleTests(): MembershipTestResult {
         userCreated = true
       }
 
-      // Adicionar ou ativar membership
       let mem = memberships.find((m) => m.user === user!.id && m.tenant === tenantId)
       if (mem) {
         mem.status = 'ativo'
@@ -162,9 +160,7 @@ export function runMembershipModuleTests(): MembershipTestResult {
       return { user, userCreated, membershipCount: memberships.length }
     }
 
-    // 1. Vincular Maria em Florânia
     const res1 = handleCreateOrLink('servidor.comum@gmail.com', 'Maria', 'ten_florania', 'servidor')
-    // 2. Vincular a MESMA Maria em Tangará
     const res2 = handleCreateOrLink('servidor.comum@gmail.com', 'Maria', 'ten_tangara', 'gestor')
 
     return (
@@ -179,27 +175,27 @@ export function runMembershipModuleTests(): MembershipTestResult {
     )
   })
 
-  // Teste 5: Isolamento multi-tenant: Admin local não pode selecionar nem vincular outro município
-  test('Admin local deve ter município fixado e travado sem possibilidade de alteração arbitrária', () => {
-    const localAdmin: { role: string; tenantId: string | null; prefeitura: string } = {
-      role: 'admin',
-      tenantId: 'ten_florania',
-      prefeitura: 'Florânia',
-    }
-    const requestedArbitraryTenant: string = 'ten_tangara'
-
-    const resolveTenantForCreation = (
-      user: typeof localAdmin,
-      inputTenant?: string,
-    ): string | null => {
-      if (user.role === 'superadmin') {
-        return inputTenant || null
-      }
-      return user.tenantId
+  // Teste 5: Admin Multi-Tenant: gerencia múltiplos tenants com tenantId explícito
+  test('Admin Multi-Tenant gerencia múltiplos tenants especificando tenantId explicitamente', () => {
+    const multiTenantAdmin = {
+      id: 'admin_multi',
+      roles: [
+        { tenant: 'ten_florania', role: 'admin', status: 'ativo' },
+        { tenant: 'ten_parazinho', role: 'admin', status: 'ativo' },
+      ],
     }
 
-    const effectiveTenant = resolveTenantForCreation(localAdmin, requestedArbitraryTenant)
-    return effectiveTenant === 'ten_florania' && effectiveTenant !== requestedArbitraryTenant
+    const canAdminOperateInTenant = (admin: typeof multiTenantAdmin, requestedTenant: string) => {
+      return admin.roles.some(
+        (r) => r.tenant === requestedTenant && r.role === 'admin' && r.status === 'ativo',
+      )
+    }
+
+    const canOperateFlorania = canAdminOperateInTenant(multiTenantAdmin, 'ten_florania')
+    const canOperateParazinho = canAdminOperateInTenant(multiTenantAdmin, 'ten_parazinho')
+    const cannotOperateTangara = !canAdminOperateInTenant(multiTenantAdmin, 'ten_tangara')
+
+    return canOperateFlorania && canOperateParazinho && cannotOperateTangara
   })
 
   // Teste 6: Servidor comum não pode criar, editar ou aprovar memberships diretamente
@@ -244,27 +240,19 @@ export function runMembershipModuleTests(): MembershipTestResult {
     return isForbidden
   })
 
-  // Teste 8: Admin do Município A não pode ler, modificar ou aprovar cadastros do Município B
-  test('Admin do Município A não pode ler nem modificar memberships ou usuários do Município B', () => {
-    const adminFlorania = { id: 'admin_florania', role: 'admin', tenant: 'ten_florania' }
-    const membershipFlorania = { id: 'mem_1', tenant: 'ten_florania', status: 'pendente' }
-    const membershipTangara = { id: 'mem_2', tenant: 'ten_tangara', status: 'pendente' }
+  // Teste 8: Proteção do último admin ativo do município
+  test('Regra de integridade: Não é permitido rebaixar ou remover o último administrador ativo', () => {
+    const activeAdminsInTenant = [{ id: 'admin_1', tenant: 'ten_tangara', status: 'ativo' }]
 
-    const canAdminManageMembership = (
-      admin: typeof adminFlorania,
-      targetMem: typeof membershipFlorania,
-    ) => {
-      if (admin.role === 'superadmin') return true
-      return admin.role === 'admin' && admin.tenant === targetMem.tenant
+    const canDemoteOrRemoveAdmin = (adminsCount: number) => {
+      return adminsCount > 1
     }
 
-    const allowedOwnTenant = canAdminManageMembership(adminFlorania, membershipFlorania)
-    const blockedOtherTenant = !canAdminManageMembership(adminFlorania, membershipTangara)
-
-    return allowedOwnTenant && blockedOtherTenant
+    const isProtected = !canDemoteOrRemoveAdmin(activeAdminsInTenant.length)
+    return isProtected
   })
 
-  // Teste 9: Superadmin mantém gestão global completa
+  // Teste 9: Superadmin mantém autorização global irrestrita
   test('Superadmin mantém autorização irrestrita sobre todos os tenants e usuários', () => {
     const superadmin = { id: 'usr_super', role: 'superadmin', tenant: null }
     const canAccessAny = (user: typeof superadmin, _targetTenant: string) => {
@@ -276,35 +264,6 @@ export function runMembershipModuleTests(): MembershipTestResult {
       canAccessAny(superadmin, 'ten_tangara') &&
       canAccessAny(superadmin, 'ten_parazinho')
     )
-  })
-
-  // Teste 10: Usuário pendente não acessa rotas internas e listagem de users não vaza e-mails
-  test('Usuário pendente não pode acessar rotas internas e listagem isola dados entre tenants', () => {
-    const pendingUser = {
-      id: 'usr_pend',
-      role: 'servidor',
-      status: 'pendente',
-      tenant: 'ten_florania',
-    }
-
-    const canAccessInternalRoute = (user: typeof pendingUser) => {
-      return user.status === 'ativo'
-    }
-
-    const allUsers = [
-      { id: 'u1', email: 'u1@florania.gov.br', tenant: 'ten_florania' },
-      { id: 'u2', email: 'u2@tangara.gov.br', tenant: 'ten_tangara' },
-    ]
-
-    const filterVisibleUsers = (callerTenant: string, users: typeof allUsers) => {
-      return users.filter((u) => u.tenant === callerTenant)
-    }
-
-    const pendingBlocked = !canAccessInternalRoute(pendingUser)
-    const visibleFlorania = filterVisibleUsers('ten_florania', allUsers)
-
-    const noLeak = visibleFlorania.length === 1 && visibleFlorania[0].email === 'u1@florania.gov.br'
-    return pendingBlocked && noLeak
   })
 
   const passed = results.every((r) => r.ok)

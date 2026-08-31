@@ -25,6 +25,7 @@ import { updateTenantUser } from '@/services/users'
 
 interface Props {
   user: GlobalUser | null
+  tenantId?: string
   open: boolean
   onOpenChange: (open: boolean) => void
   onSaved: () => void
@@ -38,7 +39,7 @@ const ROLES: { value: UserRole; label: string }[] = [
   { value: 'procurador', label: 'Procurador' },
 ]
 
-export function TenantUserEditModal({ user, open, onOpenChange, onSaved }: Props) {
+export function TenantUserEditModal({ user, tenantId, open, onOpenChange, onSaved }: Props) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<UserRole>('servidor')
@@ -65,13 +66,20 @@ export function TenantUserEditModal({ user, open, onOpenChange, onSaved }: Props
     setErrors(e)
     if (Object.keys(e).length > 0) return
 
+    const effectiveTenant = tenantId || (user as any).tenantId || ''
+    if (!effectiveTenant) {
+      toast.error('Contexto do município não identificado.')
+      return
+    }
+
     setSubmitting(true)
     try {
       const cleanName = sanitizeInput(name.trim())
 
-      // Chamar endpoint backend seguro e transacional
+      // Chamar endpoint backend seguro e transacional com tenantId explícito (R-1c)
       await updateTenantUser({
         userId: user.id,
+        tenant: effectiveTenant,
         name: cleanName,
         role,
         status,

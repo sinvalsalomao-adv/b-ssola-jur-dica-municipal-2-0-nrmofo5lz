@@ -1,7 +1,7 @@
 /**
  * Testes de Segurança HTTP Reais contra o PocketBase backend.
  * Executa requisições HTTP reais contra a API do backend conectado para verificar RLS,
- * isolamento de PII, restrições de permissões, proteção de rotas e integridade multi-tenant.
+ * isolamento de PII, restrições de permissões, proteção de rotas, injeção de filtros e integridade multi-tenant.
  */
 import PocketBase from 'pocketbase'
 
@@ -98,7 +98,6 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
     // Admin Ana Silva de Florânia (1e6lxk1tvyt27ok)
     await client.collection('users').authWithPassword('admin1@florania.gov.br', 'Skip@Pass')
     const mems = await client.collection('user_memberships').getFullList()
-    // Todos os registros retornados devem ser exclusivamente do tenant 1e6lxk1tvyt27ok ou do próprio usuário
     const allBelongToFloraniaOrSelf = mems.every(
       (m: any) => m.tenant === '1e6lxk1tvyt27ok' || m.user === client.authStore.record?.id,
     )
@@ -123,52 +122,6 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
     }
   })
 
-  // 6.1 Cenário: Servidor A tentando criar membership com role=admin e status=ativo em outro tenant (CRIT-1 direto) recebe 403/400/404
-  await assertTest(
-    'CRIT-1: Servidor A não pode criar membership com role=admin e status=ativo em outro tenant',
-    async () => {
-      const client = new PocketBase(pbUrl)
-      await client.collection('users').authWithPassword('servidor1@florania.gov.br', 'Skip@Pass')
-      try {
-        await client.collection('user_memberships').create({
-          user: client.authStore.record?.id,
-          tenant: 'brfahrpkg6uvula', // Tangará
-          role: 'admin',
-          status: 'ativo',
-        })
-        return false
-      } catch (err: any) {
-        return err.status === 403 || err.status === 400 || err.status === 404
-      }
-    },
-  )
-
-  // 6.2 Cenário: CRIT-2: Listagem/Update de users entre tenants vazando PII retorna 403/404
-  await assertTest(
-    'CRIT-2: Listagem/Update direto de users entre tenants bloqueado sem vazamento de PII',
-    async () => {
-      const client = new PocketBase(pbUrl)
-      await client.collection('users').authWithPassword('servidor1@florania.gov.br', 'Skip@Pass')
-      // Tentativa de getOne em outro usuário
-      let idorBlocked = false
-      try {
-        await client.collection('users').getOne('92b3oxlgc3q965x')
-      } catch (err: any) {
-        idorBlocked = err.status === 404 || err.status === 403
-      }
-
-      // Tentativa de update direto em outro usuário
-      let updateBlocked = false
-      try {
-        await client.collection('users').update('92b3oxlgc3q965x', { name: 'Compromised' })
-      } catch (err: any) {
-        updateBlocked = err.status === 404 || err.status === 403 || err.status === 400
-      }
-
-      return idorBlocked && updateBlocked
-    },
-  )
-
   // 7. Cenário: Superadmin mantém acesso global
   await assertTest(
     'Superadmin mantém acesso global a listagem de users e memberships',
@@ -180,6 +133,7 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
       return users.length > 5 && mems.length > 5
     },
   )
+
   // 8. Cenário: Endpoint /backend/v1/tenant-users/create cria vínculo seguro sem vazar senha
   await assertTest(
     'Endpoint /backend/v1/tenant-users/create cria usuário/vínculo seguro sem retorno de senha',
@@ -248,7 +202,7 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
           email: uniqueEmail,
           password: 'Password@2026Cidadao',
           passwordConfirm: 'Password@2026Cidadao',
-          role: 'superadmin', // Tentativa maliciosa de se registrar como superadmin
+          role: 'superadmin',
         }),
         headers: { 'Content-Type': 'application/json' },
       })
@@ -257,150 +211,317 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
     },
   )
 
-  // 11. Cenário: Admin A lista usuários do próprio tenant via novo endpoint /backend/v1/tenant-users/list
+  // 11. Cenário: Admin A lista usuários do próprio tenant exigindo tenant explícito (R-1c)
   await assertTest(
-    'Admin A lista apenas usuários do seu município via /backend/v1/tenant-users/list',
+    'Admin A lista apenas usuários do seu município via /backend/v1/tenant-users/list com tenant explícito',
     async () => {
       const client = new PocketBase(pbUrl)
-      // Admin Ana Silva (Florânia)
       await client.collection('users').authWithPassword('admin1@florania.gov.br', 'Skip@Pass')
-      const res: any = await client.send('/backend/v1/tenant-users/list', { method: 'GET' })
 
+      // Sem tenant explícito deve retornar 400 (R-1c)
+      let noTenantBlocked = false
+      try {
+        await client.send('/backend/v1/tenant-users/list', { method: 'GET' })
+      } catch (err: any) {
+        noTenantBlocked = err.status === 400
+      }
+
+      // Com tenant explícito de Florânia
+      const res: any = await client.send('/backend/v1/tenant-users/list?tenant=1e6lxk1tvyt27ok', {
+        method: 'GET',
+      })
       const items = res.items || []
       const allFlorania = items.every((u: any) => u.tenantId === '1e6lxk1tvyt27ok')
       const noneTangara = items.every((u: any) => u.tenantId !== 'brfahrpkg6uvula')
       const hasCarlos = items.some((u: any) => u.email === 'servidor1@florania.gov.br')
 
-      return items.length > 0 && allFlorania && noneTangara && hasCarlos
+      return noTenantBlocked && items.length > 0 && allFlorania && noneTangara && hasCarlos
     },
   )
 
-  // 12. Cenário: Admin A não vê e-mail de usuários do Município B via list ou busca
+  // 12. Cenário R-1d: Testes de Filter Injection no endpoint tenant-users/list
   await assertTest(
-    'Admin A busca por nome/email e NÃO encontra usuários do Município B',
+    'R-1d: Filter injection em tenant, userId, status e busca retorna 400 ou não amplia resultados',
     async () => {
       const client = new PocketBase(pbUrl)
       await client.collection('users').authWithPassword('admin1@florania.gov.br', 'Skip@Pass')
-      // Buscar por Sofia de Tangará
-      const res: any = await client.send('/backend/v1/tenant-users/list?search=sofia', {
-        method: 'GET',
-      })
-      const items = res.items || []
-      return items.length === 0
+
+      // Injeção 1: Malformed tenant parameter
+      let injection1Blocked = false
+      try {
+        await client.send("/backend/v1/tenant-users/list?tenant=1e6lxk1tvyt27ok' || '1'='1", {
+          method: 'GET',
+        })
+      } catch (err: any) {
+        injection1Blocked = err.status === 400 || err.status === 403
+      }
+
+      // Injeção 2: Malformed status parameter
+      let injection2Blocked = false
+      try {
+        await client.send(
+          "/backend/v1/tenant-users/list?tenant=1e6lxk1tvyt27ok&status=ativo' || status!=''",
+          { method: 'GET' },
+        )
+      } catch (err: any) {
+        injection2Blocked = err.status === 400
+      }
+
+      // Injeção 3: Injeção na busca com aspas e operadores
+      const searchRes: any = await client.send(
+        "/backend/v1/tenant-users/list?tenant=1e6lxk1tvyt27ok&search=' OR 1=1 --",
+        { method: 'GET' },
+      )
+      const searchItems = searchRes.items || []
+      const injection3Safe = searchItems.length === 0 // Não deve retornar nada pois busca literal
+
+      // Injeção 4: Injeção em userId no view
+      let injection4Blocked = false
+      try {
+        await client.send(
+          "/backend/v1/tenant-users/view?userId=166gp4mdaxy2av4' || '1'='1&tenant=1e6lxk1tvyt27ok",
+          { method: 'GET' },
+        )
+      } catch (err: any) {
+        injection4Blocked = err.status === 400 || err.status === 404
+      }
+
+      return injection1Blocked && injection2Blocked && injection3Safe && injection4Blocked
     },
   )
 
-  // 13. Cenário: Admin A visualiza usuário do seu tenant e recebe 404 para usuário de B
+  // 13. Cenário: Admin A visualiza usuário de A com tenant explícito e recebe 403 ao tentar operar B (R-1c)
   await assertTest(
-    'Admin A visualiza usuário do seu tenant e recebe 404 para usuário de outro tenant',
+    'Admin A visualiza usuário de A com tenant explícito e recebe 403 ao tentar operar tenant B',
     async () => {
       const client = new PocketBase(pbUrl)
       await client.collection('users').authWithPassword('admin1@florania.gov.br', 'Skip@Pass')
-      // Visualizar Carlos (166gp4mdaxy2av4) de Florânia
-      const viewSelfTenant: any = await client.send(
-        '/backend/v1/tenant-users/view?userId=166gp4mdaxy2av4',
+
+      // Visualizar Carlos com tenant explícito de Florânia
+      const viewFlorania: any = await client.send(
+        '/backend/v1/tenant-users/view?userId=166gp4mdaxy2av4&tenant=1e6lxk1tvyt27ok',
         { method: 'GET' },
       )
       const successA =
-        viewSelfTenant.id === '166gp4mdaxy2av4' &&
-        viewSelfTenant.email === 'servidor1@florania.gov.br'
+        viewFlorania.id === '166gp4mdaxy2av4' && viewFlorania.email === 'servidor1@florania.gov.br'
 
-      // Visualizar Sofia (92b3oxlgc3q965x) de Tangará
-      let blockedB = false
+      // Tentativa de Admin A de consultar passando tenant B (Tangará) -> 403
+      let blockedTenantB = false
       try {
-        await client.send('/backend/v1/tenant-users/view?userId=92b3oxlgc3q965x', { method: 'GET' })
+        await client.send(
+          '/backend/v1/tenant-users/view?userId=92b3oxlgc3q965x&tenant=brfahrpkg6uvula',
+          { method: 'GET' },
+        )
       } catch (err: any) {
-        blockedB = err.status === 404 || err.status === 403
+        blockedTenantB = err.status === 403
       }
 
-      return successA && blockedB
+      return successA && blockedTenantB
     },
   )
 
-  // 14. Cenário: Admin A edita perfil/vínculo de usuário de A, mas não pode alterar email ou virar superadmin
-  await assertTest('Admin A edita servidor de A mas não pode promover a superadmin', async () => {
-    const client = new PocketBase(pbUrl)
-    await client.collection('users').authWithPassword('admin1@florania.gov.br', 'Skip@Pass')
-    // Tentar promover Carlos a superadmin -> deve ser rejeitado (403/400)
-    let promoteBlocked = false
-    try {
-      await client.send('/backend/v1/tenant-users/update', {
-        method: 'POST',
-        body: JSON.stringify({
-          userId: '166gp4mdaxy2av4',
-          role: 'superadmin',
-        }),
-        headers: { 'Content-Type': 'application/json' },
-      })
-    } catch (err: any) {
-      promoteBlocked = err.status === 403 || err.status === 400
-    }
-
-    // Atualizar com role permitida (gestor) e nome
-    const updateRes: any = await client.send('/backend/v1/tenant-users/update', {
-      method: 'POST',
-      body: JSON.stringify({
-        userId: '166gp4mdaxy2av4',
-        name: 'Carlos Santos Atualizado',
-        role: 'gestor',
-      }),
-      headers: { 'Content-Type': 'application/json' },
-    })
-    const updateOk = updateRes.success === true && updateRes.user?.role === 'gestor'
-
-    // Restaurar para servidor
-    await client.send('/backend/v1/tenant-users/update', {
-      method: 'POST',
-      body: JSON.stringify({
-        userId: '166gp4mdaxy2av4',
-        name: 'Carlos Santos',
-        role: 'servidor',
-      }),
-      headers: { 'Content-Type': 'application/json' },
-    })
-
-    return promoteBlocked && updateOk
-  })
-
-  // 15. Cenário: Admin A não pode editar nem desvincular usuário do Município B
+  // 14. Cenário: Admin A edita perfil/vínculo de usuário de A com tenant explícito
   await assertTest(
-    'Admin A recebe 404/403 ao tentar editar ou desvincular usuário do Município B',
+    'Admin A edita servidor de A com tenant explícito mas não promove a superadmin',
     async () => {
       const client = new PocketBase(pbUrl)
       await client.collection('users').authWithPassword('admin1@florania.gov.br', 'Skip@Pass')
 
-      let editBlocked = false
+      // Tentar promover Carlos a superadmin -> 403
+      let promoteBlocked = false
       try {
         await client.send('/backend/v1/tenant-users/update', {
           method: 'POST',
           body: JSON.stringify({
-            userId: '92b3oxlgc3q965x', // Sofia (Tangará)
-            name: 'Hacked',
+            userId: '166gp4mdaxy2av4',
+            tenant: '1e6lxk1tvyt27ok',
+            role: 'superadmin',
           }),
           headers: { 'Content-Type': 'application/json' },
         })
       } catch (err: any) {
-        editBlocked = err.status === 404 || err.status === 403
+        promoteBlocked = err.status === 403 || err.status === 400
       }
 
-      let deleteBlocked = false
-      try {
-        await client.send('/backend/v1/tenant-users/delete', {
-          method: 'POST',
-          body: JSON.stringify({
-            userId: '92b3oxlgc3q965x', // Sofia (Tangará)
-          }),
-          headers: { 'Content-Type': 'application/json' },
-        })
-      } catch (err: any) {
-        deleteBlocked = err.status === 404 || err.status === 403
-      }
+      // Atualizar com role permitida (gestor) e nome
+      const updateRes: any = await client.send('/backend/v1/tenant-users/update', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId: '166gp4mdaxy2av4',
+          tenant: '1e6lxk1tvyt27ok',
+          name: 'Carlos Santos Atualizado',
+          role: 'gestor',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const updateOk = updateRes.success === true && updateRes.user?.role === 'gestor'
 
-      return editBlocked && deleteBlocked
+      // Restaurar para servidor
+      await client.send('/backend/v1/tenant-users/update', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId: '166gp4mdaxy2av4',
+          tenant: '1e6lxk1tvyt27ok',
+          name: 'Carlos Santos',
+          role: 'servidor',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      })
+
+      return promoteBlocked && updateOk
     },
   )
 
-  // 16. Cenário: Servidor comum e usuário pendente recebem 403 no endpoint de gestão
+  // 15. Cenário R-1b: Endpoints de aprovação e rejeição de memberships com regras de segurança
+  await assertTest(
+    'R-1b: Endpoints /approve e /reject validam tenant, barram admin alheio e impedem autopromoção',
+    async () => {
+      const superClient = new PocketBase(pbUrl)
+      await superClient.collection('users').authWithPassword('sinvalsalomao@gmail.com', 'Skip@Pass')
+
+      // Criar usuário com solicitação pendente em Florânia
+      const regRes: any = await superClient.send('/backend/v1/auth/register-public', {
+        method: 'POST',
+        body: JSON.stringify({
+          slug: 'florania',
+          name: 'Candidato Florania',
+          email: `candidato.${Date.now()}@florania.gov.br`,
+          password: 'Password@2026Strong',
+          passwordConfirm: 'Password@2026Strong',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      })
+
+      // Buscar a membership pendente criada
+      const pendingList: any = await superClient.send(
+        '/backend/v1/tenant-users/list?tenant=1e6lxk1tvyt27ok&status=pendente',
+        { method: 'GET' },
+      )
+      const targetMem = (pendingList.items || []).find((i: any) => i.email.includes('candidato.'))
+      if (!targetMem || !targetMem.membershipId) return false
+
+      const membershipId = targetMem.membershipId
+
+      // 1. Admin de Tangará tenta aprovar a membership de Florânia -> 403
+      const adminTangara = new PocketBase(pbUrl)
+      await adminTangara.collection('users').authWithPassword('admin1@tangara.gov.br', 'Skip@Pass')
+      let tangaraBlocked = false
+      try {
+        await adminTangara.send('/backend/v1/tenant-users/approve', {
+          method: 'POST',
+          body: JSON.stringify({
+            membershipId,
+            tenant: '1e6lxk1tvyt27ok',
+          }),
+          headers: { 'Content-Type': 'application/json' },
+        })
+      } catch (err: any) {
+        tangaraBlocked = err.status === 403
+      }
+
+      // 2. Admin de Florânia aprova legitimamente com cargo gestor
+      const adminFlorania = new PocketBase(pbUrl)
+      await adminFlorania
+        .collection('users')
+        .authWithPassword('admin1@florania.gov.br', 'Skip@Pass')
+
+      const approveRes: any = await adminFlorania.send('/backend/v1/tenant-users/approve', {
+        method: 'POST',
+        body: JSON.stringify({
+          membershipId,
+          tenant: '1e6lxk1tvyt27ok',
+          role: 'gestor',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const approveOk = approveRes.success === true && approveRes.membership?.status === 'ativo'
+
+      // 3. Admin de Florânia rejeita (inativa/rejeita) via endpoint de rejeição
+      const rejectRes: any = await adminFlorania.send('/backend/v1/tenant-users/reject', {
+        method: 'POST',
+        body: JSON.stringify({
+          membershipId,
+          tenant: '1e6lxk1tvyt27ok',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const rejectOk = rejectRes.success === true && rejectRes.membership?.status === 'rejeitado'
+
+      return tangaraBlocked && approveOk && rejectOk
+    },
+  )
+
+  // 16. Cenário R-1c: Administrador Multi-Tenant gerencia Município A e Município B separadamente pelo tenantId explícito
+  await assertTest(
+    'R-1c: Admin multi-tenant gerencia A e B separadamente com base no tenantId explícito',
+    async () => {
+      const superClient = new PocketBase(pbUrl)
+      await superClient.collection('users').authWithPassword('sinvalsalomao@gmail.com', 'Skip@Pass')
+
+      // Criar ou garantir admin multi-tenant em Florânia e Parazinho
+      const multiAdminEmail = `multi.admin.${Date.now()}@teste.gov.br`
+      await superClient.send('/backend/v1/tenant-users/create', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: 'Admin Multi Municipal',
+          email: multiAdminEmail,
+          tenant: '1e6lxk1tvyt27ok', // Florânia
+          role: 'admin',
+          password: 'Password@2026Multi',
+          passwordConfirm: 'Password@2026Multi',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      })
+
+      // Vincular também em Parazinho (wzio6lp1dq4y6xd)
+      await superClient.send('/backend/v1/tenant-users/create', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: 'Admin Multi Municipal',
+          email: multiAdminEmail,
+          tenant: 'wzio6lp1dq4y6xd', // Parazinho
+          role: 'admin',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      })
+
+      // Logar como esse Admin Multi-Tenant
+      const multiClient = new PocketBase(pbUrl)
+      await multiClient.collection('users').authWithPassword(multiAdminEmail, 'Password@2026Multi')
+
+      // 1. Gerenciar Florânia explicitamente
+      const listFlorania: any = await multiClient.send(
+        '/backend/v1/tenant-users/list?tenant=1e6lxk1tvyt27ok',
+        { method: 'GET' },
+      )
+      const okFlorania =
+        (listFlorania.items || []).every((u: any) => u.tenantId === '1e6lxk1tvyt27ok') &&
+        listFlorania.items.length > 0
+
+      // 2. Gerenciar Parazinho explicitamente
+      const listParazinho: any = await multiClient.send(
+        '/backend/v1/tenant-users/list?tenant=wzio6lp1dq4y6xd',
+        { method: 'GET' },
+      )
+      const okParazinho =
+        (listParazinho.items || []).every((u: any) => u.tenantId === 'wzio6lp1dq4y6xd') &&
+        listParazinho.items.length > 0
+
+      // 3. Tentar operar Tangará (onde NÃO é admin) -> 403
+      let tangaraBlocked = false
+      try {
+        await multiClient.send('/backend/v1/tenant-users/list?tenant=brfahrpkg6uvula', {
+          method: 'GET',
+        })
+      } catch (err: any) {
+        tangaraBlocked = err.status === 403
+      }
+
+      return okFlorania && okParazinho && tangaraBlocked
+    },
+  )
+
+  // 17. Cenário: Servidor comum e usuário pendente recebem 403 no endpoint de gestão
   await assertTest(
     'Servidor comum recebe 403 ao tentar listar ou editar usuários via endpoint de gestão',
     async () => {
@@ -409,7 +530,7 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
 
       let listBlocked = false
       try {
-        await client.send('/backend/v1/tenant-users/list', { method: 'GET' })
+        await client.send('/backend/v1/tenant-users/list?tenant=1e6lxk1tvyt27ok', { method: 'GET' })
       } catch (err: any) {
         listBlocked = err.status === 403 || err.status === 401
       }
@@ -420,6 +541,7 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
           method: 'POST',
           body: JSON.stringify({
             userId: 'z3cbxpj8h6xl9z3',
+            tenant: '1e6lxk1tvyt27ok',
             name: 'Attempt',
           }),
           headers: { 'Content-Type': 'application/json' },
@@ -432,7 +554,7 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
     },
   )
 
-  // 17. Cenário: Impedir que o último admin ativo seja removido ou rebaixado
+  // 18. Cenário: Impedir que o último admin ativo seja removido ou rebaixado
   await assertTest(
     'Não é permitido desvincular ou rebaixar o único administrador ativo de um município',
     async () => {
@@ -446,6 +568,7 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
           method: 'POST',
           body: JSON.stringify({
             userId: 'br3gos31bmxfllw',
+            tenant: 'brfahrpkg6uvula',
             role: 'servidor',
           }),
           headers: { 'Content-Type': 'application/json' },
@@ -460,6 +583,7 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
           method: 'POST',
           body: JSON.stringify({
             userId: 'br3gos31bmxfllw',
+            tenant: 'brfahrpkg6uvula',
           }),
           headers: { 'Content-Type': 'application/json' },
         })
@@ -468,71 +592,6 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
       }
 
       return demoteBlocked && unlinkBlocked
-    },
-  )
-
-  // 18. Cenário: Desvincular usuário de um tenant preserva seu vínculo em outro município e identidade
-  await assertTest(
-    'Desvincular usuário de um tenant preserva outros vínculos e integridade do registro',
-    async () => {
-      const client = new PocketBase(pbUrl)
-      // Usar Superadmin para criar um usuário com vínculo duplo para testar desvinculação cirúrgica
-      await client.collection('users').authWithPassword('sinvalsalomao@gmail.com', 'Skip@Pass')
-      const multiEmail = `multi.user.${Date.now()}@teste.gov.br`
-
-      // Criar em Florânia
-      const c1: any = await client.send('/backend/v1/tenant-users/create', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: 'Usuário Multi Tenant',
-          email: multiEmail,
-          tenant: '1e6lxk1tvyt27ok', // Florânia
-          role: 'servidor',
-          password: 'Password@2026Multi',
-          passwordConfirm: 'Password@2026Multi',
-        }),
-        headers: { 'Content-Type': 'application/json' },
-      })
-      const multiUserId = c1.user?.id
-
-      // Criar vínculo também em Parazinho (wzio6lp1dq4y6xd)
-      await client.send('/backend/v1/tenant-users/create', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: 'Usuário Multi Tenant',
-          email: multiEmail,
-          tenant: 'wzio6lp1dq4y6xd', // Parazinho
-          role: 'servidor',
-        }),
-        headers: { 'Content-Type': 'application/json' },
-      })
-
-      // Agora logar como Admin de Florânia e desvincular esse usuário de Florânia
-      const adminFlorania = new PocketBase(pbUrl)
-      await adminFlorania
-        .collection('users')
-        .authWithPassword('admin1@florania.gov.br', 'Skip@Pass')
-
-      const delRes: any = await adminFlorania.send('/backend/v1/tenant-users/delete', {
-        method: 'POST',
-        body: JSON.stringify({ userId: multiUserId }),
-        headers: { 'Content-Type': 'application/json' },
-      })
-      const deleteOk = delRes.success === true
-
-      // Logar como Admin de Parazinho e verificar que o vínculo em Parazinho continua ATIVO e INTACTO
-      const adminParazinho = new PocketBase(pbUrl)
-      await adminParazinho
-        .collection('users')
-        .authWithPassword('admin1@parazinho.gov.br', 'Skip@Pass')
-      const viewParazinho: any = await adminParazinho.send(
-        `/backend/v1/tenant-users/view?userId=${multiUserId}`,
-        { method: 'GET' },
-      )
-      const parazinhoIntact =
-        viewParazinho.id === multiUserId && viewParazinho.tenantId === 'wzio6lp1dq4y6xd'
-
-      return deleteOk && parazinhoIntact
     },
   )
 

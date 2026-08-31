@@ -94,7 +94,7 @@ onRecordCreateRequest((e) => {
   const authRole = auth.getString('role')
   const authId = auth.id
   const body = e.requestInfo().body || {}
-  const targetTenant = body.tenant
+  const targetTenant = String(body.tenant || '').trim()
 
   if (authRole === 'superadmin') {
     return e.next()
@@ -105,19 +105,23 @@ onRecordCreateRequest((e) => {
     return e.json(400, { code: 400, message: 'Tenant é obrigatório.' })
   }
 
-  // Verificar se o autenticado é admin ativo no targetTenant
+  const safeIdRegex = /^[a-zA-Z0-9_-]{1,40}$/
+  if (!safeIdRegex.test(targetTenant)) {
+    return e.json(400, { code: 400, message: 'ID de tenant inválido.' })
+  }
+
+  // Verificar se o autenticado é admin ativo no targetTenant com escape rigoroso
   try {
-    const adminCheck = $app.findRecordsByFilter(
-      'user_memberships',
+    const escapedAuthId = authId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const escapedTenant = targetTenant.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const checkFilter =
       "user = '" +
-        authId +
-        "' && tenant = '" +
-        targetTenant +
-        "' && role = 'admin' && status = 'ativo'",
-      '',
-      1,
-      0,
-    )
+      escapedAuthId +
+      "' && tenant = '" +
+      escapedTenant +
+      "' && role = 'admin' && status = 'ativo'"
+
+    const adminCheck = $app.findRecordsByFilter('user_memberships', checkFilter, '', 1, 0)
     if (adminCheck.length === 0) {
       return e.json(403, {
         code: 403,
@@ -156,20 +160,19 @@ onRecordUpdateRequest((e) => {
   }
 
   // Usuário comum (servidor / pendente) tentando alterar seu próprio vínculo ou de outro
-  // Verificar se o usuário autenticado é admin ativo no tenant do registro
+  // Verificar se o usuário autenticado é admin ativo no tenant do registro com escape rigoroso
   let isAdminForTenant = false
   try {
-    const adminCheck = $app.findRecordsByFilter(
-      'user_memberships',
+    const escapedAuthId = authId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const escapedRecordTenant = recordTenant.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const checkFilter =
       "user = '" +
-        authId +
-        "' && tenant = '" +
-        recordTenant +
-        "' && role = 'admin' && status = 'ativo'",
-      '',
-      1,
-      0,
-    )
+      escapedAuthId +
+      "' && tenant = '" +
+      escapedRecordTenant +
+      "' && role = 'admin' && status = 'ativo'"
+
+    const adminCheck = $app.findRecordsByFilter('user_memberships', checkFilter, '', 1, 0)
     if (adminCheck.length > 0) {
       isAdminForTenant = true
     }
@@ -206,6 +209,7 @@ onRecordUpdateRequest((e) => {
 
   return e.next()
 }, 'user_memberships')
+
 // --- USER_MEMBERSHIPS DELETE GUARD ---
 onRecordDeleteRequest((e) => {
   const auth = e.auth
@@ -226,17 +230,16 @@ onRecordDeleteRequest((e) => {
 
   let isAdminForTenant = false
   try {
-    const adminCheck = $app.findRecordsByFilter(
-      'user_memberships',
+    const escapedAuthId = authId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const escapedRecordTenant = recordTenant.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const checkFilter =
       "user = '" +
-        authId +
-        "' && tenant = '" +
-        recordTenant +
-        "' && role = 'admin' && status = 'ativo'",
-      '',
-      1,
-      0,
-    )
+      escapedAuthId +
+      "' && tenant = '" +
+      escapedRecordTenant +
+      "' && role = 'admin' && status = 'ativo'"
+
+    const adminCheck = $app.findRecordsByFilter('user_memberships', checkFilter, '', 1, 0)
     if (adminCheck.length > 0) {
       isAdminForTenant = true
     }

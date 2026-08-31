@@ -146,7 +146,8 @@ export function TenantUsersManager() {
   const handleApprove = async (membership: UserMembership, newRole?: UserRole) => {
     setActionInProgressId(membership.id)
     try {
-      await approveMembership(membership.id, newRole)
+      const effectiveTenant = membership.tenantId || targetTenantId || user?.tenantId || ''
+      await approveMembership(membership.id, effectiveTenant, newRole)
       toast.success(`Cadastro de ${membership.userName} aprovado com sucesso!`)
       await Promise.all([loadPending(), loadUsers()])
     } catch (err: any) {
@@ -159,7 +160,8 @@ export function TenantUsersManager() {
   const handleReject = async (membership: UserMembership) => {
     setActionInProgressId(membership.id)
     try {
-      await rejectMembership(membership.id)
+      const effectiveTenant = membership.tenantId || targetTenantId || user?.tenantId || ''
+      await rejectMembership(membership.id, effectiveTenant)
       toast.success(`Solicitação de ${membership.userName} rejeitada.`)
       await Promise.all([loadPending(), loadUsers()])
     } catch (err: any) {
@@ -482,12 +484,14 @@ export function TenantUsersManager() {
       />
       <TenantUserEditModal
         user={editTarget}
+        tenantId={targetTenantId}
         open={editOpen}
         onOpenChange={handleEditClose}
         onSaved={loadUsers}
       />
       <TenantUserDeleteDialog
         user={deleteTarget}
+        tenantId={targetTenantId}
         open={deleteOpen}
         onOpenChange={handleDeleteClose}
         onDeleted={loadUsers}

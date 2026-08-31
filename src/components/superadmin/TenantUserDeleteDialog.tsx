@@ -16,19 +16,26 @@ import { deleteTenantUser } from '@/services/users'
 
 interface Props {
   user: GlobalUser | null
+  tenantId?: string
   open: boolean
   onOpenChange: (open: boolean) => void
   onDeleted: () => void
 }
 
-export function TenantUserDeleteDialog({ user, open, onOpenChange, onDeleted }: Props) {
+export function TenantUserDeleteDialog({ user, tenantId, open, onOpenChange, onDeleted }: Props) {
   const [deleting, setDeleting] = useState(false)
 
   const handleConfirm = async () => {
     if (!user) return
+    const effectiveTenant = tenantId || (user as any).tenantId || ''
+    if (!effectiveTenant) {
+      toast.error('Contexto do município não identificado.')
+      return
+    }
+
     setDeleting(true)
     try {
-      const res = await deleteTenantUser({ userId: user.id })
+      const res = await deleteTenantUser({ userId: user.id, tenant: effectiveTenant })
       toast.success(res?.message || 'Vínculo do usuário removido com sucesso!')
       onOpenChange(false)
       onDeleted()

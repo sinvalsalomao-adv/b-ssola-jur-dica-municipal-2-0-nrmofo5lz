@@ -15,6 +15,9 @@ export function normalizeUser(r: any): GlobalUser {
   }
 }
 
+/**
+ * Consulta global exclusiva para Superadmin
+ */
 export const getUsers = async (): Promise<GlobalUser[]> => {
   const records = await pb.collection('users').getFullList({ expand: 'tenant', sort: 'name' })
   return records.map(normalizeUser)
@@ -36,94 +39,76 @@ export interface TenantUserListResponse {
 }
 
 /**
- * Consulta autenticada de usuários de um tenant via endpoint seguro de backend
+ * Consulta autenticada de usuários de um tenant via endpoint seguro de backend.
+ * R-1a: Não possui fallback para pb.collection('users') nos fluxos municipais.
+ * Falhas geram erro controlado.
  */
 export const getUsersByTenant = async (
   tenantId: string,
   options?: TenantUserListOptions,
 ): Promise<GlobalUser[]> => {
-  try {
-    const params = new URLSearchParams()
-    if (tenantId) params.set('tenant', tenantId)
-    if (options?.search) params.set('search', options.search)
-    if (options?.status) params.set('status', options.status)
-    if (options?.page) params.set('page', String(options.page))
-    if (options?.perPage) params.set('perPage', String(options.perPage))
+  const params = new URLSearchParams()
+  if (tenantId) params.set('tenant', tenantId)
+  if (options?.search) params.set('search', options.search)
+  if (options?.status) params.set('status', options.status)
+  if (options?.page) params.set('page', String(options.page))
+  if (options?.perPage) params.set('perPage', String(options.perPage))
 
-    const url = `/backend/v1/tenant-users/list${params.toString() ? '?' + params.toString() : ''}`
-    const res: any = await pb.send(url, { method: 'GET' })
+  const url = `/backend/v1/tenant-users/list${params.toString() ? '?' + params.toString() : ''}`
+  const res: any = await pb.send(url, { method: 'GET' })
 
-    if (res?.items && Array.isArray(res.items)) {
-      return res.items.map((item: any) => ({
-        id: item.id,
-        name: item.name || '—',
-        email: item.email || '',
-        prefeituraName: item.prefeituraName || '—',
-        prefeituraSlug: item.prefeituraSlug || '',
-        role: (item.role || 'servidor') as UserRole,
-        status: (item.status === 'ativo' ? 'ativo' : 'inativo') as UserStatus,
-        lastAccess: item.lastAccess || '—',
-      }))
-    }
-    return []
-  } catch (err) {
-    // Se o usuário logado for superadmin e o endpoint falhar, pode consultar via users
-    if (pb.authStore.record?.role === 'superadmin') {
-      try {
-        const filter = tenantId ? `tenant = "${tenantId}"` : ''
-        const records = await pb.collection('users').getFullList({
-          filter: filter || undefined,
-          expand: 'tenant',
-          sort: 'name',
-        })
-        return records.map(normalizeUser)
-      } catch {
-        /* intentionally ignored */
-      }
-    }
-    return []
+  if (res?.items && Array.isArray(res.items)) {
+    return res.items.map((item: any) => ({
+      id: item.id,
+      name: item.name || '—',
+      email: item.email || '',
+      prefeituraName: item.prefeituraName || '—',
+      prefeituraSlug: item.prefeituraSlug || '',
+      role: (item.role || 'servidor') as UserRole,
+      status: (item.status === 'ativo' ? 'ativo' : 'inativo') as UserStatus,
+      lastAccess: item.lastAccess || '—',
+    }))
   }
+  return []
 }
 
 /**
- * Consulta um único usuário de um tenant via endpoint seguro
+ * Consulta um único usuário de um tenant via endpoint seguro.
+ * R-1c: tenantId explícito e obrigatório para contexto municipal.
  */
 export const getTenantUser = async (
   userId: string,
-  tenantId?: string,
+  tenantId: string,
 ): Promise<GlobalUser | null> => {
-  try {
-    const params = new URLSearchParams()
-    params.set('userId', userId)
-    if (tenantId) params.set('tenant', tenantId)
+  const params = new URLSearchParams()
+  params.set('userId', userId)
+  if (tenantId) params.set('tenant', tenantId)
 
-    const res: any = await pb.send(`/backend/v1/tenant-users/view?${params.toString()}`, {
-      method: 'GET',
-    })
-    if (res?.id) {
-      return {
-        id: res.id,
-        name: res.name || '—',
-        email: res.email || '',
-        prefeituraName: res.prefeituraName || '—',
-        prefeituraSlug: res.prefeituraSlug || '',
-        role: (res.role || 'servidor') as UserRole,
-        status: (res.status === 'ativo' ? 'ativo' : 'inativo') as UserStatus,
-        lastAccess: res.updated || res.created || '—',
-      }
+  const res: any = await pb.send(`/backend/v1/tenant-users/view?${params.toString()}`, {
+    method: 'GET',
+  })
+  if (res?.id) {
+    return {
+      id: res.id,
+      name: res.name || '—',
+      email: res.email || '',
+      prefeituraName: res.prefeituraName || '—',
+      prefeituraSlug: res.prefeituraSlug || '',
+      role: (res.role || 'servidor') as UserRole,
+      status: (res.status === 'ativo' ? 'ativo' : 'inativo') as UserStatus,
+      lastAccess: res.updated || res.created || '—',
     }
-    return null
-  } catch (_) {
-    return null
   }
+  return null
 }
 
 /**
- * Atualiza usuário/vínculo via endpoint transacional seguro
+ * Atualiza usuário/vínculo via endpoint transacional seguro.
+ * R-1c: tenantId explícito.
  */
 export const updateTenantUser = async (payload: {
   userId: string
-  tenant?: string
+  tenant: string
   name?: string
   role?: UserRole
   status?: UserStatus
@@ -139,11 +124,12 @@ export const updateTenantUser = async (payload: {
 }
 
 /**
- * Desvincula / remove usuário de um tenant via endpoint transacional seguro
+ * Desvincula / remove usuário de um tenant via endpoint transacional seguro.
+ * R-1c: tenantId explícito.
  */
 export const deleteTenantUser = async (payload: {
   userId: string
-  tenant?: string
+  tenant: string
 }): Promise<{ success: boolean; message: string }> => {
   return await pb.send('/backend/v1/tenant-users/delete', {
     method: 'POST',
@@ -152,6 +138,9 @@ export const deleteTenantUser = async (payload: {
   })
 }
 
+/**
+ * Atualização direta na coleção users reservada exclusivamente ao Superadmin global.
+ */
 export const updateUser = async (id: string, data: Record<string, any>) => {
   const payload: Record<string, any> = { ...data }
   if (payload.name !== undefined) payload.name = sanitizeInput(payload.name)

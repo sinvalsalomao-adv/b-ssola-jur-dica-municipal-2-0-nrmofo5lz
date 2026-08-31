@@ -34,20 +34,15 @@ export function normalizeMembership(r: any): UserMembership {
 }
 
 /**
- * Retorna todos os vínculos de um usuário
+ * Retorna todos os vínculos do próprio usuário logado
  */
 export async function getUserMemberships(userId: string): Promise<UserMembership[]> {
-  try {
-    const records = await pb.collection('user_memberships').getFullList({
-      filter: `user = "${userId}"`,
-      expand: 'tenant,user',
-      sort: '-created',
-    })
-    return records.map(normalizeMembership)
-  } catch (err) {
-    console.error('Erro ao buscar vínculos do usuário:', err)
-    return []
-  }
+  const records = await pb.collection('user_memberships').getFullList({
+    filter: `user = "${userId}"`,
+    expand: 'tenant,user',
+    sort: '-created',
+  })
+  return records.map(normalizeMembership)
 }
 
 /**
@@ -57,131 +52,116 @@ export async function getUserMembershipForTenant(
   userId: string,
   tenantId: string,
 ): Promise<UserMembership | null> {
-  try {
-    const records = await pb.collection('user_memberships').getFullList({
-      filter: `user = "${userId}" && tenant = "${tenantId}"`,
-      expand: 'tenant,user',
-      sort: '-created',
-    })
-    if (records.length > 0) {
-      return normalizeMembership(records[0])
-    }
-    return null
-  } catch (err) {
-    console.error('Erro ao buscar vínculo do tenant:', err)
-    return null
+  const records = await pb.collection('user_memberships').getFullList({
+    filter: `user = "${userId}" && tenant = "${tenantId}"`,
+    expand: 'tenant,user',
+    sort: '-created',
+  })
+  if (records.length > 0) {
+    return normalizeMembership(records[0])
   }
+  return null
 }
 
 /**
- * Retorna todas as memberships de um tenant (com filtro opcional de status)
+ * Retorna todas as memberships de um tenant (com filtro opcional de status).
+ * Somente para uso autorizado (respeita RLS no PB).
  */
 export async function getMembershipsByTenant(
   tenantId: string,
   status?: MembershipStatus,
 ): Promise<UserMembership[]> {
-  try {
-    let filter = `tenant = "${tenantId}"`
-    if (status) {
-      filter += ` && status = "${status}"`
-    }
-    const records = await pb.collection('user_memberships').getFullList({
-      filter,
-      expand: 'user,tenant',
-      sort: '-created',
-    })
-    return records.map(normalizeMembership)
-  } catch (err) {
-    console.error('Erro ao buscar memberships do tenant:', err)
-    return []
+  let filter = `tenant = "${tenantId}"`
+  if (status) {
+    filter += ` && status = "${status}"`
   }
+  const records = await pb.collection('user_memberships').getFullList({
+    filter,
+    expand: 'user,tenant',
+    sort: '-created',
+  })
+  return records.map(normalizeMembership)
 }
 
 /**
- * Retorna todos os vínculos pendentes (para o Superadmin ou por tenant)
+ * Retorna cadastros pendentes de um município via endpoint transacional e autenticado.
+ * R-1a: Sem fallback para acesso direto a coleções na gestão municipal.
  */
 export async function getPendingMemberships(tenantId?: string): Promise<UserMembership[]> {
-  try {
-    // Usar o endpoint seguro de tenant-users com status=pendente
-    const params = new URLSearchParams()
-    if (tenantId) params.set('tenant', tenantId)
-    params.set('status', 'pendente')
+  const params = new URLSearchParams()
+  if (tenantId) params.set('tenant', tenantId)
+  params.set('status', 'pendente')
 
-    const res: any = await pb.send(`/backend/v1/tenant-users/list?${params.toString()}`, {
-      method: 'GET',
-    })
+  const res: any = await pb.send(`/backend/v1/tenant-users/list?${params.toString()}`, {
+    method: 'GET',
+  })
 
-    if (res?.items && Array.isArray(res.items)) {
-      return res.items.map((item: any) => ({
-        id: item.membershipId || item.id,
-        userId: item.id,
-        userName: item.name || '—',
-        userEmail: item.email || '',
-        tenantId: item.tenantId || tenantId || '',
-        tenantName: item.prefeituraName || '—',
-        tenantSlug: item.prefeituraSlug || '',
-        role: (item.role || 'servidor') as UserRole,
-        status: 'pendente' as MembershipStatus,
-        created: item.created || '',
-        updated: item.lastAccess || '',
-      }))
-    }
-  } catch (err) {
-    console.warn('Fallback para user_memberships ao buscar cadastros pendentes:', err)
+  if (res?.items && Array.isArray(res.items)) {
+    return res.items.map((item: any) => ({
+      id: item.membershipId || item.id,
+      userId: item.id,
+      userName: item.name || '—',
+      userEmail: item.email || '',
+      tenantId: item.tenantId || tenantId || '',
+      tenantName: item.prefeituraName || '—',
+      tenantSlug: item.prefeituraSlug || '',
+      role: (item.role || 'servidor') as UserRole,
+      status: 'pendente' as MembershipStatus,
+      created: item.created || '',
+      updated: item.lastAccess || '',
+    }))
   }
-
-  // Fallback caso seja superadmin acessando direto
-  try {
-    const filter = tenantId
-      ? `tenant = "${tenantId}" && status = "pendente"`
-      : `status = "pendente"`
-    const records = await pb.collection('user_memberships').getFullList({
-      filter,
-      expand: 'user,tenant',
-      sort: '-created',
-    })
-    return records.map(normalizeMembership)
-  } catch (err) {
-    console.error('Erro ao buscar cadastros pendentes:', err)
-    return []
-  }
+  return []
 }
 
 /**
- * Aprova um vínculo pendente (status -> 'ativo', role opcionalmente customizado)
+ * Aprova um vínculo pendente via endpoint backend seguro e transacional (R-1b).
+ * Valida tenant do admin autenticado, impede autopromoção e protege o último admin ativo.
  */
 export async function approveMembership(
   membershipId: string,
+  tenantId: string,
   role?: UserRole,
-): Promise<UserMembership> {
+): Promise<{ success: boolean; message: string; membership: UserMembership }> {
   const payload: Record<string, any> = {
-    status: 'ativo',
+    membershipId,
+    tenant: tenantId,
   }
   if (role) payload.role = role
-  const updated = await pb.collection('user_memberships').update(membershipId, payload, {
-    expand: 'user,tenant',
+
+  const res: any = await pb.send('/backend/v1/tenant-users/approve', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
   })
-  return normalizeMembership(updated)
+
+  return res
 }
 
 /**
- * Rejeita um vínculo pendente (status -> 'rejeitado')
+ * Rejeita um vínculo pendente via endpoint backend seguro e transacional (R-1b).
+ * Valida tenant do admin autenticado e protege o último admin ativo.
  */
-export async function rejectMembership(membershipId: string): Promise<UserMembership> {
-  const updated = await pb.collection('user_memberships').update(
+export async function rejectMembership(
+  membershipId: string,
+  tenantId: string,
+): Promise<{ success: boolean; message: string; membership: UserMembership }> {
+  const payload: Record<string, any> = {
     membershipId,
-    {
-      status: 'rejeitado',
-    },
-    {
-      expand: 'user,tenant',
-    },
-  )
-  return normalizeMembership(updated)
+    tenant: tenantId,
+  }
+
+  const res: any = await pb.send('/backend/v1/tenant-users/reject', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+  })
+
+  return res
 }
 
 /**
- * Atualiza o papel ou status de uma membership
+ * Atualiza o papel ou status de uma membership via endpoint seguro de gestão
  */
 export async function updateMembership(
   membershipId: string,
@@ -201,7 +181,7 @@ export async function deleteMembership(membershipId: string): Promise<boolean> {
 }
 
 /**
- * Cria ou recupera um usuário global e associa um vínculo
+ * Cria ou recupera um usuário global e associa um vínculo (uso interno)
  */
 export async function createMembership(data: {
   userId: string
