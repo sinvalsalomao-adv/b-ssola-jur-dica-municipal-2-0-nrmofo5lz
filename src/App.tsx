@@ -16,6 +16,7 @@ import { MainLayout } from '@/components/MainLayout'
 import LoginPage from '@/pages/LoginPage'
 import OrgLoginPage from '@/pages/OrgLoginPage'
 import PublicRegisterPage from '@/pages/PublicRegisterPage'
+import ConvitePage from '@/pages/ConvitePage'
 import Dashboard from '@/pages/Dashboard'
 
 import BussolaKanban from '@/pages/BussolaKanban'
@@ -44,6 +45,7 @@ const App = () => (
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/login/:slug" element={<OrgLoginPage />} />
                 <Route path="/cadastro/:slug" element={<PublicRegisterPage />} />
+                <Route path="/convite" element={<ConvitePage />} />
                 <Route
                   element={
                     <ProtectedRoute>
