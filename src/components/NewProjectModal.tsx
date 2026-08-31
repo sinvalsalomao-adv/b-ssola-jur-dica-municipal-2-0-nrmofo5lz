@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { getUsers } from '@/services/users'
+import { getUsers, getUsersByTenant } from '@/services/users'
 import { Loader2, ChevronDown, ChevronUp } from 'lucide-react'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
@@ -49,9 +49,18 @@ export const NewProjectModal: React.FC = () => {
 
   useEffect(() => {
     if (isNewModalOpen) {
-      getUsers()
+      const effectiveTenant = isSuperadmin ? selectedTenantId || user?.tenantId : user?.tenantId
+      const fetchPromise = effectiveTenant
+        ? getUsersByTenant(effectiveTenant)
+        : isSuperadmin
+          ? getUsers()
+          : Promise.resolve([])
+
+      fetchPromise
         .then((data) => {
-          setUsers(data.map((u) => ({ id: u.id, name: u.name })))
+          setUsers(
+            data.filter((u) => u.status === 'ativo').map((u) => ({ id: u.id, name: u.name })),
+          )
         })
         .catch(() => {})
 

@@ -190,17 +190,22 @@ onRecordUpdateRequest((e) => {
     })
   }
 
-  // Admin local não pode se auto-promover ou alterar o próprio status para inativo/rejeitado
+  // Admin local não pode se auto-promover ou alterar o próprio status/role
   if (isSelf && body.status && body.status !== record.getString('status')) {
     return e.json(403, {
       code: 403,
       message: 'Você não pode alterar o status do seu próprio vínculo.',
     })
   }
+  if (isSelf && body.role && body.role !== record.getString('role')) {
+    return e.json(403, {
+      code: 403,
+      message: 'Você não pode alterar o papel do seu próprio vínculo.',
+    })
+  }
 
   return e.next()
 }, 'user_memberships')
-
 // --- USER_MEMBERSHIPS DELETE GUARD ---
 onRecordDeleteRequest((e) => {
   const auth = e.auth

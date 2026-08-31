@@ -123,6 +123,52 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
     }
   })
 
+  // 6.1 Cenário: Servidor A tentando criar membership com role=admin e status=ativo em outro tenant (CRIT-1 direto) recebe 403/400/404
+  await assertTest(
+    'CRIT-1: Servidor A não pode criar membership com role=admin e status=ativo em outro tenant',
+    async () => {
+      const client = new PocketBase(pbUrl)
+      await client.collection('users').authWithPassword('servidor1@florania.gov.br', 'Skip@Pass')
+      try {
+        await client.collection('user_memberships').create({
+          user: client.authStore.record?.id,
+          tenant: 'brfahrpkg6uvula', // Tangará
+          role: 'admin',
+          status: 'ativo',
+        })
+        return false
+      } catch (err: any) {
+        return err.status === 403 || err.status === 400 || err.status === 404
+      }
+    },
+  )
+
+  // 6.2 Cenário: CRIT-2: Listagem/Update de users entre tenants vazando PII retorna 403/404
+  await assertTest(
+    'CRIT-2: Listagem/Update direto de users entre tenants bloqueado sem vazamento de PII',
+    async () => {
+      const client = new PocketBase(pbUrl)
+      await client.collection('users').authWithPassword('servidor1@florania.gov.br', 'Skip@Pass')
+      // Tentativa de getOne em outro usuário
+      let idorBlocked = false
+      try {
+        await client.collection('users').getOne('92b3oxlgc3q965x')
+      } catch (err: any) {
+        idorBlocked = err.status === 404 || err.status === 403
+      }
+
+      // Tentativa de update direto em outro usuário
+      let updateBlocked = false
+      try {
+        await client.collection('users').update('92b3oxlgc3q965x', { name: 'Compromised' })
+      } catch (err: any) {
+        updateBlocked = err.status === 404 || err.status === 403 || err.status === 400
+      }
+
+      return idorBlocked && updateBlocked
+    },
+  )
+
   // 7. Cenário: Superadmin mantém acesso global
   await assertTest(
     'Superadmin mantém acesso global a listagem de users e memberships',
@@ -134,7 +180,6 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
       return users.length > 5 && mems.length > 5
     },
   )
-
   // 8. Cenário: Endpoint /backend/v1/tenant-users/create cria vínculo seguro sem vazar senha
   await assertTest(
     'Endpoint /backend/v1/tenant-users/create cria usuário/vínculo seguro sem retorno de senha',
