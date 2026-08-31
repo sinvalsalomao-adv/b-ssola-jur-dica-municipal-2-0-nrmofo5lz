@@ -1,50 +1,55 @@
 // Dedicated Endpoints for Declining and Cancelling Invitations
 // Routes:
-// 1. POST /backend/v1/invitations/decline -> Authenticated titular declines invitation (marks rejected/cancelled without creating active link)
+// 1. POST /backend/v1/invitations/decline -> Authenticated titular declines invitation (requires valid mandatory token)
 // 2. POST /backend/v1/invitations/cancel  -> Tenant Admin or Superadmin cancels invitation belonging to own tenant
 
-// 1. DECLINE INVITATION (Titular only)
+// 1. DECLINE INVITATION (Titular only - requires mandatory token)
 routerAdd(
   'POST',
   '/backend/v1/invitations/decline',
   (e) => {
     const auth = e.auth
     if (!auth) {
-      return e.json(401, { code: 401, message: 'Autenticação necessária para recusar convite.' })
+      return e.json(401, { code: 401, message: 'Autenticação necessária.' })
     }
 
     const authId = auth.id
     const authEmail = auth.getString('email').trim().toLowerCase()
     const body = e.requestInfo().body || {}
-    const invitationId = String(body.invitationId || body.id || '').trim()
     const rawToken = String(body.token || '').trim()
 
-    if (!invitationId && !rawToken) {
-      return e.badRequestError('Identificador do convite ou token é obrigatório.')
+    if (!rawToken || rawToken.length < 16) {
+      return e.badRequestError('Token de convite obrigatório e inválido.')
     }
 
+    const tokenHash = $security.sha256(rawToken)
+
     let inv = null
-    if (invitationId) {
-      try {
-        inv = $app.findFirstRecordByData('invitations', 'id', invitationId)
-      } catch (_) {
-        return e.json(404, { code: 404, message: 'Convite não encontrado ou inválido.' })
-      }
-    } else if (rawToken) {
-      const tokenHash = $security.sha256(rawToken)
-      try {
-        inv = $app.findFirstRecordByData('invitations', 'token_hash', tokenHash)
-      } catch (_) {
-        return e.json(404, { code: 404, message: 'Convite não encontrado ou inválido.' })
-      }
+    try {
+      inv = $app.findFirstRecordByData('invitations', 'token_hash', tokenHash)
+    } catch (_) {
+      return e.json(400, { code: 400, message: 'Convite inválido, expirado ou já processado.' })
     }
 
     if (!inv) {
-      return e.json(404, { code: 404, message: 'Convite não encontrado ou inválido.' })
+      return e.json(400, { code: 400, message: 'Convite inválido, expirado ou já processado.' })
+    }
+
+    // Comparação em tempo constante
+    const expectedHash = inv.getString('token_hash')
+    if (expectedHash.length !== tokenHash.length) {
+      return e.json(400, { code: 400, message: 'Convite inválido, expirado ou já processado.' })
+    }
+    let diff = 0
+    for (let i = 0; i < expectedHash.length; i++) {
+      diff |= expectedHash.charCodeAt(i) ^ tokenHash.charCodeAt(i)
+    }
+    if (diff !== 0) {
+      return e.json(400, { code: 400, message: 'Convite inválido, expirado ou já processado.' })
     }
 
     if (inv.getString('status') !== 'pending') {
-      return e.json(400, { code: 400, message: 'Este convite já foi processado ou finalizado.' })
+      return e.json(400, { code: 400, message: 'Convite inválido, expirado ou já processado.' })
     }
 
     const invEmail = inv.getString('email').trim().toLowerCase()
@@ -63,6 +68,7 @@ routerAdd(
     try {
       $app.runInTransaction((txApp) => {
         inv.set('status', 'rejected')
+        inv.set('active_key', '')
         txApp.save(inv)
 
         // Se houver uma membership pendente deste usuário no tenant do convite, marcar como rejeitado
@@ -83,6 +89,7 @@ routerAdd(
         message: 'Convite recusado com sucesso.',
       })
     } catch (err) {
+      $app.logger().error('Erro ao recusar convite', 'error', String(err))
       return e.json(500, { code: 500, message: 'Erro ao recusar convite.' })
     }
   },
@@ -96,7 +103,7 @@ routerAdd(
   (e) => {
     const auth = e.auth
     if (!auth) {
-      return e.json(401, { code: 401, message: 'Autenticação necessária para cancelar convite.' })
+      return e.json(401, { code: 401, message: 'Autenticação necessária.' })
     }
 
     const authId = auth.id
@@ -143,6 +150,7 @@ routerAdd(
 
     try {
       inv.set('status', 'cancelled')
+      inv.set('active_key', '')
       $app.save(inv)
 
       return e.json(200, {
@@ -150,6 +158,7 @@ routerAdd(
         message: 'Convite cancelado com sucesso.',
       })
     } catch (err) {
+      $app.logger().error('Erro ao cancelar convite', 'error', String(err))
       return e.json(500, { code: 500, message: 'Erro ao cancelar convite.' })
     }
   },

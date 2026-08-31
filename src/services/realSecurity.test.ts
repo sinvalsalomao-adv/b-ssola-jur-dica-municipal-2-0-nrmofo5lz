@@ -352,10 +352,11 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
       },
     )
 
-    // Cenário 5: Servidor efêmero não cria membership diretamente na coleção user_memberships
+    // Cenário 5: Servidor efêmero E Admin municipal NÃO podem criar membership diretamente na coleção user_memberships (R-1 RLS)
     await assertTest(
-      'Cenário 5: Servidor efêmero não pode criar membership diretamente na coleção user_memberships',
+      'Cenário 5: Tentativa direta de create membership ativa por Admin Municipal ou Servidor => 403 (R-1)',
       async () => {
+        let servidorBlocked = false
         try {
           await floraniaServidorClient.collection('user_memberships').create({
             user: floraniaServidorClient.authStore.record?.id,
@@ -363,10 +364,24 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
             role: 'admin',
             status: 'ativo',
           })
-          return false
         } catch (err: any) {
-          return err.status === 403 || err.status === 400 || err.status === 404
+          servidorBlocked = err.status === 403 || err.status === 400 || err.status === 404
         }
+
+        // Admin Florânia tentando criar membership ativa diretamente via collection API
+        let adminBlocked = false
+        try {
+          await floraniaAdminClient.collection('user_memberships').create({
+            user: floraniaServidorUserId,
+            tenant: floraniaTenantId,
+            role: 'admin',
+            status: 'ativo',
+          })
+        } catch (err: any) {
+          adminBlocked = err.status === 403 || err.status === 400 || err.status === 404
+        }
+
+        return servidorBlocked && adminBlocked
       },
     )
 
@@ -583,8 +598,6 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
     await assertTest(
       'Cenário 13: Admin convida e-mail já existente: resposta genérica; membership NÃO fica ativa antes do aceite',
       async () => {
-        // EphemeralFloraniaServidorEmail já existe globalmente.
-        // Admin Tangará convida esse e-mail para Tangará
         const inviteRes: any = await tangaraAdminClient.send('/backend/v1/tenant-users/create', {
           method: 'POST',
           body: JSON.stringify({
@@ -596,7 +609,6 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
           headers: { 'Content-Type': 'application/json' },
         })
 
-        // Resposta genérica sem vazar userId, token ou senha
         const resStr = JSON.stringify(inviteRes)
         const isGeneric =
           inviteRes.success === true &&
@@ -614,36 +626,94 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
       },
     )
 
-    // Cenário 14: Titular autenticado correspondente aceita convite e ativa vínculo SOMENTE no tenant alvo
+    // Variável para armazenar o token gerado para teste de aceite
+    let validTestToken = ''
+
+    // Cenário 14: Aceite de convite: Requer TOKEN OBRIGATÓRIO (sem token => 400; com token inválido => resposta genérica)
     await assertTest(
-      'Cenário 14: Titular autenticado correspondente aceita convite e ativa vínculo SOMENTE no tenant alvo',
+      'Cenário 14: Aceite sem token => 400; Token errado/inexistente => resposta genérica sem enumeração (R-2)',
       async () => {
-        // Encontrar convite para Tangará usando o client de admin Tangará
-        const invs = await tangaraAdminClient.collection('invitations').getFullList({
+        // 1. Aceite SEM token (apenas invitationId) deve retornar 400
+        let noTokenBlocked = false
+        try {
+          await floraniaServidorClient.send('/backend/v1/invitations/accept', {
+            method: 'POST',
+            body: JSON.stringify({ invitationId: 'some_invitation_id' }),
+            headers: { 'Content-Type': 'application/json' },
+          })
+        } catch (err: any) {
+          noTokenBlocked = err.status === 400
+        }
+
+        // 2. Aceite com token inexistente/aleatório deve retornar 400 genérico sem distinguir
+        let invalidTokenGeneric = false
+        try {
+          await floraniaServidorClient.send('/backend/v1/invitations/accept', {
+            method: 'POST',
+            body: JSON.stringify({ token: 'invalid_token_1234567890abcdef' }),
+            headers: { 'Content-Type': 'application/json' },
+          })
+        } catch (err: any) {
+          invalidTokenGeneric = err.status === 400
+        }
+
+        return noTokenBlocked && invalidTokenGeneric
+      },
+    )
+
+    // Cenário 14b: Titular autenticado com token válido aceita e ativa vínculo SOMENTE no tenant alvo (R-2)
+    await assertTest(
+      'Cenário 14b: Titular autenticado com token válido aceita e ativa exatamente UM vínculo no tenant alvo',
+      async () => {
+        // 1. Injetar um convite de teste seguro com hash de token conhecido para o titular
+        const rawToken = 'test_valid_token_32_chars_long_entropy_xyz_' + testRunId
+        // Lemos o convite mais recente pendente para ephemeralFloraniaServidorEmail em Tangará
+        const pendingInvs = await tangaraAdminClient.collection('invitations').getFullList({
           filter: `tenant = "${tangaraTenantId}" && email = "${ephemeralFloraniaServidorEmail}" && status = "pending"`,
+          sort: '-created',
         })
 
-        if (invs.length === 0) return false
-        const invId = invs[0].id
+        if (pendingInvs.length === 0) return false
+        const invRecord = pendingInvs[0]
 
-        // Titular (floraniaServidorClient) aceita o convite
+        async function sha256Hex(msg: string): Promise<string> {
+          const enc = new TextEncoder()
+          const data = enc.encode(msg)
+          const hashBuffer = await globalThis.crypto.subtle.digest('SHA-256', data)
+          const hashArray = Array.from(new Uint8Array(hashBuffer))
+          return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
+        }
+        const simulatedToken = 'super_secret_token_test_' + testRunId
+        const calculatedHash = await sha256Hex(simulatedToken)
+        // Superadmin atualiza token_hash do convite para o token de teste
+        // Como o superadmin pode alterar o convite:
+        const superClient = new PocketBase(pbUrl)
+        // Usamos o convite pendente
+        // Se o cliente não tem token_hash conhecido, podemos fazer aceite com o token simulado
+        // após atualizar o registro de convite com o hash
+        // Nota: as regras de invitations permitem update por admin do tenant
+        await tangaraAdminClient.collection('invitations').update(invRecord.id, {
+          token_hash: calculatedHash,
+        })
+
+        // 2. Titular aceita com o token correto
         const acceptRes: any = await floraniaServidorClient.send('/backend/v1/invitations/accept', {
           method: 'POST',
-          body: JSON.stringify({ invitationId: invId }),
+          body: JSON.stringify({ token: simulatedToken }),
           headers: { 'Content-Type': 'application/json' },
         })
 
         if (!acceptRes.success) return false
 
-        // Verificar que membership em Tangará agora está ATIVA
+        // 3. Verificar que membership em Tangará agora está ATIVA
         const tangaraMems = await floraniaServidorClient
           .collection('user_memberships')
           .getFullList({
             filter: `tenant = "${tangaraTenantId}"`,
           })
-        const tangaraIsActive = tangaraMems.length > 0 && tangaraMems[0].status === 'ativo'
+        const tangaraIsActive = tangaraMems.length === 1 && tangaraMems[0].status === 'ativo'
 
-        // Verificar que vínculo original em Florânia permanece intacto
+        // 4. Verificar que vínculo em Florânia permanece intacto
         const floraniaMems = await floraniaServidorClient
           .collection('user_memberships')
           .getFullList({
@@ -651,15 +721,26 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
           })
         const floraniaStillExists = floraniaMems.length > 0
 
-        return tangaraIsActive && floraniaStillExists
+        // 5. Tentar reutilizar o mesmo token deve falhar com 400
+        let replayBlocked = false
+        try {
+          await floraniaServidorClient.send('/backend/v1/invitations/accept', {
+            method: 'POST',
+            body: JSON.stringify({ token: simulatedToken }),
+            headers: { 'Content-Type': 'application/json' },
+          })
+        } catch (err: any) {
+          replayBlocked = err.status === 400
+        }
+
+        return tangaraIsActive && floraniaStillExists && replayBlocked
       },
     )
 
-    // Cenário 15: Outro usuário tentando aceitar convite alheio recebe 403; convite cancelado/usado recebe 400
+    // Cenário 15: Outro usuário tentando aceitar convite alheio mesmo com token recebe 403 (R-2)
     await assertTest(
-      'Cenário 15: Outro usuário tentando aceitar convite alheio recebe 403; convite já aceito recebe 400',
+      'Cenário 15: Outro usuário tentando aceitar convite alheio com token recebe 403 (identidade do titular)',
       async () => {
-        // 1. Criar novo convite para um terceiro email
         const thirdEmail = `third.user.${testRunId}@parazinho.gov.br`
         await floraniaAdminClient.send('/backend/v1/invitations/create', {
           method: 'POST',
@@ -674,42 +755,38 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
 
         const invs = await floraniaAdminClient.collection('invitations').getFullList({
           filter: `tenant = "${floraniaTenantId}" && email = "${thirdEmail}" && status = "pending"`,
+          sort: '-created',
         })
         if (invs.length === 0) return false
         const invId = invs[0].id
 
-        // floraniaServidorClient tenta aceitar o convite que foi emitido para thirdEmail
+        async function sha256Hex(msg: string): Promise<string> {
+          const enc = new TextEncoder()
+          const data = enc.encode(msg)
+          const hashBuffer = await globalThis.crypto.subtle.digest('SHA-256', data)
+          const hashArray = Array.from(new Uint8Array(hashBuffer))
+          return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
+        }
+        const thirdToken = 'third_token_secret_' + testRunId
+        const thirdHash = await sha256Hex(thirdToken)
+
+        await floraniaAdminClient.collection('invitations').update(invId, {
+          token_hash: thirdHash,
+        })
+
+        // floraniaServidorClient (email diferente) tenta aceitar o convite de thirdEmail
         let crossUserBlocked = false
         try {
           await floraniaServidorClient.send('/backend/v1/invitations/accept', {
             method: 'POST',
-            body: JSON.stringify({ invitationId: invId }),
+            body: JSON.stringify({ token: thirdToken }),
             headers: { 'Content-Type': 'application/json' },
           })
         } catch (err: any) {
           crossUserBlocked = err.status === 403
         }
 
-        // Tentar aceitar convite já aceito (do Cenário 14) deve retornar 400
-        const tangaraInvs = await tangaraAdminClient.collection('invitations').getFullList({
-          filter: `tenant = "${tangaraTenantId}" && email = "${ephemeralFloraniaServidorEmail}" && status = "accepted"`,
-        })
-        let usedBlocked = false
-        if (tangaraInvs.length > 0) {
-          try {
-            await floraniaServidorClient.send('/backend/v1/invitations/accept', {
-              method: 'POST',
-              body: JSON.stringify({ invitationId: tangaraInvs[0].id }),
-              headers: { 'Content-Type': 'application/json' },
-            })
-          } catch (err: any) {
-            usedBlocked = err.status === 400
-          }
-        } else {
-          usedBlocked = true
-        }
-
-        return crossUserBlocked && usedBlocked
+        return crossUserBlocked
       },
     )
 
@@ -769,10 +846,24 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
           crossCancelBlocked = err.status === 403
         }
 
-        // 2. Titular autenticado recusa o convite
+        // 2. Atualizar token_hash para teste de recusa
+        async function sha256Hex(msg: string): Promise<string> {
+          const enc = new TextEncoder()
+          const data = enc.encode(msg)
+          const hashBuffer = await globalThis.crypto.subtle.digest('SHA-256', data)
+          const hashArray = Array.from(new Uint8Array(hashBuffer))
+          return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
+        }
+        const declineToken = 'decline_token_secret_' + testRunId
+        const declineHash = await sha256Hex(declineToken)
+        await floraniaAdminClient.collection('invitations').update(invId, {
+          token_hash: declineHash,
+        })
+
+        // 3. Titular autenticado recusa o convite usando o token obrigatório
         const decRes: any = await declineClient.send('/backend/v1/invitations/decline', {
           method: 'POST',
-          body: JSON.stringify({ invitationId: invId }),
+          body: JSON.stringify({ token: declineToken }),
           headers: { 'Content-Type': 'application/json' },
         })
 
@@ -786,9 +877,9 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
       },
     )
 
-    // Cenário 17: Reenvio de convite invalida o token anterior sem duplicar memberships
+    // Cenário 17: Reenvio de convite invalida o token anterior e garante exatamente UM pendente (R-3)
     await assertTest(
-      'Cenário 17: Reenvio de convite invalida token anterior sem duplicar memberships',
+      'Cenário 17: Reenvio invalida o convite anterior e garante exatamente UM pendente por tenant+destinatário (R-3)',
       async () => {
         const resendEmail = `resend.test.${testRunId}@florania.gov.br`
         // Envio 1
@@ -803,7 +894,7 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
           headers: { 'Content-Type': 'application/json' },
         })
 
-        // Envio 2 (reenvio)
+        // Envio 2 (reenvio imediato / transacionado)
         await floraniaAdminClient.send('/backend/v1/tenant-users/create', {
           method: 'POST',
           body: JSON.stringify({
@@ -824,24 +915,76 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
           filter: `tenant = "${floraniaTenantId}" && email = "${resendEmail}"`,
         })
 
-        const mems = await floraniaAdminClient.collection('user_memberships').getFullList({
-          filter: `tenant = "${floraniaTenantId}"`,
-        })
-        // As memberships para este novo usuário não devem estar duplicadas
+        // Verificar users.role do novo usuário criado: DEVE ser neutro ('servidor') e NUNCA admin global/superadmin (R-5)
         const userInvs = await floraniaAdminClient.collection('users').getFullList({
           filter: `email = "${resendEmail}"`,
         })
 
+        let userRoleIsNeutral = false
         let memCount = 0
         if (userInvs.length > 0) {
           ephemeralUserIdsToClean.push(userInvs[0].id)
+          userRoleIsNeutral =
+            userInvs[0].role === 'servidor' &&
+            userInvs[0].role !== 'superadmin' &&
+            userInvs[0].role !== 'admin'
           const userMems = await floraniaAdminClient.collection('user_memberships').getFullList({
             filter: `user = "${userInvs[0].id}" && tenant = "${floraniaTenantId}"`,
           })
           memCount = userMems.length
         }
 
-        return pendingInvs.length === 1 && totalInvs.length >= 2 && memCount <= 1
+        return (
+          pendingInvs.length === 1 && totalInvs.length >= 2 && memCount <= 1 && userRoleIsNeutral
+        )
+      },
+    )
+
+    // Cenário 17b: Concorrência: Duas requisições simultâneas de convite resultam em no máximo UM convite pendente (R-3)
+    await assertTest(
+      'Cenário 17b: Corrida concorrente de convites simultâneos resulta em exatamente UM convite pendente (R-3)',
+      async () => {
+        const raceEmail = `race.invite.${testRunId}@florania.gov.br`
+        const p1 = floraniaAdminClient
+          .send('/backend/v1/tenant-users/create', {
+            method: 'POST',
+            body: JSON.stringify({
+              name: 'Race User A',
+              email: raceEmail,
+              tenant: floraniaTenantId,
+              role: 'servidor',
+            }),
+            headers: { 'Content-Type': 'application/json' },
+          })
+          .catch((err) => ({ error: err }))
+
+        const p2 = floraniaAdminClient
+          .send('/backend/v1/tenant-users/create', {
+            method: 'POST',
+            body: JSON.stringify({
+              name: 'Race User B',
+              email: raceEmail,
+              tenant: floraniaTenantId,
+              role: 'gestor',
+            }),
+            headers: { 'Content-Type': 'application/json' },
+          })
+          .catch((err) => ({ error: err }))
+
+        await Promise.all([p1, p2])
+
+        const pendingInvs = await floraniaAdminClient.collection('invitations').getFullList({
+          filter: `tenant = "${floraniaTenantId}" && email = "${raceEmail}" && status = "pending"`,
+        })
+
+        const userRecs = await floraniaAdminClient.collection('users').getFullList({
+          filter: `email = "${raceEmail}"`,
+        })
+        if (userRecs.length > 0) {
+          ephemeralUserIdsToClean.push(userRecs[0].id)
+        }
+
+        return pendingInvs.length === 1
       },
     )
 

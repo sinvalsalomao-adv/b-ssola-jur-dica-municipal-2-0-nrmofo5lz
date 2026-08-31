@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-31T22:10:02.058Z",
+  "generatedAt": "2026-08-31T22:32:32.084Z",
   "collections": [
     {
       "name": "users",
@@ -923,6 +923,25 @@
           "type": "text",
           "required": false,
           "system": false
+        },
+        {
+          "name": "recipient_hash",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "active_key",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "delivery_status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["delivered", "delivery_pending", "delivery_failed", "skipped"]
         }
       ],
       "indexes": [
@@ -930,7 +949,9 @@
         "CREATE INDEX `idx_invitations_token_hash` ON `invitations` (token_hash)",
         "CREATE INDEX `idx_invitations_email` ON `invitations` (email)",
         "CREATE INDEX `idx_invitations_status` ON `invitations` (status)",
-        "CREATE INDEX `idx_invitations_rate_limit_hash` ON `invitations` (rate_limit_hash)"
+        "CREATE INDEX `idx_invitations_rate_limit_hash` ON `invitations` (rate_limit_hash)",
+        "CREATE INDEX `idx_invitations_recipient_hash` ON `invitations` (recipient_hash)",
+        "CREATE UNIQUE INDEX `idx_invitations_active_key` ON `invitations` (active_key)"
       ]
     },
     {
@@ -1932,7 +1953,7 @@
       "apiRules": {
         "list": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
         "view": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
-        "create": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= @request.body.tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+        "create": "@request.auth.id != '' && @request.auth.role = 'superadmin'",
         "update": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
         "delete": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))"
       },

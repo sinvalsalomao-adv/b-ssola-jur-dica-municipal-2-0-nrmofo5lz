@@ -72,8 +72,7 @@ export const createInvitation = async (data: {
  * Aceite de convite pelo titular autenticado
  */
 export const acceptInvitation = async (payload: {
-  invitationId?: string
-  token?: string
+  token: string
 }): Promise<{ success: boolean; message: string; membership?: any }> => {
   return await pb.send('/backend/v1/invitations/accept', {
     method: 'POST',
@@ -83,11 +82,10 @@ export const acceptInvitation = async (payload: {
 }
 
 /**
- * Recusa de convite pelo titular autenticado
+ * Recusa de convite pelo titular autenticado (exige token obrigatório)
  */
 export const declineInvitation = async (payload: {
-  invitationId?: string
-  token?: string
+  token: string
 }): Promise<{ success: boolean; message: string }> => {
   return await pb.send('/backend/v1/invitations/decline', {
     method: 'POST',
@@ -110,8 +108,8 @@ export const cancelInvitation = async (
 }
 
 /**
- * Compatibilidade: ativador de convite legado redirecionado para acceptInvitation
+ * Compatibilidade: ativador de convite por token obrigatório
  */
-export const activateInvitation = async (id: string) => {
-  return await acceptInvitation({ invitationId: id })
+export const activateInvitation = async (token: string) => {
+  return await acceptInvitation({ token })
 }

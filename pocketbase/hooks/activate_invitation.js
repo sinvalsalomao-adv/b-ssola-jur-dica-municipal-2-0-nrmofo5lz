@@ -1,16 +1,13 @@
-// Dedicated Transactional Endpoint for Titular / Admin to Accept Municipal Invitations
+// Dedicated Transactional Endpoint for Titular to Accept Municipal Invitations
 // Route: POST /backend/v1/invitations/accept
 // Requires Auth: Authenticated Titular (auth user email/id must strictly match invitation recipient)
-// Behavior:
-// 1. Validates invitation existence, status ('pending'), and expiration (expires_at).
-// 2. Cryptographic token check (if token is provided, matches SHA-256 hash).
-// 3. Titular Identity Check: Authenticated user ID or verified email MUST match the invitation's recipient.
-//    A token alone cannot link another account.
-// 4. Atomic transaction:
-//    - Sets invitation status to 'accepted', used_at = now.
-//    - Creates or updates exactly ONE user_memberships record to status 'ativo' in the target tenant.
-//    - Preserves all existing memberships in other tenants.
-//    - Returns safe sanitized response.
+// R-2 Security Requirements:
+// 1. Token OBRIGATÓRIO (body.token). Rejeita requisições sem token.
+// 2. Valida hash SHA-256 do token em tempo constante.
+// 3. Valida expiração (expires_at), status ('pending'), used_at (vazio).
+// 4. Valida identidade do titular: e-mail ou ID verificado do autenticado DEVE corresponder ao convite.
+// 5. Resposta genérica e segura em caso de token inválido/expirado/inexistente (sem enumeração).
+// 6. Token nunca é exposto em logs ou URLs.
 
 routerAdd(
   'POST',
@@ -18,75 +15,79 @@ routerAdd(
   (e) => {
     const auth = e.auth
     if (!auth) {
-      return e.json(401, { code: 401, message: 'Autenticação necessária para aceitar convite.' })
+      return e.json(401, { code: 401, message: 'Autenticação necessária.' })
     }
 
     const authId = auth.id
     const authEmail = auth.getString('email').trim().toLowerCase()
     const body = e.requestInfo().body || {}
-    const invitationId = String(body.invitationId || body.id || '').trim()
     const rawToken = String(body.token || '').trim()
 
-    if (!invitationId && !rawToken) {
-      return e.badRequestError('Identificador do convite ou token é obrigatório.')
+    // R-2: Token é estritamente obrigatório
+    if (!rawToken || rawToken.length < 16) {
+      return e.badRequestError('Token de convite obrigatório e inválido.')
     }
 
+    const tokenHash = $security.sha256(rawToken)
+
     let inv = null
-    if (invitationId) {
-      try {
-        inv = $app.findFirstRecordByData('invitations', 'id', invitationId)
-      } catch (_) {
-        return e.json(404, { code: 404, message: 'Convite não encontrado ou inválido.' })
-      }
-    } else if (rawToken) {
-      const tokenHash = $security.sha256(rawToken)
-      try {
-        inv = $app.findFirstRecordByData('invitations', 'token_hash', tokenHash)
-      } catch (_) {
-        return e.json(404, { code: 404, message: 'Convite não encontrado ou inválido.' })
-      }
+    try {
+      inv = $app.findFirstRecordByData('invitations', 'token_hash', tokenHash)
+    } catch (_) {
+      // Resposta genérica sem revelar existência do convite
+      return e.json(400, {
+        code: 400,
+        message: 'Convite inválido, expirado ou já utilizado.',
+      })
     }
 
     if (!inv) {
-      return e.json(404, { code: 404, message: 'Convite não encontrado ou inválido.' })
+      return e.json(400, {
+        code: 400,
+        message: 'Convite inválido, expirado ou já utilizado.',
+      })
     }
 
-    // 1. Validar status
+    // 1. Comparação em tempo constante do hash do token
+    const expectedHash = inv.getString('token_hash')
+    if (expectedHash.length !== tokenHash.length) {
+      return e.json(400, { code: 400, message: 'Convite inválido, expirado ou já utilizado.' })
+    }
+    let diff = 0
+    for (let i = 0; i < expectedHash.length; i++) {
+      diff |= expectedHash.charCodeAt(i) ^ tokenHash.charCodeAt(i)
+    }
+    if (diff !== 0) {
+      return e.json(400, { code: 400, message: 'Convite inválido, expirado ou já utilizado.' })
+    }
+
+    // 2. Validar status
     const currentStatus = inv.getString('status')
     if (currentStatus !== 'pending') {
       return e.json(400, {
         code: 400,
-        message: 'Este convite já foi processado, cancelado ou expirado.',
+        message: 'Convite inválido, expirado ou já utilizado.',
       })
     }
 
-    // 2. Validar expiração
+    // 3. Validar expiração
     const expiresAtStr = inv.getString('expires_at')
     if (expiresAtStr) {
       const expDate = new Date(expiresAtStr).getTime()
       if (Date.now() > expDate) {
         inv.set('status', 'expired')
+        inv.set('active_key', '')
         try {
           $app.save(inv)
         } catch (_) {}
         return e.json(400, {
           code: 400,
-          message: 'Este convite expirou. Solicite um novo convite ao Administrador.',
+          message: 'Convite inválido, expirado ou já utilizado.',
         })
       }
     }
 
-    // 3. Validar token se fornecido
-    if (rawToken && inv.getString('token_hash')) {
-      const expectedHash = inv.getString('token_hash')
-      const providedHash = $security.sha256(rawToken)
-      if (expectedHash !== providedHash) {
-        return e.json(400, { code: 400, message: 'Token de convite inválido.' })
-      }
-    }
-
     // 4. Verificação Estrita de Identidade do Titular:
-    // O usuário autenticado DEVE corresponder inequivocamente ao destinatário do convite
     const invEmail = inv.getString('email').trim().toLowerCase()
     const invUserId = inv.getString('user')
 
@@ -109,9 +110,10 @@ routerAdd(
 
     try {
       $app.runInTransaction((txApp) => {
-        // A. Marcar convite como aceito
+        // A. Marcar convite como aceito e limpar active_key
         inv.set('status', 'accepted')
         inv.set('used_at', nowIso)
+        inv.set('active_key', '')
         inv.set('user', authId)
         txApp.save(inv)
 
@@ -155,6 +157,7 @@ routerAdd(
         },
       })
     } catch (err) {
+      $app.logger().error('Erro ao processar aceite de convite', 'error', String(err))
       return e.json(500, {
         code: 500,
         message: 'Erro ao processar aceite do convite.',

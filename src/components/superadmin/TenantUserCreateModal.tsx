@@ -22,10 +22,6 @@ import { extractFieldErrors, getErrorMessage, type FieldErrors } from '@/lib/poc
 import pb from '@/lib/pocketbase/client'
 import { toast } from 'sonner'
 import type { UserRole } from '@/types/superadmin'
-import {
-  PasswordStrengthIndicator,
-  validatePasswordStrength,
-} from '@/components/PasswordStrengthIndicator'
 import { sanitizeInput } from '@/lib/sanitize'
 import { createTenantUserSecure } from '@/services/memberships'
 
@@ -52,8 +48,6 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated, defaultTe
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<UserRole>('servidor')
-  const [password, setPassword] = useState('')
-  const [confirm, setConfirm] = useState('')
   const [errors, setErrors] = useState<FieldErrors>({})
   const [submitting, setSubmitting] = useState(false)
 
@@ -74,8 +68,6 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated, defaultTe
       setName('')
       setEmail('')
       setRole('servidor')
-      setPassword('')
-      setConfirm('')
       setErrors({})
       const initialTenant = defaultTenantId || user?.tenantId || ''
       setSelectedTenantId(initialTenant)
@@ -92,15 +84,6 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated, defaultTe
       e.tenant = 'O município/prefeitura é obrigatório.'
     }
 
-    if (password) {
-      const pwdVal = validatePasswordStrength(password)
-      if (!pwdVal.allValid) {
-        e.password = 'A senha não atende a todos os requisitos de segurança.'
-      }
-      if (password !== confirm) {
-        e.confirm = 'As senhas não coincidem.'
-      }
-    }
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -113,17 +96,15 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated, defaultTe
       const cleanEmail = sanitizeInput(email.trim().toLowerCase())
       const cleanName = sanitizeInput(name.trim())
 
-      // Chamar endpoint backend transacional seguro (resposta genérica, membership pendente até aceite)
+      // Chamar endpoint backend transacional seguro (R-4: sem senha inicial na UI/endpoint)
       const res = await createTenantUserSecure({
         name: cleanName,
         email: cleanEmail,
         tenant: selectedTenantId,
         role,
-        password: password || undefined,
-        passwordConfirm: confirm || undefined,
       })
 
-      toast.success(res.message || 'Solicitação de cadastro/convite processada com sucesso!')
+      toast.success(res.message || 'Convite enviado com sucesso!')
       onOpenChange(false)
       onCreated()
     } catch (err: any) {
@@ -204,37 +185,11 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated, defaultTe
               </SelectContent>
             </Select>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs font-semibold text-gray-700">
-                Senha Inicial (Opcional)
-              </Label>
-              <Input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="mt-1"
-                placeholder="••••••••"
-              />
-              {errors.password && <p className="text-xs text-red-500 mt-1">{errors.password}</p>}
-            </div>
-            <div>
-              <Label className="text-xs font-semibold text-gray-700">Confirmar Senha</Label>
-              <Input
-                type="password"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-                className="mt-1"
-                placeholder="••••••••"
-              />
-              {errors.confirm && <p className="text-xs text-red-500 mt-1">{errors.confirm}</p>}
-            </div>
-          </div>
-          <p className="text-[11px] text-gray-400">
-            Se for uma nova conta e a senha for omitida, um convite oficial de primeiro acesso será
-            gerado. Caso a conta já exista, o vínculo aguardará o aceite autenticado do titular.
+          <p className="text-[11px] text-gray-500 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+            O usuário convidado receberá uma mensagem para validar o acesso e definir sua própria
+            senha com segurança. Vínculos municipais só são ativados após o aceite formal do
+            titular.
           </p>
-          {password && <PasswordStrengthIndicator password={password} />}
           <DialogFooter className="pt-3 border-t">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
