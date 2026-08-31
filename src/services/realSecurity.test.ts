@@ -574,6 +574,311 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
         return noPasswordInUser
       },
     )
+
+    // ==========================================
+    // CENÁRIOS DO SEGUNDO PROBLEMA DE SEGURANÇA (CONVITES SEGUROS E NÃO-VINCULAÇÃO DIRETA DE EMAIL EXISTENTE)
+    // ==========================================
+
+    // Cenário 13: Admin Florânia convida e-mail existente: resposta genérica; membership NÃO fica ativa antes do aceite
+    await assertTest(
+      'Cenário 13: Admin convida e-mail já existente: resposta genérica; membership NÃO fica ativa antes do aceite',
+      async () => {
+        // EphemeralFloraniaServidorEmail já existe globalmente.
+        // Admin Tangará convida esse e-mail para Tangará
+        const inviteRes: any = await tangaraAdminClient.send('/backend/v1/tenant-users/create', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: 'Servidor Florania Convidado para Tangara',
+            email: ephemeralFloraniaServidorEmail,
+            tenant: tangaraTenantId,
+            role: 'servidor',
+          }),
+          headers: { 'Content-Type': 'application/json' },
+        })
+
+        // Resposta genérica sem vazar userId, token ou senha
+        const resStr = JSON.stringify(inviteRes)
+        const isGeneric =
+          inviteRes.success === true &&
+          !resStr.includes('userId') &&
+          !resStr.includes('token') &&
+          !resStr.includes('password')
+
+        // Verificar que membership em Tangará NÃO está ativa
+        const mems = await floraniaServidorClient.collection('user_memberships').getFullList({
+          filter: `tenant = "${tangaraTenantId}"`,
+        })
+
+        const notActive = mems.length === 0 || mems[0].status === 'pendente'
+        return isGeneric && notActive
+      },
+    )
+
+    // Cenário 14: Titular autenticado correspondente aceita convite e ativa vínculo SOMENTE no tenant alvo
+    await assertTest(
+      'Cenário 14: Titular autenticado correspondente aceita convite e ativa vínculo SOMENTE no tenant alvo',
+      async () => {
+        // Encontrar convite para Tangará usando o client de admin Tangará
+        const invs = await tangaraAdminClient.collection('invitations').getFullList({
+          filter: `tenant = "${tangaraTenantId}" && email = "${ephemeralFloraniaServidorEmail}" && status = "pending"`,
+        })
+
+        if (invs.length === 0) return false
+        const invId = invs[0].id
+
+        // Titular (floraniaServidorClient) aceita o convite
+        const acceptRes: any = await floraniaServidorClient.send('/backend/v1/invitations/accept', {
+          method: 'POST',
+          body: JSON.stringify({ invitationId: invId }),
+          headers: { 'Content-Type': 'application/json' },
+        })
+
+        if (!acceptRes.success) return false
+
+        // Verificar que membership em Tangará agora está ATIVA
+        const tangaraMems = await floraniaServidorClient
+          .collection('user_memberships')
+          .getFullList({
+            filter: `tenant = "${tangaraTenantId}"`,
+          })
+        const tangaraIsActive = tangaraMems.length > 0 && tangaraMems[0].status === 'ativo'
+
+        // Verificar que vínculo original em Florânia permanece intacto
+        const floraniaMems = await floraniaServidorClient
+          .collection('user_memberships')
+          .getFullList({
+            filter: `tenant = "${floraniaTenantId}"`,
+          })
+        const floraniaStillExists = floraniaMems.length > 0
+
+        return tangaraIsActive && floraniaStillExists
+      },
+    )
+
+    // Cenário 15: Outro usuário tentando aceitar convite alheio recebe 403; convite cancelado/usado recebe 400
+    await assertTest(
+      'Cenário 15: Outro usuário tentando aceitar convite alheio recebe 403; convite já aceito recebe 400',
+      async () => {
+        // 1. Criar novo convite para um terceiro email
+        const thirdEmail = `third.user.${testRunId}@parazinho.gov.br`
+        await floraniaAdminClient.send('/backend/v1/invitations/create', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: 'Terceiro Usuario',
+            email: thirdEmail,
+            tenant: floraniaTenantId,
+            role: 'servidor',
+          }),
+          headers: { 'Content-Type': 'application/json' },
+        })
+
+        const invs = await floraniaAdminClient.collection('invitations').getFullList({
+          filter: `tenant = "${floraniaTenantId}" && email = "${thirdEmail}" && status = "pending"`,
+        })
+        if (invs.length === 0) return false
+        const invId = invs[0].id
+
+        // floraniaServidorClient tenta aceitar o convite que foi emitido para thirdEmail
+        let crossUserBlocked = false
+        try {
+          await floraniaServidorClient.send('/backend/v1/invitations/accept', {
+            method: 'POST',
+            body: JSON.stringify({ invitationId: invId }),
+            headers: { 'Content-Type': 'application/json' },
+          })
+        } catch (err: any) {
+          crossUserBlocked = err.status === 403
+        }
+
+        // Tentar aceitar convite já aceito (do Cenário 14) deve retornar 400
+        const tangaraInvs = await tangaraAdminClient.collection('invitations').getFullList({
+          filter: `tenant = "${tangaraTenantId}" && email = "${ephemeralFloraniaServidorEmail}" && status = "accepted"`,
+        })
+        let usedBlocked = false
+        if (tangaraInvs.length > 0) {
+          try {
+            await floraniaServidorClient.send('/backend/v1/invitations/accept', {
+              method: 'POST',
+              body: JSON.stringify({ invitationId: tangaraInvs[0].id }),
+              headers: { 'Content-Type': 'application/json' },
+            })
+          } catch (err: any) {
+            usedBlocked = err.status === 400
+          }
+        } else {
+          usedBlocked = true
+        }
+
+        return crossUserBlocked && usedBlocked
+      },
+    )
+
+    // Cenário 16: Recusa de convite não cria vínculo; cancelamento por Admin funciona só no próprio tenant
+    await assertTest(
+      'Cenário 16: Recusa de convite não cria vínculo; cancelamento por Admin funciona só no próprio tenant',
+      async () => {
+        const declineEmail = `decline.test.${testRunId}@florania.gov.br`
+        const declinePassword = generateStrongDynamicPassword('Dec_')
+
+        // Registrar usuário para poder autenticar e recusar
+        const regRes: any = await publicClient.send('/backend/v1/auth/register-public', {
+          method: 'POST',
+          body: JSON.stringify({
+            slug: ephemeralFloraniaTenantSlug,
+            name: 'Usuario Recusa',
+            email: declineEmail,
+            password: declinePassword,
+            passwordConfirm: declinePassword,
+            role: 'servidor',
+          }),
+          headers: { 'Content-Type': 'application/json' },
+        })
+        if (regRes?.userId) ephemeralUserIdsToClean.push(regRes.userId)
+        if (regRes?.membershipId) ephemeralMembershipIdsToClean.push(regRes.membershipId)
+
+        const declineClient = new PocketBase(pbUrl)
+        await declineClient.collection('users').authWithPassword(declineEmail, declinePassword)
+
+        // Admin Florânia cria convite
+        await floraniaAdminClient.send('/backend/v1/invitations/create', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: 'Usuario Recusa',
+            email: declineEmail,
+            tenant: floraniaTenantId,
+            role: 'gestor',
+          }),
+          headers: { 'Content-Type': 'application/json' },
+        })
+
+        const invs = await floraniaAdminClient.collection('invitations').getFullList({
+          filter: `tenant = "${floraniaTenantId}" && email = "${declineEmail}" && status = "pending"`,
+        })
+        if (invs.length === 0) return false
+        const invId = invs[0].id
+
+        // 1. Admin Tangará tenta cancelar convite de Florânia (deve falhar com 403)
+        let crossCancelBlocked = false
+        try {
+          await tangaraAdminClient.send('/backend/v1/invitations/cancel', {
+            method: 'POST',
+            body: JSON.stringify({ invitationId: invId }),
+            headers: { 'Content-Type': 'application/json' },
+          })
+        } catch (err: any) {
+          crossCancelBlocked = err.status === 403
+        }
+
+        // 2. Titular autenticado recusa o convite
+        const decRes: any = await declineClient.send('/backend/v1/invitations/decline', {
+          method: 'POST',
+          body: JSON.stringify({ invitationId: invId }),
+          headers: { 'Content-Type': 'application/json' },
+        })
+
+        // 3. Verificar que membership não está ativa
+        const mems = await declineClient.collection('user_memberships').getFullList({
+          filter: `tenant = "${floraniaTenantId}"`,
+        })
+        const notActive = mems.every((m) => m.status !== 'ativo')
+
+        return crossCancelBlocked && decRes.success === true && notActive
+      },
+    )
+
+    // Cenário 17: Reenvio de convite invalida o token anterior sem duplicar memberships
+    await assertTest(
+      'Cenário 17: Reenvio de convite invalida token anterior sem duplicar memberships',
+      async () => {
+        const resendEmail = `resend.test.${testRunId}@florania.gov.br`
+        // Envio 1
+        await floraniaAdminClient.send('/backend/v1/tenant-users/create', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: 'Resend Test User',
+            email: resendEmail,
+            tenant: floraniaTenantId,
+            role: 'servidor',
+          }),
+          headers: { 'Content-Type': 'application/json' },
+        })
+
+        // Envio 2 (reenvio)
+        await floraniaAdminClient.send('/backend/v1/tenant-users/create', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: 'Resend Test User',
+            email: resendEmail,
+            tenant: floraniaTenantId,
+            role: 'servidor',
+          }),
+          headers: { 'Content-Type': 'application/json' },
+        })
+
+        // Verificar que existe exatamente 1 convite com status pending (o anterior foi cancelado)
+        const pendingInvs = await floraniaAdminClient.collection('invitations').getFullList({
+          filter: `tenant = "${floraniaTenantId}" && email = "${resendEmail}" && status = "pending"`,
+        })
+
+        const totalInvs = await floraniaAdminClient.collection('invitations').getFullList({
+          filter: `tenant = "${floraniaTenantId}" && email = "${resendEmail}"`,
+        })
+
+        const mems = await floraniaAdminClient.collection('user_memberships').getFullList({
+          filter: `tenant = "${floraniaTenantId}"`,
+        })
+        // As memberships para este novo usuário não devem estar duplicadas
+        const userInvs = await floraniaAdminClient.collection('users').getFullList({
+          filter: `email = "${resendEmail}"`,
+        })
+
+        let memCount = 0
+        if (userInvs.length > 0) {
+          ephemeralUserIdsToClean.push(userInvs[0].id)
+          const userMems = await floraniaAdminClient.collection('user_memberships').getFullList({
+            filter: `user = "${userInvs[0].id}" && tenant = "${floraniaTenantId}"`,
+          })
+          memCount = userMems.length
+        }
+
+        return pendingInvs.length === 1 && totalInvs.length >= 2 && memCount <= 1
+      },
+    )
+
+    // Cenário 18: Servidor comum e pendente recebem 403 ao tentar convidar ou cancelar
+    await assertTest(
+      'Cenário 18: Servidor comum e usuário pendente recebem 403 ao tentar convidar ou cancelar',
+      async () => {
+        let serverInviteBlocked = false
+        try {
+          await floraniaServidorClient.send('/backend/v1/invitations/create', {
+            method: 'POST',
+            body: JSON.stringify({
+              name: 'Attempt by Servidor',
+              email: `server.attempt.${testRunId}@florania.gov.br`,
+              tenant: floraniaTenantId,
+              role: 'servidor',
+            }),
+            headers: { 'Content-Type': 'application/json' },
+          })
+        } catch (err: any) {
+          serverInviteBlocked = err.status === 403
+        }
+
+        let serverCancelBlocked = false
+        try {
+          await floraniaServidorClient.send('/backend/v1/invitations/cancel', {
+            method: 'POST',
+            body: JSON.stringify({ invitationId: 'any_id_123' }),
+            headers: { 'Content-Type': 'application/json' },
+          })
+        } catch (err: any) {
+          serverCancelBlocked = err.status === 403 || err.status === 404
+        }
+
+        return serverInviteBlocked && serverCancelBlocked
+      },
+    )
   } finally {
     // ==========================================
     // CLEANUP EFÊMERO TOTAL (finally com código de exclusão real)

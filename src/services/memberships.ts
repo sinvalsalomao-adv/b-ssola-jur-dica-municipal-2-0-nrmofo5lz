@@ -229,7 +229,7 @@ export async function createTenantUserSecure(payload: {
   role: UserRole
   password?: string
   passwordConfirm?: string
-}): Promise<{ success: boolean; message: string; user?: any; membership?: any }> {
+}): Promise<{ success: boolean; message: string; status?: string }> {
   return await pb.send('/backend/v1/tenant-users/create', {
     method: 'POST',
     body: JSON.stringify(payload),

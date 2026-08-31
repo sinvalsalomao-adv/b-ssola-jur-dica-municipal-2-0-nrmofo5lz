@@ -130,12 +130,19 @@ export function runMembershipModuleTests(): MembershipTestResult {
     return passedApproval && passedRejection
   })
 
-  // Teste 4: Reuso de usuário global na criação direta com geração de novo vínculo ativo
-  test('Criação direta com e-mail global já existente deve reutilizar usuário e criar vínculo ativo', () => {
+  // Teste 4: Convite seguro para e-mail global já existente: cria convite/membership pendente sem ativar automaticamente
+  test('Convite para e-mail global já existente deve criar membership pendente e exigir aceite autenticado', () => {
     const existingUsers = [{ id: 'usr_global_1', email: 'servidor.comum@gmail.com', name: 'Maria' }]
     const memberships: Array<{ user: string; tenant: string; role: string; status: string }> = []
+    const invitations: Array<{
+      email: string
+      tenant: string
+      role: string
+      status: string
+      tokenHash: string
+    }> = []
 
-    const handleCreateOrLink = (email: string, name: string, tenantId: string, role: UserRole) => {
+    const handleInviteOrLink = (email: string, name: string, tenantId: string, role: UserRole) => {
       let user = existingUsers.find((u) => u.email === email)
       let userCreated = false
       if (!user) {
@@ -144,24 +151,55 @@ export function runMembershipModuleTests(): MembershipTestResult {
         userCreated = true
       }
 
+      // Membership NUNCA inicia ativa automaticamente para e-mail convidado
       let mem = memberships.find((m) => m.user === user!.id && m.tenant === tenantId)
       if (mem) {
-        mem.status = 'ativo'
-        mem.role = role
+        if (mem.status !== 'ativo') {
+          mem.status = 'pendente'
+          mem.role = role
+        }
       } else {
         memberships.push({
           user: user.id,
           tenant: tenantId,
           role,
-          status: 'ativo',
+          status: 'pendente',
         })
       }
 
-      return { user, userCreated, membershipCount: memberships.length }
+      // Gera convite com hash de token
+      invitations.push({
+        email,
+        tenant: tenantId,
+        role,
+        status: 'pending',
+        tokenHash: 'sha256_mock_hash_' + Date.now(),
+      })
+
+      return {
+        user,
+        userCreated,
+        membershipCount: memberships.length,
+        invitationCount: invitations.length,
+      }
     }
 
-    const res1 = handleCreateOrLink('servidor.comum@gmail.com', 'Maria', 'ten_florania', 'servidor')
-    const res2 = handleCreateOrLink('servidor.comum@gmail.com', 'Maria', 'ten_tangara', 'gestor')
+    const res1 = handleInviteOrLink('servidor.comum@gmail.com', 'Maria', 'ten_florania', 'servidor')
+    const res2 = handleInviteOrLink('servidor.comum@gmail.com', 'Maria', 'ten_tangara', 'gestor')
+
+    // Aceite autenticado do titular em Tangará
+    const acceptInvitation = (userEmail: string, tenantId: string) => {
+      const inv = invitations.find(
+        (i) => i.email === userEmail && i.tenant === tenantId && i.status === 'pending',
+      )
+      if (inv) {
+        inv.status = 'accepted'
+        const mem = memberships.find((m) => m.tenant === tenantId)
+        if (mem) mem.status = 'ativo'
+      }
+    }
+
+    acceptInvitation('servidor.comum@gmail.com', 'ten_tangara')
 
     return (
       res1.userCreated === false &&
@@ -169,9 +207,9 @@ export function runMembershipModuleTests(): MembershipTestResult {
       existingUsers.length === 1 &&
       memberships.length === 2 &&
       memberships[0].tenant === 'ten_florania' &&
-      memberships[0].status === 'ativo' &&
+      memberships[0].status === 'pendente' && // Florânia permanece pendente (não aceito)
       memberships[1].tenant === 'ten_tangara' &&
-      memberships[1].status === 'ativo'
+      memberships[1].status === 'ativo' // Tangará ativou após aceite autenticado
     )
   })
 

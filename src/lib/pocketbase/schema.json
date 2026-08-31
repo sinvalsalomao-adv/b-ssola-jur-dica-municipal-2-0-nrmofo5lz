@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-31T21:48:18.903Z",
+  "generatedAt": "2026-08-31T22:10:02.058Z",
   "collections": [
     {
       "name": "users",
@@ -833,11 +833,11 @@
       "name": "invitations",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
-        "view": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
-        "create": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
-        "update": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
-        "delete": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')"
+        "list": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+        "view": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+        "delete": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))"
       },
       "fields": [
         {
@@ -857,7 +857,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["admin", "servidor"]
+          "selectValues": ["admin", "servidor", "gestor", "secretario", "procurador"]
         },
         {
           "name": "tenant",
@@ -877,7 +877,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["pending", "activated", "cancelled"]
+          "selectValues": ["pending", "activated", "accepted", "rejected", "expired", "cancelled"]
         },
         {
           "name": "created",
@@ -892,9 +892,46 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "token_hash",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "expires_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "used_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "user",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "rate_limit_hash",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
-      "indexes": ["CREATE INDEX idx_invitations_tenant ON invitations (tenant)"]
+      "indexes": [
+        "CREATE INDEX idx_invitations_tenant ON invitations (tenant)",
+        "CREATE INDEX `idx_invitations_token_hash` ON `invitations` (token_hash)",
+        "CREATE INDEX `idx_invitations_email` ON `invitations` (email)",
+        "CREATE INDEX `idx_invitations_status` ON `invitations` (status)",
+        "CREATE INDEX `idx_invitations_rate_limit_hash` ON `invitations` (rate_limit_hash)"
+      ]
     },
     {
       "name": "dfds",

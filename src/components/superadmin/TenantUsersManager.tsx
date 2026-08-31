@@ -39,6 +39,7 @@ import {
   rejectMembership,
   type UserMembership,
 } from '@/services/memberships'
+import { getInvitations, cancelInvitation, type Invitation } from '@/services/invitations'
 import type { GlobalUser, UserRole } from '@/types/superadmin'
 import pb from '@/lib/pocketbase/client'
 import { toast } from 'sonner'
@@ -65,11 +66,13 @@ const ROLE_LABELS: Record<string, string> = {
 export function TenantUsersManager() {
   const { user } = useAuth()
   const isSuperadmin = user?.role === 'superadmin'
-  const [activeTab, setActiveTab] = useState<'users' | 'pending'>('users')
+  const [activeTab, setActiveTab] = useState<'users' | 'pending' | 'invitations'>('users')
   const [users, setUsers] = useState<GlobalUser[]>([])
   const [pendingMemberships, setPendingMemberships] = useState<UserMembership[]>([])
+  const [invitations, setInvitations] = useState<Invitation[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingPending, setLoadingPending] = useState(false)
+  const [loadingInvitations, setLoadingInvitations] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<GlobalUser | null>(null)
   const [editOpen, setEditOpen] = useState(false)
@@ -130,10 +133,22 @@ export function TenantUsersManager() {
     setLoadingPending(false)
   }, [targetTenantId])
 
+  const loadInvitations = useCallback(async () => {
+    setLoadingInvitations(true)
+    try {
+      const data = await getInvitations(targetTenantId)
+      setInvitations(data)
+    } catch {
+      /* ignore */
+    }
+    setLoadingInvitations(false)
+  }, [targetTenantId])
+
   useEffect(() => {
     loadUsers()
     loadPending()
-  }, [loadUsers, loadPending])
+    loadInvitations()
+  }, [loadUsers, loadPending, loadInvitations])
 
   useRealtime('users', () => {
     loadUsers()
@@ -141,6 +156,9 @@ export function TenantUsersManager() {
   useRealtime('user_memberships', () => {
     loadPending()
     loadUsers()
+  })
+  useRealtime('invitations', () => {
+    loadInvitations()
   })
 
   const handleApprove = async (membership: UserMembership, newRole?: UserRole) => {
@@ -166,6 +184,19 @@ export function TenantUsersManager() {
       await Promise.all([loadPending(), loadUsers()])
     } catch (err: any) {
       toast.error(err?.message || 'Erro ao rejeitar solicitação.')
+    } finally {
+      setActionInProgressId(null)
+    }
+  }
+
+  const handleCancelInvite = async (inv: Invitation) => {
+    setActionInProgressId(inv.id)
+    try {
+      await cancelInvitation(inv.id)
+      toast.success('Convite cancelado com sucesso.')
+      await loadInvitations()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao cancelar convite.')
     } finally {
       setActionInProgressId(null)
     }
@@ -235,29 +266,33 @@ export function TenantUsersManager() {
             </div>
           )}
           <Button className="bg-[#3b82f6] text-white gap-2 h-9" onClick={() => setCreateOpen(true)}>
-            <UserPlus className="w-4 h-4" /> Criar Usuário
+            <UserPlus className="w-4 h-4" /> Convidar / Criar
           </Button>
         </div>
       </div>
 
       <Tabs
         value={activeTab}
-        onValueChange={(v) => setActiveTab(v as 'users' | 'pending')}
+        onValueChange={(v) => setActiveTab(v as 'users' | 'pending' | 'invitations')}
         className="w-full"
       >
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+        <TabsList className="grid w-full max-w-lg grid-cols-3">
           <TabsTrigger value="users" className="gap-2">
             <Users className="w-4 h-4" />
-            <span>Usuários Ativos ({users.length})</span>
+            <span>Ativos ({users.length})</span>
           </TabsTrigger>
           <TabsTrigger value="pending" className="gap-2 relative">
             <UserCheck className="w-4 h-4" />
-            <span>Aprovações Pendentes</span>
+            <span>Pendências</span>
             {pendingMemberships.length > 0 && (
               <Badge className="ml-1.5 bg-amber-500 text-white hover:bg-amber-600 px-1.5 py-0 text-[10px] rounded-full">
                 {pendingMemberships.length}
               </Badge>
             )}
+          </TabsTrigger>
+          <TabsTrigger value="invitations" className="gap-2 relative">
+            <Clock className="w-4 h-4" />
+            <span>Convites ({invitations.filter((i) => i.status === 'pending').length})</span>
           </TabsTrigger>
         </TabsList>
 
@@ -471,6 +506,122 @@ export function TenantUsersManager() {
             {pendingMemberships.length} solicitação(ões) pendente(s).
           </p>
         </TabsContent>
+
+        {/* ABA 3: Convites Enviados */}
+        <TabsContent value="invitations" className="space-y-4 mt-4">
+          <Card className="bg-white border-0 shadow-subtle">
+            <CardContent className="p-0">
+              {loadingInvitations ? (
+                <div className="flex justify-center py-12">
+                  <Loader2 className="w-6 h-6 animate-spin text-[#3b82f6]" />
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-slate-50">
+                      <TableHead className="text-xs font-semibold text-[#1c2a3e]">
+                        Destinatário
+                      </TableHead>
+                      <TableHead className="text-xs font-semibold text-[#1c2a3e]">Email</TableHead>
+                      {isSuperadmin && (
+                        <TableHead className="text-xs font-semibold text-[#1c2a3e]">
+                          Município
+                        </TableHead>
+                      )}
+                      <TableHead className="text-xs font-semibold text-[#1c2a3e]">
+                        Papel Proposto
+                      </TableHead>
+                      <TableHead className="text-xs font-semibold text-[#1c2a3e]">Status</TableHead>
+                      <TableHead className="text-xs font-semibold text-[#1c2a3e] text-center">
+                        Ações
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {invitations.length === 0 ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={isSuperadmin ? 6 : 5}
+                          className="text-center py-10 text-gray-500"
+                        >
+                          <div className="flex flex-col items-center justify-center gap-2">
+                            <Clock className="w-8 h-8 text-gray-300" />
+                            <p className="text-sm font-medium">Nenhum convite registrado</p>
+                            <p className="text-xs text-gray-400 max-w-sm text-center">
+                              Convites criados para servidores ou administradores municipais
+                              aparecerão listados aqui.
+                            </p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      invitations.map((inv) => (
+                        <TableRow key={inv.id} className="hover:bg-slate-50/50">
+                          <TableCell className="text-sm font-medium text-[#1c2a3e]">
+                            {inv.name}
+                          </TableCell>
+                          <TableCell className="text-sm text-gray-600">{inv.email}</TableCell>
+                          {isSuperadmin && (
+                            <TableCell className="text-xs text-gray-700 font-medium">
+                              {inv.tenantName || '—'}
+                            </TableCell>
+                          )}
+                          <TableCell>
+                            <Badge className={ROLE_COLORS[inv.role] || 'bg-slate-400 text-white'}>
+                              {ROLE_LABELS[inv.role] || inv.role}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              className={
+                                inv.status === 'accepted' || inv.status === 'activated'
+                                  ? 'bg-emerald-500 text-white'
+                                  : inv.status === 'pending'
+                                    ? 'bg-amber-500 text-white'
+                                    : 'bg-gray-400 text-white'
+                              }
+                            >
+                              {inv.status === 'pending'
+                                ? 'Pendente'
+                                : inv.status === 'accepted' || inv.status === 'activated'
+                                  ? 'Aceito'
+                                  : inv.status === 'rejected'
+                                    ? 'Recusado'
+                                    : inv.status === 'expired'
+                                      ? 'Expirado'
+                                      : 'Cancelado'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {inv.status === 'pending' ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs text-red-600 border-red-200 hover:bg-red-50 gap-1 px-2"
+                                disabled={actionInProgressId === inv.id}
+                                onClick={() => handleCancelInvite(inv)}
+                              >
+                                {actionInProgressId === inv.id ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <X className="w-3 h-3" />
+                                )}
+                                Cancelar
+                              </Button>
+                            ) : (
+                              <span className="text-xs text-gray-400">—</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+          <p className="text-xs text-gray-400">{invitations.length} convite(s) listado(s).</p>
+        </TabsContent>
       </Tabs>
 
       <TenantUserCreateModal
@@ -479,6 +630,7 @@ export function TenantUsersManager() {
         onCreated={() => {
           loadUsers()
           loadPending()
+          loadInvitations()
         }}
         defaultTenantId={targetTenantId}
       />

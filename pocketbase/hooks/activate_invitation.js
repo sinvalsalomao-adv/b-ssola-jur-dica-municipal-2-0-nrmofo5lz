@@ -1,71 +1,165 @@
+// Dedicated Transactional Endpoint for Titular / Admin to Accept Municipal Invitations
+// Route: POST /backend/v1/invitations/accept
+// Requires Auth: Authenticated Titular (auth user email/id must strictly match invitation recipient)
+// Behavior:
+// 1. Validates invitation existence, status ('pending'), and expiration (expires_at).
+// 2. Cryptographic token check (if token is provided, matches SHA-256 hash).
+// 3. Titular Identity Check: Authenticated user ID or verified email MUST match the invitation's recipient.
+//    A token alone cannot link another account.
+// 4. Atomic transaction:
+//    - Sets invitation status to 'accepted', used_at = now.
+//    - Creates or updates exactly ONE user_memberships record to status 'ativo' in the target tenant.
+//    - Preserves all existing memberships in other tenants.
+//    - Returns safe sanitized response.
+
 routerAdd(
   'POST',
-  '/backend/v1/invitations/activate',
+  '/backend/v1/invitations/accept',
   (e) => {
-    const body = e.requestInfo().body || {}
-    const invitationId = body.id
-
-    if (!invitationId) return e.badRequestError('ID do convite é obrigatório')
-
-    const userId = e.auth ? e.auth.id : ''
-    if (!userId) return e.unauthorizedError('Autenticação necessária')
-
-    const inv = $app.findRecordById('invitations', invitationId)
-
-    if (inv.getString('status') !== 'pending') {
-      return e.badRequestError('Convite já processado')
+    const auth = e.auth
+    if (!auth) {
+      return e.json(401, { code: 401, message: 'Autenticação necessária para aceitar convite.' })
     }
 
-    const role = e.auth.getString('role')
-    if (role === 'admin') {
-      if (inv.getString('tenant') !== e.auth.getString('tenant')) {
-        return e.forbiddenError('Você só pode ativar convites do seu tenant')
+    const authId = auth.id
+    const authEmail = auth.getString('email').trim().toLowerCase()
+    const body = e.requestInfo().body || {}
+    const invitationId = String(body.invitationId || body.id || '').trim()
+    const rawToken = String(body.token || '').trim()
+
+    if (!invitationId && !rawToken) {
+      return e.badRequestError('Identificador do convite ou token é obrigatório.')
+    }
+
+    let inv = null
+    if (invitationId) {
+      try {
+        inv = $app.findFirstRecordByData('invitations', 'id', invitationId)
+      } catch (_) {
+        return e.json(404, { code: 404, message: 'Convite não encontrado ou inválido.' })
+      }
+    } else if (rawToken) {
+      const tokenHash = $security.sha256(rawToken)
+      try {
+        inv = $app.findFirstRecordByData('invitations', 'token_hash', tokenHash)
+      } catch (_) {
+        return e.json(404, { code: 404, message: 'Convite não encontrado ou inválido.' })
       }
     }
 
-    try {
-      $app.findAuthRecordByEmail('_pb_users_auth_', inv.getString('email'))
-      return e.badRequestError('Email já cadastrado no sistema')
-    } catch (_) {}
-
-    const password = $security.randomString(16) + 'A1!'
-    const usersCol = $app.findCollectionByNameOrId('_pb_users_auth_')
-    let user
-    try {
-      user = $app.findAuthRecordByEmail('_pb_users_auth_', inv.getString('email'))
-    } catch (_) {
-      user = new Record(usersCol)
-      user.setEmail(inv.getString('email'))
-      user.setPassword(password)
-      user.setVerified(true)
-      user.set('name', inv.getString('name'))
-      user.set('role', inv.getString('role'))
-      user.set('status', 'ativo')
-      user.set('tenant', inv.getString('tenant'))
-      $app.save(user)
+    if (!inv) {
+      return e.json(404, { code: 404, message: 'Convite não encontrado ou inválido.' })
     }
 
+    // 1. Validar status
+    const currentStatus = inv.getString('status')
+    if (currentStatus !== 'pending') {
+      return e.json(400, {
+        code: 400,
+        message: 'Este convite já foi processado, cancelado ou expirado.',
+      })
+    }
+
+    // 2. Validar expiração
+    const expiresAtStr = inv.getString('expires_at')
+    if (expiresAtStr) {
+      const expDate = new Date(expiresAtStr).getTime()
+      if (Date.now() > expDate) {
+        inv.set('status', 'expired')
+        try {
+          $app.save(inv)
+        } catch (_) {}
+        return e.json(400, {
+          code: 400,
+          message: 'Este convite expirou. Solicite um novo convite ao Administrador.',
+        })
+      }
+    }
+
+    // 3. Validar token se fornecido
+    if (rawToken && inv.getString('token_hash')) {
+      const expectedHash = inv.getString('token_hash')
+      const providedHash = $security.sha256(rawToken)
+      if (expectedHash !== providedHash) {
+        return e.json(400, { code: 400, message: 'Token de convite inválido.' })
+      }
+    }
+
+    // 4. Verificação Estrita de Identidade do Titular:
+    // O usuário autenticado DEVE corresponder inequivocamente ao destinatário do convite
+    const invEmail = inv.getString('email').trim().toLowerCase()
+    const invUserId = inv.getString('user')
+
+    const isMatchByEmail = invEmail && authEmail && invEmail === authEmail
+    const isMatchById = invUserId && authId && invUserId === authId
+
+    if (!isMatchByEmail && !isMatchById) {
+      return e.json(403, {
+        code: 403,
+        message: 'Apenas o titular do e-mail convidado pode aceitar este convite.',
+      })
+    }
+
+    const tenantId = inv.getString('tenant')
+    const roleToAssign = inv.getString('role') || 'servidor'
+    const nowIso = new Date().toISOString().replace('T', ' ').slice(0, 19)
+
+    const memCol = $app.findCollectionByNameOrId('user_memberships')
+    let membershipRecord = null
+
     try {
-      const memCol = $app.findCollectionByNameOrId('user_memberships')
-      const mem = new Record(memCol)
-      mem.set('user', user.id)
-      mem.set('tenant', inv.getString('tenant'))
-      mem.set('role', inv.getString('role'))
-      mem.set('status', 'ativo')
-      $app.save(mem)
-    } catch (_) {}
+      $app.runInTransaction((txApp) => {
+        // A. Marcar convite como aceito
+        inv.set('status', 'accepted')
+        inv.set('used_at', nowIso)
+        inv.set('user', authId)
+        txApp.save(inv)
 
-    inv.set('status', 'activated')
-    $app.save(inv)
+        // B. Criar ou ativar exatamente uma membership no tenant alvo
+        const escapedUserId = authId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+        const escapedTenantId = tenantId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+        const memFilter = "user = '" + escapedUserId + "' && tenant = '" + escapedTenantId + "'"
 
-    // Não retornar senha em texto claro na resposta
-    return e.json(200, {
-      id: inv.id,
-      status: 'activated',
-      email: inv.getString('email'),
-      name: inv.getString('name'),
-      message: 'Convite ativado com sucesso. O usuário foi provisionado.',
-    })
+        const existingMems = txApp.findRecordsByFilter('user_memberships', memFilter, '', 1, 0)
+        if (existingMems.length > 0) {
+          membershipRecord = existingMems[0]
+          membershipRecord.set('role', roleToAssign)
+          membershipRecord.set('status', 'ativo')
+          txApp.save(membershipRecord)
+        } else {
+          membershipRecord = new Record(memCol)
+          membershipRecord.set('user', authId)
+          membershipRecord.set('tenant', tenantId)
+          membershipRecord.set('role', roleToAssign)
+          membershipRecord.set('status', 'ativo')
+          txApp.save(membershipRecord)
+        }
+      })
+
+      // C. Resposta segura
+      let tenantName = '—'
+      try {
+        const tRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
+        tenantName = tRec.getString('name') || '—'
+      } catch (_) {}
+
+      return e.json(200, {
+        success: true,
+        message: 'Convite aceito com sucesso! Vínculo com o município ativado.',
+        membership: {
+          id: membershipRecord.id,
+          tenantId: tenantId,
+          tenantName: tenantName,
+          role: roleToAssign,
+          status: 'ativo',
+        },
+      })
+    } catch (err) {
+      return e.json(500, {
+        code: 500,
+        message: 'Erro ao processar aceite do convite.',
+      })
+    }
   },
   $apis.requireAuth(),
 )

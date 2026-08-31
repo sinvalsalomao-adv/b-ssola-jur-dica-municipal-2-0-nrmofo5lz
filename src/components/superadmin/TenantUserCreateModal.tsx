@@ -92,15 +92,15 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated, defaultTe
       e.tenant = 'O município/prefeitura é obrigatório.'
     }
 
-    if (!password) {
-      e.password = 'Senha é obrigatória.'
-    } else {
+    if (password) {
       const pwdVal = validatePasswordStrength(password)
       if (!pwdVal.allValid) {
         e.password = 'A senha não atende a todos os requisitos de segurança.'
       }
+      if (password !== confirm) {
+        e.confirm = 'As senhas não coincidem.'
+      }
     }
-    if (password !== confirm) e.confirm = 'As senhas não coincidem.'
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -113,17 +113,17 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated, defaultTe
       const cleanEmail = sanitizeInput(email.trim().toLowerCase())
       const cleanName = sanitizeInput(name.trim())
 
-      // Chamar endpoint backend transacional seguro que funciona tanto para admin local quanto superadmin
+      // Chamar endpoint backend transacional seguro (resposta genérica, membership pendente até aceite)
       const res = await createTenantUserSecure({
         name: cleanName,
         email: cleanEmail,
         tenant: selectedTenantId,
         role,
-        password,
-        passwordConfirm: confirm,
+        password: password || undefined,
+        passwordConfirm: confirm || undefined,
       })
 
-      toast.success(res.message || 'Usuário vinculado e ativado com sucesso!')
+      toast.success(res.message || 'Solicitação de cadastro/convite processada com sucesso!')
       onOpenChange(false)
       onCreated()
     } catch (err: any) {
@@ -143,7 +143,9 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated, defaultTe
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[460px] bg-white rounded-xl shadow-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-lg font-bold text-[#1c2a3e]">Criar Usuário</DialogTitle>
+          <DialogTitle className="text-lg font-bold text-[#1c2a3e]">
+            Convidar / Criar Usuário
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3 py-1">
           {/* Campo Município / Prefeitura */}
@@ -204,7 +206,9 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated, defaultTe
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs font-semibold text-gray-700">Senha *</Label>
+              <Label className="text-xs font-semibold text-gray-700">
+                Senha Inicial (Opcional)
+              </Label>
               <Input
                 type="password"
                 value={password}
@@ -215,7 +219,7 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated, defaultTe
               {errors.password && <p className="text-xs text-red-500 mt-1">{errors.password}</p>}
             </div>
             <div>
-              <Label className="text-xs font-semibold text-gray-700">Confirmar *</Label>
+              <Label className="text-xs font-semibold text-gray-700">Confirmar Senha</Label>
               <Input
                 type="password"
                 value={confirm}
@@ -226,6 +230,10 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated, defaultTe
               {errors.confirm && <p className="text-xs text-red-500 mt-1">{errors.confirm}</p>}
             </div>
           </div>
+          <p className="text-[11px] text-gray-400">
+            Se for uma nova conta e a senha for omitida, um convite oficial de primeiro acesso será
+            gerado. Caso a conta já exista, o vínculo aguardará o aceite autenticado do titular.
+          </p>
           {password && <PasswordStrengthIndicator password={password} />}
           <DialogFooter className="pt-3 border-t">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
@@ -234,10 +242,10 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated, defaultTe
             <Button
               type="submit"
               disabled={submitting}
-              className="bg-[#3b82f6] hover:bg-[#2563eb] text-white"
+              className="bg-[#3b82f6] hover:bg-[#2563eb] text-white gap-1.5"
             >
-              {submitting && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
-              Criar
+              {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+              Enviar Convite / Criar
             </Button>
           </DialogFooter>
         </form>
