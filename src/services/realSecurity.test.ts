@@ -25,13 +25,62 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
     }
   }
 
+  // 0. Cenário: Neutralização de credenciais históricas seed ("Skip@Pass")
+  await assertTest(
+    'Credenciais conhecidas da migration histórica 0005 ("Skip@Pass") NÃO autenticam mais',
+    async () => {
+      const client = new PocketBase(pbUrl)
+      const seedEmails = [
+        'sinvalsalomao@gmail.com',
+        'admin1@florania.gov.br',
+        'servidor1@florania.gov.br',
+        'servidor2@florania.gov.br',
+        'admin1@tangara.gov.br',
+      ]
+
+      let allRejected = true
+      for (const email of seedEmails) {
+        try {
+          await client.collection('users').authWithPassword(email, 'Skip@Pass')
+          allRejected = false // Se conseguir autenticar com a senha antiga conhecida, o teste falha
+        } catch (err: any) {
+          if (err.status !== 400) {
+            allRejected = false
+          }
+        }
+      }
+      return allRejected
+    },
+  )
+
+  // Criar contas e fixtures dinâmicas com senhas fortes para os testes de isolamento
+  const testRunId = Date.now()
+  const testPassword = `PassTest_${testRunId}_A1!`
+
+  // 1. Criar e autenticar Servidor de Florânia dinâmico
+  const testServidorEmail = `servidor.test.${testRunId}@florania.gov.br`
+  const regServidorRes: any = await new PocketBase(pbUrl).send(
+    '/backend/v1/auth/register-public',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        slug: 'florania',
+        name: 'Carlos Teste Servidor',
+        email: testServidorEmail,
+        password: testPassword,
+        passwordConfirm: testPassword,
+      }),
+      headers: { 'Content-Type': 'application/json' },
+    },
+  )
+  const servidorUserId = regServidorRes.user?.id
+
   // 1. Cenário: Servidor A não lista usuários nem lê e-mails de B
   await assertTest(
     'Servidor A não lista usuários de B e não tem acesso a outros usuários via users',
     async () => {
       const client = new PocketBase(pbUrl)
-      // Servidor Carlos (Florânia)
-      await client.collection('users').authWithPassword('servidor1@florania.gov.br', 'Skip@Pass')
+      await client.collection('users').authWithPassword(testServidorEmail, testPassword)
       const list = await client.collection('users').getFullList()
       // Deve ver apenas a si próprio
       const onlySelf = list.length === 1 && list[0].id === client.authStore.record?.id
