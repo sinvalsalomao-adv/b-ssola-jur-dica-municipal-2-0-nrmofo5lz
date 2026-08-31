@@ -161,6 +161,8 @@ routerAdd('POST', '/backend/v1/auth/register-public', (e) => {
     return e.json(201, {
       success: true,
       status: 'pendente',
+      userId: existingUser.id,
+      membershipId: newMem.id,
       message: 'Solicitação de acesso enviada com sucesso para aprovação do Administrador.',
     })
   }
@@ -187,6 +189,8 @@ routerAdd('POST', '/backend/v1/auth/register-public', (e) => {
     return e.json(201, {
       success: true,
       status: 'pendente',
+      userId: newUser.id,
+      membershipId: newMem.id,
       message: 'Cadastro realizado com sucesso! Sua solicitação está pendente de aprovação.',
     })
   } catch (err) {
