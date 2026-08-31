@@ -257,6 +257,285 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
     },
   )
 
+  // 11. Cenário: Admin A lista usuários do próprio tenant via novo endpoint /backend/v1/tenant-users/list
+  await assertTest(
+    'Admin A lista apenas usuários do seu município via /backend/v1/tenant-users/list',
+    async () => {
+      const client = new PocketBase(pbUrl)
+      // Admin Ana Silva (Florânia)
+      await client.collection('users').authWithPassword('admin1@florania.gov.br', 'Skip@Pass')
+      const res: any = await client.send('/backend/v1/tenant-users/list', { method: 'GET' })
+
+      const items = res.items || []
+      const allFlorania = items.every((u: any) => u.tenantId === '1e6lxk1tvyt27ok')
+      const noneTangara = items.every((u: any) => u.tenantId !== 'brfahrpkg6uvula')
+      const hasCarlos = items.some((u: any) => u.email === 'servidor1@florania.gov.br')
+
+      return items.length > 0 && allFlorania && noneTangara && hasCarlos
+    },
+  )
+
+  // 12. Cenário: Admin A não vê e-mail de usuários do Município B via list ou busca
+  await assertTest(
+    'Admin A busca por nome/email e NÃO encontra usuários do Município B',
+    async () => {
+      const client = new PocketBase(pbUrl)
+      await client.collection('users').authWithPassword('admin1@florania.gov.br', 'Skip@Pass')
+      // Buscar por Sofia de Tangará
+      const res: any = await client.send('/backend/v1/tenant-users/list?search=sofia', {
+        method: 'GET',
+      })
+      const items = res.items || []
+      return items.length === 0
+    },
+  )
+
+  // 13. Cenário: Admin A visualiza usuário do seu tenant e recebe 404 para usuário de B
+  await assertTest(
+    'Admin A visualiza usuário do seu tenant e recebe 404 para usuário de outro tenant',
+    async () => {
+      const client = new PocketBase(pbUrl)
+      await client.collection('users').authWithPassword('admin1@florania.gov.br', 'Skip@Pass')
+      // Visualizar Carlos (166gp4mdaxy2av4) de Florânia
+      const viewSelfTenant: any = await client.send(
+        '/backend/v1/tenant-users/view?userId=166gp4mdaxy2av4',
+        { method: 'GET' },
+      )
+      const successA =
+        viewSelfTenant.id === '166gp4mdaxy2av4' &&
+        viewSelfTenant.email === 'servidor1@florania.gov.br'
+
+      // Visualizar Sofia (92b3oxlgc3q965x) de Tangará
+      let blockedB = false
+      try {
+        await client.send('/backend/v1/tenant-users/view?userId=92b3oxlgc3q965x', { method: 'GET' })
+      } catch (err: any) {
+        blockedB = err.status === 404 || err.status === 403
+      }
+
+      return successA && blockedB
+    },
+  )
+
+  // 14. Cenário: Admin A edita perfil/vínculo de usuário de A, mas não pode alterar email ou virar superadmin
+  await assertTest('Admin A edita servidor de A mas não pode promover a superadmin', async () => {
+    const client = new PocketBase(pbUrl)
+    await client.collection('users').authWithPassword('admin1@florania.gov.br', 'Skip@Pass')
+    // Tentar promover Carlos a superadmin -> deve ser rejeitado (403/400)
+    let promoteBlocked = false
+    try {
+      await client.send('/backend/v1/tenant-users/update', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId: '166gp4mdaxy2av4',
+          role: 'superadmin',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      })
+    } catch (err: any) {
+      promoteBlocked = err.status === 403 || err.status === 400
+    }
+
+    // Atualizar com role permitida (gestor) e nome
+    const updateRes: any = await client.send('/backend/v1/tenant-users/update', {
+      method: 'POST',
+      body: JSON.stringify({
+        userId: '166gp4mdaxy2av4',
+        name: 'Carlos Santos Atualizado',
+        role: 'gestor',
+      }),
+      headers: { 'Content-Type': 'application/json' },
+    })
+    const updateOk = updateRes.success === true && updateRes.user?.role === 'gestor'
+
+    // Restaurar para servidor
+    await client.send('/backend/v1/tenant-users/update', {
+      method: 'POST',
+      body: JSON.stringify({
+        userId: '166gp4mdaxy2av4',
+        name: 'Carlos Santos',
+        role: 'servidor',
+      }),
+      headers: { 'Content-Type': 'application/json' },
+    })
+
+    return promoteBlocked && updateOk
+  })
+
+  // 15. Cenário: Admin A não pode editar nem desvincular usuário do Município B
+  await assertTest(
+    'Admin A recebe 404/403 ao tentar editar ou desvincular usuário do Município B',
+    async () => {
+      const client = new PocketBase(pbUrl)
+      await client.collection('users').authWithPassword('admin1@florania.gov.br', 'Skip@Pass')
+
+      let editBlocked = false
+      try {
+        await client.send('/backend/v1/tenant-users/update', {
+          method: 'POST',
+          body: JSON.stringify({
+            userId: '92b3oxlgc3q965x', // Sofia (Tangará)
+            name: 'Hacked',
+          }),
+          headers: { 'Content-Type': 'application/json' },
+        })
+      } catch (err: any) {
+        editBlocked = err.status === 404 || err.status === 403
+      }
+
+      let deleteBlocked = false
+      try {
+        await client.send('/backend/v1/tenant-users/delete', {
+          method: 'POST',
+          body: JSON.stringify({
+            userId: '92b3oxlgc3q965x', // Sofia (Tangará)
+          }),
+          headers: { 'Content-Type': 'application/json' },
+        })
+      } catch (err: any) {
+        deleteBlocked = err.status === 404 || err.status === 403
+      }
+
+      return editBlocked && deleteBlocked
+    },
+  )
+
+  // 16. Cenário: Servidor comum e usuário pendente recebem 403 no endpoint de gestão
+  await assertTest(
+    'Servidor comum recebe 403 ao tentar listar ou editar usuários via endpoint de gestão',
+    async () => {
+      const client = new PocketBase(pbUrl)
+      await client.collection('users').authWithPassword('servidor1@florania.gov.br', 'Skip@Pass')
+
+      let listBlocked = false
+      try {
+        await client.send('/backend/v1/tenant-users/list', { method: 'GET' })
+      } catch (err: any) {
+        listBlocked = err.status === 403 || err.status === 401
+      }
+
+      let updateBlocked = false
+      try {
+        await client.send('/backend/v1/tenant-users/update', {
+          method: 'POST',
+          body: JSON.stringify({
+            userId: 'z3cbxpj8h6xl9z3',
+            name: 'Attempt',
+          }),
+          headers: { 'Content-Type': 'application/json' },
+        })
+      } catch (err: any) {
+        updateBlocked = err.status === 403 || err.status === 401
+      }
+
+      return listBlocked && updateBlocked
+    },
+  )
+
+  // 17. Cenário: Impedir que o último admin ativo seja removido ou rebaixado
+  await assertTest(
+    'Não é permitido desvincular ou rebaixar o único administrador ativo de um município',
+    async () => {
+      const client = new PocketBase(pbUrl)
+      // Pedro Oliveira é o único admin ativo de Tangará (brfahrpkg6uvula)
+      await client.collection('users').authWithPassword('admin1@tangara.gov.br', 'Skip@Pass')
+
+      let demoteBlocked = false
+      try {
+        await client.send('/backend/v1/tenant-users/update', {
+          method: 'POST',
+          body: JSON.stringify({
+            userId: 'br3gos31bmxfllw',
+            role: 'servidor',
+          }),
+          headers: { 'Content-Type': 'application/json' },
+        })
+      } catch (err: any) {
+        demoteBlocked = err.status === 400 || err.status === 403
+      }
+
+      let unlinkBlocked = false
+      try {
+        await client.send('/backend/v1/tenant-users/delete', {
+          method: 'POST',
+          body: JSON.stringify({
+            userId: 'br3gos31bmxfllw',
+          }),
+          headers: { 'Content-Type': 'application/json' },
+        })
+      } catch (err: any) {
+        unlinkBlocked = err.status === 400 || err.status === 403
+      }
+
+      return demoteBlocked && unlinkBlocked
+    },
+  )
+
+  // 18. Cenário: Desvincular usuário de um tenant preserva seu vínculo em outro município e identidade
+  await assertTest(
+    'Desvincular usuário de um tenant preserva outros vínculos e integridade do registro',
+    async () => {
+      const client = new PocketBase(pbUrl)
+      // Usar Superadmin para criar um usuário com vínculo duplo para testar desvinculação cirúrgica
+      await client.collection('users').authWithPassword('sinvalsalomao@gmail.com', 'Skip@Pass')
+      const multiEmail = `multi.user.${Date.now()}@teste.gov.br`
+
+      // Criar em Florânia
+      const c1: any = await client.send('/backend/v1/tenant-users/create', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: 'Usuário Multi Tenant',
+          email: multiEmail,
+          tenant: '1e6lxk1tvyt27ok', // Florânia
+          role: 'servidor',
+          password: 'Password@2026Multi',
+          passwordConfirm: 'Password@2026Multi',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const multiUserId = c1.user?.id
+
+      // Criar vínculo também em Parazinho (wzio6lp1dq4y6xd)
+      await client.send('/backend/v1/tenant-users/create', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: 'Usuário Multi Tenant',
+          email: multiEmail,
+          tenant: 'wzio6lp1dq4y6xd', // Parazinho
+          role: 'servidor',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      })
+
+      // Agora logar como Admin de Florânia e desvincular esse usuário de Florânia
+      const adminFlorania = new PocketBase(pbUrl)
+      await adminFlorania
+        .collection('users')
+        .authWithPassword('admin1@florania.gov.br', 'Skip@Pass')
+
+      const delRes: any = await adminFlorania.send('/backend/v1/tenant-users/delete', {
+        method: 'POST',
+        body: JSON.stringify({ userId: multiUserId }),
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const deleteOk = delRes.success === true
+
+      // Logar como Admin de Parazinho e verificar que o vínculo em Parazinho continua ATIVO e INTACTO
+      const adminParazinho = new PocketBase(pbUrl)
+      await adminParazinho
+        .collection('users')
+        .authWithPassword('admin1@parazinho.gov.br', 'Skip@Pass')
+      const viewParazinho: any = await adminParazinho.send(
+        `/backend/v1/tenant-users/view?userId=${multiUserId}`,
+        { method: 'GET' },
+      )
+      const parazinhoIntact =
+        viewParazinho.id === multiUserId && viewParazinho.tenantId === 'wzio6lp1dq4y6xd'
+
+      return deleteOk && parazinhoIntact
+    },
+  )
+
   const passed = results.every((r) => r.ok)
   return { passed, results }
 }

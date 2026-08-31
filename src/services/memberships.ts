@@ -102,6 +102,36 @@ export async function getMembershipsByTenant(
  */
 export async function getPendingMemberships(tenantId?: string): Promise<UserMembership[]> {
   try {
+    // Usar o endpoint seguro de tenant-users com status=pendente
+    const params = new URLSearchParams()
+    if (tenantId) params.set('tenant', tenantId)
+    params.set('status', 'pendente')
+
+    const res: any = await pb.send(`/backend/v1/tenant-users/list?${params.toString()}`, {
+      method: 'GET',
+    })
+
+    if (res?.items && Array.isArray(res.items)) {
+      return res.items.map((item: any) => ({
+        id: item.membershipId || item.id,
+        userId: item.id,
+        userName: item.name || '—',
+        userEmail: item.email || '',
+        tenantId: item.tenantId || tenantId || '',
+        tenantName: item.prefeituraName || '—',
+        tenantSlug: item.prefeituraSlug || '',
+        role: (item.role || 'servidor') as UserRole,
+        status: 'pendente' as MembershipStatus,
+        created: item.created || '',
+        updated: item.lastAccess || '',
+      }))
+    }
+  } catch (err) {
+    console.warn('Fallback para user_memberships ao buscar cadastros pendentes:', err)
+  }
+
+  // Fallback caso seja superadmin acessando direto
+  try {
     const filter = tenantId
       ? `tenant = "${tenantId}" && status = "pendente"`
       : `status = "pendente"`

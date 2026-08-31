@@ -103,20 +103,9 @@ export function TenantUsersManager() {
     setLoading(true)
     try {
       if (isSuperadmin && (!targetTenantId || selectedSuperadminTenant === 'all')) {
-        // Superadmin vendo todos os usuários
-        const data = await pb.collection('users').getFullList({ expand: 'tenant', sort: 'name' })
-        setUsers(
-          data.map((r: any) => ({
-            id: r.id,
-            name: r.name || '',
-            email: r.email || '',
-            prefeituraName: r.expand?.tenant?.name || '—',
-            prefeituraSlug: r.expand?.tenant?.slug || '',
-            role: (r.role || 'servidor') as UserRole,
-            status: (r.status || 'ativo') as 'ativo' | 'inativo',
-            lastAccess: r.updated || r.created || '—',
-          })),
-        )
+        // Superadmin vendo todos os usuários pelo endpoint seguro
+        const data = await getUsersByTenant('')
+        setUsers(data)
       } else if (targetTenantId) {
         const data = await getUsersByTenant(targetTenantId)
         const filtered = user?.role === 'admin' ? data.filter((u) => u.role !== 'superadmin') : data

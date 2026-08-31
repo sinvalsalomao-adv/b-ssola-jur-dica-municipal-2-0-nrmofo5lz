@@ -10,9 +10,9 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Loader2 } from 'lucide-react'
-import pb from '@/lib/pocketbase/client'
 import { toast } from 'sonner'
 import type { GlobalUser } from '@/types/superadmin'
+import { deleteTenantUser } from '@/services/users'
 
 interface Props {
   user: GlobalUser | null
@@ -28,12 +28,12 @@ export function TenantUserDeleteDialog({ user, open, onOpenChange, onDeleted }: 
     if (!user) return
     setDeleting(true)
     try {
-      await pb.collection('users').delete(user.id)
-      toast.success('Usuário excluído com sucesso!')
+      const res = await deleteTenantUser({ userId: user.id })
+      toast.success(res?.message || 'Vínculo do usuário removido com sucesso!')
       onOpenChange(false)
       onDeleted()
     } catch (err: any) {
-      toast.error(err?.response?.message || err?.message || 'Erro ao excluir usuário.')
+      toast.error(err?.response?.message || err?.message || 'Erro ao desvincular usuário.')
     } finally {
       setDeleting(false)
     }
@@ -44,12 +44,12 @@ export function TenantUserDeleteDialog({ user, open, onOpenChange, onDeleted }: 
       <AlertDialogContent className="bg-white rounded-xl shadow-xl">
         <AlertDialogHeader>
           <AlertDialogTitle className="text-lg font-bold text-[#1c2a3e]">
-            Confirmar Exclusão
+            Confirmar Desvinculação / Exclusão
           </AlertDialogTitle>
           <AlertDialogDescription className="text-sm text-gray-600">
-            Tem certeza que deseja excluir o usuário{' '}
-            <span className="font-semibold text-[#1c2a3e]">{user?.name || 'este usuário'}</span>?
-            Esta ação não pode ser desfeita.
+            Tem certeza que deseja remover o vínculo do usuário{' '}
+            <span className="font-semibold text-[#1c2a3e]">{user?.name || 'este usuário'}</span> com
+            este município? O usuário perderá o acesso a esta prefeitura.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -60,7 +60,7 @@ export function TenantUserDeleteDialog({ user, open, onOpenChange, onDeleted }: 
             className="bg-red-600 hover:bg-red-700 text-white"
           >
             {deleting && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
-            Confirmar Exclusão
+            Confirmar Remoção
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
