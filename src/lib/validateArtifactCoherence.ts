@@ -153,7 +153,9 @@ export async function validateArtifactCoherence(): Promise<{
   return { passed, results, data }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+import { pathToFileURL } from 'node:url'
+
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   validateArtifactCoherence()
     .then((r) => {
       console.log(JSON.stringify(r, null, 2))

@@ -34,27 +34,28 @@ onRecordUpdateRequest((e) => {
 
   // 3. Autoatualização (usuário comum atualizando o próprio perfil)
   // Proibir expressamente alteração de campos privilegiados / estruturais
-  if (body.role !== undefined && body.role !== null && body.role !== record.getString('role')) {
+  const originalRecord = record.original()
+  const origRole = originalRecord ? originalRecord.getString('role') : record.getString('role')
+  const origTenant = originalRecord
+    ? originalRecord.getString('tenant')
+    : record.getString('tenant')
+  const origStatus = originalRecord
+    ? originalRecord.getString('status')
+    : record.getString('status')
+
+  if (body.role !== undefined && body.role !== null && body.role !== origRole) {
     return e.json(403, {
       code: 403,
       message: 'Você não tem permissão para alterar o seu próprio papel de acesso.',
     })
   }
-  if (
-    body.tenant !== undefined &&
-    body.tenant !== null &&
-    body.tenant !== record.getString('tenant')
-  ) {
+  if (body.tenant !== undefined && body.tenant !== null && body.tenant !== origTenant) {
     return e.json(403, {
       code: 403,
       message: 'Você não tem permissão para alterar o seu município associado.',
     })
   }
-  if (
-    body.status !== undefined &&
-    body.status !== null &&
-    body.status !== record.getString('status')
-  ) {
+  if (body.status !== undefined && body.status !== null && body.status !== origStatus) {
     return e.json(403, {
       code: 403,
       message: 'Você não tem permissão para alterar seu próprio status de conta.',

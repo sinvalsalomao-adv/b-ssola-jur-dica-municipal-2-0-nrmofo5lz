@@ -433,6 +433,15 @@ export async function runIsolatedIntegrationSuite(): Promise<{
     console.warn(
       '⚠️ Execução falhou ou não atendeu critérios de segurança. Nenhum artefato de sucesso produzido.',
     )
+    const failedScenariosList = report.scenarios.filter((s) => !s.ok)
+    if (failedScenariosList.length > 0) {
+      console.warn('Cenários reprovados (resumo sanitizado):')
+      for (const f of failedScenariosList) {
+        console.warn(
+          `  - [${f.scenarioId}] ${f.name} (esperado: ${f.expectedStatus}, recebido: ${f.receivedStatus})`,
+        )
+      }
+    }
   }
 
   return {
@@ -442,8 +451,10 @@ export async function runIsolatedIntegrationSuite(): Promise<{
   }
 }
 
+import { pathToFileURL } from 'node:url'
+
 // Standalone CLI execution
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   runIsolatedIntegrationSuite()
     .then(({ success, exitCode, report }) => {
       console.log('='.repeat(80))
@@ -454,6 +465,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         `Cenários Executados: ${report.summary.passedScenarios}/${report.summary.totalScenarios}`,
       )
       console.log(`Duração: ${report.summary.durationMs}ms`)
+      if (!success) {
+        const failedScenariosList = report.scenarios.filter((s) => !s.ok)
+        if (failedScenariosList.length > 0) {
+          console.log('\nResumo dos cenários reprovados:')
+          for (const f of failedScenariosList) {
+            console.log(`  - [${f.scenarioId}] ${f.name}`)
+          }
+        }
+      }
       console.log('='.repeat(80))
       process.exit(exitCode)
     })

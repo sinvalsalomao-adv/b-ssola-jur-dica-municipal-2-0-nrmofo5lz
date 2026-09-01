@@ -102,59 +102,6 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
     return { passed: false, results }
   }
 
-  // 3. Verificação do marcador test_environment exclusivo no banco antes de qualquer operação
-  try {
-    const testCheckClient = new PocketBase(pbUrl)
-    const markerRecord = await testCheckClient
-      .collection('security_audit_markers')
-      .getFirstListItem("marker_key = 'test_environment'")
-      .catch(() => null)
-
-    if (!markerRecord) {
-      const errorMsg =
-        'Bloqueio Antiacidente: O banco de dados alvo NÃO possui o registro exclusivo `test_environment` em security_audit_markers. ' +
-        'Execução abortada antes de qualquer operação de escrita para proteger bases reais.'
-      results.push({
-        scenarioId: 'GUARDRAIL-MARKER',
-        name: 'Guardrail Antiacidente: Verificação de Registro test_environment no Banco Efêmero',
-        ok: false,
-        detail: errorMsg,
-        expectedStatus: 'test_environment_present',
-        receivedStatus: 'null',
-      })
-      return { passed: false, results }
-    }
-
-    const markerDetails =
-      typeof markerRecord.details === 'string'
-        ? JSON.parse(markerRecord.details)
-        : markerRecord.details
-    if (!markerDetails || markerDetails.nonce !== testNonce) {
-      const errorMsg =
-        'Bloqueio Antiacidente: O nonce gravado no banco de dados não corresponde ao EPHEMERAL_TEST_NONCE do runner. ' +
-        'Possível conflito de instâncias ou banco inadequado.'
-      results.push({
-        scenarioId: 'GUARDRAIL-NONCE-MATCH',
-        name: 'Guardrail Antiacidente: Integridade de Nonce do Banco Efêmero',
-        ok: false,
-        detail: errorMsg,
-        expectedStatus: 'NONCE_MATCH',
-        receivedStatus: 'NONCE_MISMATCH',
-      })
-      return { passed: false, results }
-    }
-  } catch (err: any) {
-    results.push({
-      scenarioId: 'GUARDRAIL-VALIDATION',
-      name: 'Guardrail Antiacidente: Verificação de Marcador de Ambiente de Teste',
-      ok: false,
-      detail: `Falha ao validar marcador de teste no banco: ${err?.message || err}`,
-      expectedStatus: '200',
-      receivedStatus: 'ERROR',
-    })
-    return { passed: false, results }
-  }
-
   async function assertTest(
     scenarioId: string,
     name: string,
@@ -206,7 +153,7 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
     return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
   }
 
-  // Obter credencial de superadmin efêmero do runner e autenticar EXCLUSIVAMENTE via _superusers (PocketBase v0.26+)
+  // 3. Obter credencial de superadmin efêmero do runner e autenticar EXCLUSIVAMENTE via _superusers ANTES de ler o marcador protegido
   const runtimeSuperuserEmail = (nodeProcess?.env?.EPHEMERAL_SUPERADMIN_EMAIL || '') as string
   const runtimeSuperuserPassword = (nodeProcess?.env?.EPHEMERAL_SUPERADMIN_PASSWORD || '') as string
   let runtimeSuperuserToken = (nodeProcess?.env?.PB_SUPERUSER_TOKEN ||
@@ -258,6 +205,58 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
     id: 'superuser',
     role: 'superadmin',
   } as any)
+
+  // 4. Verificação do marcador test_environment exclusivo no banco antes de qualquer operação (com cliente superadmin autenticado)
+  try {
+    const markerRecord = await superadminClient
+      .collection('security_audit_markers')
+      .getFirstListItem("marker_key = 'test_environment'")
+      .catch(() => null)
+
+    if (!markerRecord) {
+      const errorMsg =
+        'Bloqueio Antiacidente: O banco de dados alvo NÃO possui o registro exclusivo `test_environment` em security_audit_markers. ' +
+        'Execução abortada antes de qualquer operação de escrita para proteger bases reais.'
+      results.push({
+        scenarioId: 'GUARDRAIL-MARKER',
+        name: 'Guardrail Antiacidente: Verificação de Registro test_environment no Banco Efêmero',
+        ok: false,
+        detail: errorMsg,
+        expectedStatus: 'test_environment_present',
+        receivedStatus: 'null',
+      })
+      return { passed: false, results }
+    }
+
+    const markerDetails =
+      typeof markerRecord.details === 'string'
+        ? JSON.parse(markerRecord.details)
+        : markerRecord.details
+    if (!markerDetails || markerDetails.nonce !== testNonce) {
+      const errorMsg =
+        'Bloqueio Antiacidente: O nonce gravado no banco de dados não corresponde ao EPHEMERAL_TEST_NONCE do runner. ' +
+        'Possível conflito de instâncias ou banco inadequado.'
+      results.push({
+        scenarioId: 'GUARDRAIL-NONCE-MATCH',
+        name: 'Guardrail Antiacidente: Integridade de Nonce do Banco Efêmero',
+        ok: false,
+        detail: errorMsg,
+        expectedStatus: 'NONCE_MATCH',
+        receivedStatus: 'NONCE_MISMATCH',
+      })
+      return { passed: false, results }
+    }
+  } catch (err: any) {
+    results.push({
+      scenarioId: 'GUARDRAIL-VALIDATION',
+      name: 'Guardrail Antiacidente: Verificação de Marcador de Ambiente de Teste',
+      ok: false,
+      detail: `Falha ao validar marcador de teste no banco: ${err?.message || err}`,
+      expectedStatus: '200',
+      receivedStatus: 'ERROR',
+    })
+    return { passed: false, results }
+  }
 
   // Rastreamento estrito de recursos efêmeros criados
   const createdTenantIds: string[] = []

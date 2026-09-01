@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-01T10:27:27.214Z",
+  "generatedAt": "2026-09-01T13:06:20.370Z",
   "collections": [
     {
       "name": "users",
@@ -951,7 +951,7 @@
         "CREATE INDEX `idx_invitations_status` ON `invitations` (status)",
         "CREATE INDEX `idx_invitations_rate_limit_hash` ON `invitations` (rate_limit_hash)",
         "CREATE INDEX `idx_invitations_recipient_hash` ON `invitations` (recipient_hash)",
-        "CREATE UNIQUE INDEX `idx_invitations_active_key` ON `invitations` (active_key)"
+        "CREATE UNIQUE INDEX `idx_invitations_active_key` ON `invitations` (active_key) WHERE active_key != ''"
       ]
     },
     {

@@ -8,6 +8,7 @@
  */
 
 import fs from 'node:fs'
+import path from 'node:path'
 import { startEphemeralPocketBase } from './ephemeralTestRunner'
 
 export async function runCleanupAndGuardrailTestSuite(): Promise<{
@@ -136,7 +137,9 @@ export async function runCleanupAndGuardrailTestSuite(): Promise<{
   return { passed, results }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+import { pathToFileURL } from 'node:url'
+
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   runCleanupAndGuardrailTestSuite()
     .then((r) => {
       console.log(JSON.stringify(r, null, 2))

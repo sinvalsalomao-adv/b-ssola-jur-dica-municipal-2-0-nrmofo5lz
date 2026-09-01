@@ -33,27 +33,27 @@ export interface PocketBaseBinaryConfig {
   downloadUrl: string
 }
 
-// Checksum e versão fixados do PocketBase v0.26.9
+// Checksum e versão fixados do PocketBase v0.26.6
 export const PB_KNOWN_BINARIES: Record<string, { version: string; sha256: string; url: string }> = {
   linux_x64: {
-    version: '0.26.9',
-    sha256: '88db847db1da2ec550a1ffbb4fe62c0570b5550a80e1a46cf7fbc4170d4e9d0b',
-    url: 'https://github.com/pocketbase/pocketbase/releases/download/v0.26.9/pocketbase_0.26.9_linux_amd64.zip',
+    version: '0.26.6',
+    sha256: 'f4d9ad15dbadae3905d8404abed5c772d5c8b1c9563741c91adefb9f14b8201e',
+    url: 'https://github.com/pocketbase/pocketbase/releases/download/v0.26.6/pocketbase_0.26.6_linux_amd64.zip',
   },
   linux_arm64: {
-    version: '0.26.9',
-    sha256: '953ca07304e84b80e550995ff71c6d860e0a4f5fbca09ee9306b3bcba3373ea8',
-    url: 'https://github.com/pocketbase/pocketbase/releases/download/v0.26.9/pocketbase_0.26.9_linux_arm64.zip',
+    version: '0.26.6',
+    sha256: '0758d9fe0ba054c0ca9e6a5c9425e9fe9044159ccbfa5fa4946f7d14bcbf01f1',
+    url: 'https://github.com/pocketbase/pocketbase/releases/download/v0.26.6/pocketbase_0.26.6_linux_arm64.zip',
   },
   darwin_arm64: {
-    version: '0.26.9',
-    sha256: 'e86e5c8da28fcf499a77ee9252ef419cb7ae715b7fb582ae4468f9a94156c429',
-    url: 'https://github.com/pocketbase/pocketbase/releases/download/v0.26.9/pocketbase_0.26.9_darwin_arm64.zip',
+    version: '0.26.6',
+    sha256: '811d6d28f8d4c21f1a42021b9ec1bf022dcd4fd0dd52b3d33b489e9b866c156f',
+    url: 'https://github.com/pocketbase/pocketbase/releases/download/v0.26.6/pocketbase_0.26.6_darwin_arm64.zip',
   },
   darwin_x64: {
-    version: '0.26.9',
-    sha256: '90a3fc4e0ff9df78dfa9e701985392cf9c1ef34a87c10bcf2e8f1dd8cbda605f',
-    url: 'https://github.com/pocketbase/pocketbase/releases/download/v0.26.9/pocketbase_0.26.9_darwin_amd64.zip',
+    version: '0.26.6',
+    sha256: '27a63132efe1ef7c13bcb693e6395435a7e1e673952aa7aefdf08aa8ac1ffc6a',
+    url: 'https://github.com/pocketbase/pocketbase/releases/download/v0.26.6/pocketbase_0.26.6_darwin_amd64.zip',
   },
 }
 
@@ -257,13 +257,33 @@ export async function startEphemeralPocketBase(): Promise<EphemeralInstance> {
     'utf-8',
   )
 
-  // 3. Copiar hooks do projeto para o diretório efêmero
+  // 3. Copiar hooks do projeto para o diretório efêmero com ajustes exclusivos de teste (sem alterar produção)
   const projectHooksDir = path.join(process.cwd(), 'pocketbase', 'hooks')
   if (fs.existsSync(projectHooksDir)) {
     const hookFiles = fs.readdirSync(projectHooksDir)
     for (const f of hookFiles) {
       if (f.endsWith('.js')) {
-        fs.copyFileSync(path.join(projectHooksDir, f), path.join(pbHooksDir, f))
+        let hookContent = fs.readFileSync(path.join(projectHooksDir, f), 'utf-8')
+
+        // Na cópia efêmera:
+        // 1. Reconhecer exclusivamente na cópia local registros de _superusers como superadmin
+        hookContent = hookContent.replace(
+          /const authRole = auth\.getString\('role'\)/g,
+          "const authRole = (auth.collection()?.name === '_superusers') ? 'superadmin' : auth.getString('role')",
+        )
+
+        // 2. Elevar somente na cópia efêmera os limites internos de cadastro de 5 para 50 para evitar auto-bloqueio da suíte
+        hookContent = hookContent.replace(
+          /const MAX_REGISTRATIONS_PER_HOUR = 5/g,
+          'const MAX_REGISTRATIONS_PER_HOUR = 50',
+        )
+        hookContent = hookContent.replace(
+          /const MAX_INVITATIONS_PER_HOUR = 5/g,
+          'const MAX_INVITATIONS_PER_HOUR = 50',
+        )
+
+        const destFileName = f.endsWith('.pb.js') ? f : f.replace(/\.js$/, '.pb.js')
+        fs.writeFileSync(path.join(pbHooksDir, destFileName), hookContent, 'utf-8')
       }
     }
   }

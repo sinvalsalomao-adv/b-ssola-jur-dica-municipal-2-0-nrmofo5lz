@@ -169,13 +169,39 @@ export function analyzeFilterCode(code: string, fileName = 'inline'): Finding[] 
       }
     }
 
-    // 3. Direct function calls with concatenated arguments
+    // 3. Direct function calls with concatenated arguments (including calls with only 2 arguments)
     if (line.includes('findRecordsByFilter') || line.includes('findFirstRecordByFilter')) {
+      const callMatch = line.match(/(?:findRecordsByFilter|findFirstRecordByFilter)\s*\(([^)]*)\)/)
+      if (callMatch) {
+        const argsInside = callMatch[1]
+        const cleanArgs = argsInside
+          .replace(/'(?:\\.|[^'\\])*'/g, '""')
+          .replace(/"(?:\\.|[^"\\])*"/g, '""')
+        const argParts = cleanArgs.split(',')
+        if (argParts.length >= 2) {
+          const secondArg = argParts[1]
+          if (
+            secondArg.includes('+') &&
+            !secondArg.includes('"" + ""') &&
+            (/\+\s*[a-zA-Z_$]/.test(secondArg) || /[a-zA-Z_$][a-zA-Z0-9_$.]*\s*\+/.test(secondArg))
+          ) {
+            findings.push({
+              file: fileName,
+              line: lineNum,
+              code: line.trim(),
+              reason:
+                'Concatenação dinâmica detectada diretamente no argumento de findRecordsByFilter/findFirstRecordByFilter.',
+            })
+            continue
+          }
+        }
+      }
+
       const cleanLine = line.replace(/'(?:\\.|[^'\\])*'/g, '""').replace(/"(?:\\.|[^"\\])*"/g, '""')
       if (
         cleanLine.includes('+') &&
         !cleanLine.includes('"" + ""') &&
-        /\+\s*[a-zA-Z_$]/.test(cleanLine)
+        (/\+\s*[a-zA-Z_$]/.test(cleanLine) || /[a-zA-Z_$][a-zA-Z0-9_$.]*\s*\+/.test(cleanLine))
       ) {
         findings.push({
           file: fileName,
@@ -327,8 +353,10 @@ export function runStaticHooksSecurityAnalysis(
   }
 }
 
+import { pathToFileURL } from 'node:url'
+
 // Standalone CLI execution
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   console.log('='.repeat(80))
   console.log('🔍 TESTE ESTÁTICO DE SEGURANÇA: VALIDAÇÃO DE PARAMETRIZAÇÃO EM HOOKS')
   console.log('='.repeat(80))

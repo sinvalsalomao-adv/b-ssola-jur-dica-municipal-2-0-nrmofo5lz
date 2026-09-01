@@ -18,6 +18,7 @@ export const SENSITIVE_KEYS = [
   'id_token',
   'apikey',
   'api_key',
+  'ai_api_key',
   'password',
   'senha',
   'secret',
@@ -33,11 +34,11 @@ const BEARER_REGEX = /\bBearer\s+[A-Za-z0-9\-._~+/]+=*/gi
 const JWT_REGEX = /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/gi
 // Tokens e segredos comuns em URLs/Query strings: ?token=..., &access_token=..., &apiKey=..., &password=..., &secret=...
 const QUERY_SECRET_REGEX =
-  /([?&](?:authorization|proxy-authorization|cookie|set-cookie|token|access_token|refresh_token|id_token|apikey|api_key|password|senha|secret|client_secret|session)=)([^& \s#"']+)/gi
+  /([?&](?:authorization|proxy-authorization|cookie|set-cookie|token|access_token|refresh_token|id_token|apikey|api_key|ai_api_key|password|senha|secret|client_secret|session)=)([^&? \s#"']+)/gi
 
 // Headers/Key-values em formato chave: valor ou "chave": "valor" em strings de texto livre
 const KEY_VALUE_TEXT_REGEX =
-  /(["']?(?:authorization|proxy-authorization|cookie|set-cookie|token|access_token|refresh_token|id_token|apikey|api_key|password|senha|secret|client_secret|session)["']?\s*[:=]\s*)(["']?)(?:(?!\2)[\S\s])*?\2/gi
+  /(["']?(?:authorization|proxy-authorization|cookie|set-cookie|token|access_token|refresh_token|id_token|apikey|api_key|ai_api_key|password|senha|secret|client_secret|session)["']?\s*[:=]\s*)(["']?)(?:(?!\2)[\S\s])*?\2/gi
 
 /**
  * Sanitiza texto livre mascarando segredos, JWTs, Bearer tokens e parâmetros de consulta.

@@ -563,7 +563,7 @@ export const CANONICAL_SCHEMA_CONTRACT: SchemaContractDefinition = {
         'CREATE INDEX `idx_invitations_status` ON `invitations` (status)',
         'CREATE INDEX `idx_invitations_rate_limit_hash` ON `invitations` (rate_limit_hash)',
         'CREATE INDEX `idx_invitations_recipient_hash` ON `invitations` (recipient_hash)',
-        'CREATE UNIQUE INDEX `idx_invitations_active_key` ON `invitations` (active_key)',
+        "CREATE UNIQUE INDEX `idx_invitations_active_key` ON `invitations` (active_key) WHERE active_key != ''",
       ],
     },
     {
@@ -1544,11 +1544,11 @@ migrate((app) => {
   app.save(new Collection({
     name: "invitations",
     type: "base",
-    listRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
-    viewRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
-    create: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
-    updateRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
-    deleteRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+    listRule: null,
+    viewRule: null,
+    createRule: null,
+    updateRule: null,
+    deleteRule: null,
     fields: [
       { name: "name", type: "text", required: true },
       { name: "email", type: "text", required: true },
@@ -1574,13 +1574,9 @@ migrate((app) => {
       "CREATE INDEX idx_invitations_status ON invitations (status)",
       "CREATE INDEX idx_invitations_rate_limit_hash ON invitations (rate_limit_hash)",
       "CREATE INDEX idx_invitations_recipient_hash ON invitations (recipient_hash)",
-      "CREATE UNIQUE INDEX idx_invitations_active_key ON invitations (active_key)"
+      "CREATE UNIQUE INDEX idx_invitations_active_key ON invitations (active_key) WHERE active_key != ''"
     ]
   }));
-
-  const invCol = app.findCollectionByNameOrId("invitations");
-  invCol.createRule = "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))";
-  app.save(invCol);
 
   app.save(new Collection({
     name: "dfds",
@@ -1947,11 +1943,11 @@ migrate((app) => {
   app.save(new Collection({
     name: "user_memberships",
     type: "base",
-    listRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
-    viewRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
-    createRule: "@request.auth.id != '' && @request.auth.role = 'superadmin'",
-    updateRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
-    deleteRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+    listRule: null,
+    viewRule: null,
+    createRule: null,
+    updateRule: null,
+    deleteRule: null,
     fields: [
       { name: "user", type: "relation", required: true, collectionId: "_pb_users_auth_", maxSelect: 1 },
       { name: "tenant", type: "relation", required: true, collectionId: tenantsId, maxSelect: 1 },
@@ -1967,6 +1963,23 @@ migrate((app) => {
       "CREATE INDEX idx_user_membership_status ON user_memberships (status)"
     ]
   }));
+
+  // Aplicar regras RLS efetivas após existência de invitations e user_memberships
+  const effInvCol = app.findCollectionByNameOrId("invitations");
+  effInvCol.listRule = "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))";
+  effInvCol.viewRule = "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))";
+  effInvCol.createRule = "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))";
+  effInvCol.updateRule = "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))";
+  effInvCol.deleteRule = "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))";
+  app.save(effInvCol);
+
+  const effMemCol = app.findCollectionByNameOrId("user_memberships");
+  effMemCol.listRule = "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))";
+  effMemCol.viewRule = "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))";
+  effMemCol.createRule = "@request.auth.id != '' && @request.auth.role = 'superadmin'";
+  effMemCol.updateRule = "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))";
+  effMemCol.deleteRule = "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))";
+  app.save(effMemCol);
 
   app.save(new Collection({
     name: "security_audit_markers",
@@ -1989,10 +2002,12 @@ migrate((app) => {
 `
 }
 
+import { pathToFileURL } from 'node:url'
+
 /**
  * CLI para verificação direta de drift
  */
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   const schemaJsonPath = path.join(process.cwd(), 'src', 'lib', 'pocketbase', 'schema.json')
   if (!fs.existsSync(schemaJsonPath)) {
     console.error('schema.json não encontrado em src/lib/pocketbase/schema.json')
