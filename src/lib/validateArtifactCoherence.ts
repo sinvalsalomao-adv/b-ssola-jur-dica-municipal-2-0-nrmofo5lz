@@ -16,6 +16,7 @@ import { resolvePocketBaseBinary, calculateSha256 } from './ephemeralTestRunner'
 export async function validateArtifactCoherence(): Promise<{
   passed: boolean
   results: Array<{ name: string; ok: boolean; detail?: string }>
+  data?: any
 }> {
   const results: Array<{ name: string; ok: boolean; detail?: string }> = []
   const artifactPath = path.join(
@@ -24,6 +25,7 @@ export async function validateArtifactCoherence(): Promise<{
     'security-isolated-execution-artifact.json',
   )
 
+  // Gravar no console para verificação em testes se executado
   if (!fs.existsSync(artifactPath)) {
     return {
       passed: false,
@@ -109,7 +111,19 @@ export async function validateArtifactCoherence(): Promise<{
     detail: `Leak detectado: ${hasPlainToken}`,
   })
 
-  // 6. Validar cleanup reportado
+  // 6. Validar testes negativos de guardrail (preview, github, host externo)
+  const guardrailNegativeOk =
+    data.guardrailNegativeTest?.previewUrlBlockedBeforeWrite === true &&
+    data.guardrailNegativeTest?.githubHostBlocked === true &&
+    data.guardrailNegativeTest?.nonLocalHostBlocked === true &&
+    data.network?.externalRequestsBlocked === true
+  results.push({
+    name: 'Testes negativos de guardrail bloqueiam preview, github e hosts externos sem exceção',
+    ok: guardrailNegativeOk,
+    detail: JSON.stringify(data.guardrailNegativeTest),
+  })
+
+  // 7. Validar cleanup reportado
   const cleanupOk =
     data.cleanupConfirmation?.childProcessTerminated === true &&
     data.cleanupConfirmation?.tempDirectoryRemoved === true
@@ -120,7 +134,23 @@ export async function validateArtifactCoherence(): Promise<{
   })
 
   const passed = results.every((r) => r.ok)
-  return { passed, results }
+  if (passed) {
+    console.log(
+      '[VALIDATE_ARTIFACT_COHERENCE_OK]',
+      JSON.stringify({
+        timestamp: data.timestamp,
+        version: data.pocketbase?.version,
+        binarySha256: data.pocketbase?.binarySha256,
+        source: data.pocketbase?.source,
+        portMasked: data.network?.portMasked,
+        testNonceShortHash: data.securityMarkers?.testNonceShortHash,
+        scenariosCount: data.summary?.totalScenarios,
+        durationMs: data.summary?.durationMs,
+        exitCode: data.summary?.exitCode,
+      }),
+    )
+  }
+  return { passed, results, data }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

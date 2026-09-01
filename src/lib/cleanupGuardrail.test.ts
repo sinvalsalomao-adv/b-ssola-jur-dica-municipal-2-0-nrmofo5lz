@@ -98,20 +98,31 @@ export async function runCleanupAndGuardrailTestSuite(): Promise<{
     }
 
     try {
-      await globalThis.fetch('https://github.com/some/external/call')
+      await globalThis.fetch('https://malicious-external-target.com/api')
     } catch (err: any) {
       if (String(err?.message || err).includes('[NETWORK GUARDRAIL BLOCKED]')) {
         externalBlocked = true
       }
     }
 
+    let githubBlocked = false
+    try {
+      await globalThis.fetch(
+        'https://github.com/pocketbase/pocketbase/releases/download/v0.26.9/pb.zip',
+      )
+    } catch (err: any) {
+      if (String(err?.message || err).includes('[NETWORK GUARDRAIL BLOCKED]')) {
+        githubBlocked = true
+      }
+    }
+
     globalThis.fetch = originalFetch
 
-    const test2Passed = previewBlocked && externalBlocked
+    const test2Passed = previewBlocked && externalBlocked && githubBlocked
     results.push({
-      name: 'Network guardrail bloqueia preview URL e hosts externos antes de abrir socket',
+      name: 'Network guardrail bloqueia preview URL, hosts externos e github sem exceção antes de abrir socket',
       ok: test2Passed,
-      detail: `previewBlocked: ${previewBlocked}, externalBlocked: ${externalBlocked}`,
+      detail: `previewBlocked: ${previewBlocked}, externalBlocked: ${externalBlocked}, githubBlocked: ${githubBlocked}`,
     })
   } catch (err: any) {
     results.push({

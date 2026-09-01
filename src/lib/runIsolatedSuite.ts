@@ -36,6 +36,7 @@ export interface IsolatedSuiteReport {
   }
   guardrailNegativeTest: {
     previewUrlBlockedBeforeWrite: boolean
+    githubHostBlocked: boolean
     nonLocalHostBlocked: boolean
     missingNonceBlocked: boolean
   }
@@ -69,12 +70,71 @@ export async function runIsolatedIntegrationSuite(): Promise<{
   const startTime = Date.now()
   const capturedDestinations = new Set<string>()
 
-  // Interceptar chamadas globais de fetch para auditoria estrita de tráfego de rede
+  // Guardar referência ao fetch original
   const originalFetch = globalThis.fetch
-  let allowDownloadFromGitHub = true // Permitido estritamente na fase de obtenção do binário se necessário
 
-  // Guardrail de Rede: BLOQUEIA ativamente antes de qualquer socket/requisição
-  globalThis.fetch = async (input: any, init?: any) => {
+  // FASE 1: Obtenção prévia do binário PocketBase (se necessário download, acontece aqui com fetch original antes de armar guardrail)
+  console.log(
+    '📦 FASE 1: Resolvendo/verificando binário PocketBase antes de armar guardrail estrito...',
+  )
+  let resolvedBinaryInfo: any = null
+  try {
+    const { resolvePocketBaseBinary } = await import('./ephemeralTestRunner')
+    resolvedBinaryInfo = await resolvePocketBaseBinary()
+    console.log(
+      `✅ Binário PocketBase verificado: v${resolvedBinaryInfo.version} (${resolvedBinaryInfo.source}) - SHA-256: ${resolvedBinaryInfo.sha256.slice(0, 16)}...`,
+    )
+  } catch (binErr: any) {
+    console.error('❌ Falha ao resolver binário do PocketBase:', binErr)
+    return {
+      success: false,
+      exitCode: 1,
+      report: {
+        timestamp: new Date().toISOString(),
+        pocketbase: { version: 'unknown', binarySha256: 'unknown', source: 'failed' },
+        network: {
+          targetHost: 'none',
+          portMasked: 'none',
+          capturedDestinations: [],
+          externalRequestsBlocked: false,
+        },
+        securityMarkers: { testNonceShortHash: 'none', ephemeralMarkerVerified: false },
+        guardrailNegativeTest: {
+          previewUrlBlockedBeforeWrite: false,
+          githubHostBlocked: false,
+          nonLocalHostBlocked: false,
+          missingNonceBlocked: false,
+        },
+        summary: {
+          totalScenarios: 0,
+          passedScenarios: 0,
+          failedScenarios: 1,
+          durationMs: Date.now() - startTime,
+          exitCode: 1,
+        },
+        scenarios: [
+          {
+            scenarioId: 'BINARY-RESOLUTION',
+            name: 'Resolução do Binário',
+            ok: false,
+            expectedStatus: 'SUCCESS',
+            receivedStatus: 'FAILED',
+            detail: String(binErr?.message || binErr),
+          },
+        ],
+        cleanupConfirmation: {
+          childProcessTerminated: true,
+          tempDirectoryRemoved: true,
+          previewUntouched: true,
+        },
+      },
+    }
+  }
+
+  // FASE 2: Armar Guardrail Estrito de Rede
+  // A partir de agora, QUALQUER hostname que não seja exatamente 127.0.0.1 ou localhost é REJEITADO
+  // SEM exceção para github.com ou outros provedores.
+  const guardrailStrictFetch = async (input: any, init?: any) => {
     let urlStr = ''
     if (typeof input === 'string') {
       urlStr = input
@@ -95,15 +155,10 @@ export async function runIsolatedIntegrationSuite(): Promise<{
 
     const host = parsed.hostname.toLowerCase()
     const isLocal = host === '127.0.0.1' || host === 'localhost'
-    const isGitHubRelease =
-      allowDownloadFromGitHub &&
-      (host === 'github.com' ||
-        host === 'objects.githubusercontent.com' ||
-        host === 'github-releases.githubusercontent.com')
 
-    if (!isLocal && !isGitHubRelease) {
+    if (!isLocal) {
       throw new Error(
-        `[NETWORK GUARDRAIL BLOCKED] Requisição externa para '${host}' BLOQUEADA pelo guardrail antes de abrir socket. Apenas 127.0.0.1/localhost é permitido.`,
+        `[NETWORK GUARDRAIL BLOCKED] Requisição externa para '${host}' BLOQUEADA pelo guardrail antes de abrir socket. Apenas 127.0.0.1/localhost é permitido (zero exceções).`,
       )
     }
 
@@ -114,11 +169,18 @@ export async function runIsolatedIntegrationSuite(): Promise<{
     return originalFetch(input, init)
   }
 
-  // Testes Negativos de Guardrail
+  globalThis.fetch = guardrailStrictFetch
+
+  // Testes Negativos de Guardrail (devem provar que 3 destinos falham antes de socket):
+  // (a) URL real do preview
+  // (b) github.com (qualquer caminho)
+  // (c) host externo qualquer
   let previewUrlBlocked = false
+  let githubHostBlocked = false
   let nonLocalHostBlocked = false
   let missingNonceBlocked = false
   let previewFetchGuardrailRejected = false
+  let githubFetchGuardrailRejected = false
   let externalHostFetchGuardrailRejected = false
 
   // 1. Provar que o Guardrail de Fetch BLOQUEIA a URL real do preview sem abrir requisição de rede
@@ -132,7 +194,17 @@ export async function runIsolatedIntegrationSuite(): Promise<{
     }
   }
 
-  // 2. Provar que qualquer outro host externo desconhecido é BLOQUEADO
+  // 2. Provar que github.com é BLOQUEADO sem exceção
+  try {
+    await globalThis.fetch('https://github.com/pocketbase/pocketbase/releases')
+  } catch (err: any) {
+    if (String(err?.message || err).includes('[NETWORK GUARDRAIL BLOCKED]')) {
+      githubFetchGuardrailRejected = true
+      githubHostBlocked = true
+    }
+  }
+
+  // 3. Provar que qualquer outro host externo genérico é BLOQUEADO
   try {
     await globalThis.fetch('https://malicious-external-target.com/api')
   } catch (err: any) {
@@ -142,7 +214,7 @@ export async function runIsolatedIntegrationSuite(): Promise<{
     }
   }
 
-  // 3. Teste negativo do Runner com URL externa
+  // 4. Teste negativo do Runner com URL externa
   try {
     const prevUrlBackup = process.env.TEST_POCKETBASE_URL
     const prevNonceBackup = process.env.EPHEMERAL_TEST_NONCE
@@ -154,7 +226,7 @@ export async function runIsolatedIntegrationSuite(): Promise<{
       previewUrlBlocked = true
     }
 
-    // 4. Teste negativo do Runner sem nonce
+    // 5. Teste negativo do Runner sem nonce
     process.env.TEST_POCKETBASE_URL = 'http://127.0.0.1:8090'
     process.env.EPHEMERAL_TEST_NONCE = ''
     const negRes2 = await runRealSecurityTests()
@@ -182,9 +254,6 @@ export async function runIsolatedIntegrationSuite(): Promise<{
       '🚀 Inicializando instância PocketBase efêmera a partir do contrato canônico sanitizado...',
     )
     ephemeralInstance = await startEphemeralPocketBase()
-
-    // Uma vez obtido o binário e iniciado o PB local, desabilitar qualquer tráfego que não seja estritamente localhost
-    allowDownloadFromGitHub = false
 
     console.log(`✅ Instância efêmera ativa em 127.0.0.1:${ephemeralInstance.port}`)
 
@@ -264,20 +333,18 @@ export async function runIsolatedIntegrationSuite(): Promise<{
     ? crypto.createHash('sha256').update(ephemeralInstance.testNonce).digest('hex').slice(0, 12)
     : 'none'
 
-  // Verificar destinos de rede: todos devem ser estritamente 127.0.0.1 ou localhost
+  // Verificar destinos de rede: todos os destinos capturados pós-armamento DEVEM ser estritamente 127.0.0.1 ou localhost
   const destinationsArray = Array.from(capturedDestinations)
-  const allDestinationsLocal = destinationsArray.every(
-    (d) =>
-      d.includes('127.0.0.1') ||
-      d.includes('localhost') ||
-      d.includes('github.com') ||
-      d.includes('githubusercontent.com'),
-  )
+  const allDestinationsStrictlyLocal =
+    destinationsArray.length > 0 &&
+    destinationsArray.every((d) => d.includes('127.0.0.1') || d.includes('localhost'))
 
   const isSuccess =
     testResults.passed &&
     previewFetchGuardrailRejected &&
+    githubFetchGuardrailRejected &&
     externalHostFetchGuardrailRejected &&
+    allDestinationsStrictlyLocal &&
     cleanupObserved.childProcessTerminated &&
     cleanupObserved.tempDirectoryRemoved &&
     cleanupObserved.pidClean
@@ -287,9 +354,10 @@ export async function runIsolatedIntegrationSuite(): Promise<{
   const report: IsolatedSuiteReport = {
     timestamp: new Date().toISOString(),
     pocketbase: {
-      version: ephemeralInstance?.binaryInfo?.version || 'unknown',
-      binarySha256: ephemeralInstance?.binaryInfo?.sha256 || 'unknown',
-      source: ephemeralInstance?.binaryInfo?.source || 'unknown',
+      version: ephemeralInstance?.binaryInfo?.version || resolvedBinaryInfo?.version || 'unknown',
+      binarySha256:
+        ephemeralInstance?.binaryInfo?.sha256 || resolvedBinaryInfo?.sha256 || 'unknown',
+      source: ephemeralInstance?.binaryInfo?.source || resolvedBinaryInfo?.source || 'unknown',
     },
     network: {
       targetHost: '127.0.0.1 (localhost)',
@@ -299,12 +367,13 @@ export async function runIsolatedIntegrationSuite(): Promise<{
       capturedDestinations: destinationsArray.map((d) =>
         d.includes('127.0.0.1') || d.includes('localhost')
           ? 'http://127.0.0.1:[REDACTED_PORT]'
-          : d.includes('github.com') || d.includes('githubusercontent.com')
-            ? 'https://github.com/pocketbase/pocketbase/releases/download/[REDACTED]'
-            : '[EXTERNAL_DESTINATION_REDACTED]',
+          : '[EXTERNAL_DESTINATION_REDACTED]',
       ),
       externalRequestsBlocked:
-        allDestinationsLocal && previewFetchGuardrailRejected && externalHostFetchGuardrailRejected,
+        allDestinationsStrictlyLocal &&
+        previewFetchGuardrailRejected &&
+        githubFetchGuardrailRejected &&
+        externalHostFetchGuardrailRejected,
     },
     securityMarkers: {
       testNonceShortHash: nonceHash,
@@ -312,6 +381,7 @@ export async function runIsolatedIntegrationSuite(): Promise<{
     },
     guardrailNegativeTest: {
       previewUrlBlockedBeforeWrite: previewUrlBlocked && previewFetchGuardrailRejected,
+      githubHostBlocked: githubHostBlocked && githubFetchGuardrailRejected,
       nonLocalHostBlocked: nonLocalHostBlocked && externalHostFetchGuardrailRejected,
       missingNonceBlocked,
     },
@@ -353,8 +423,8 @@ export async function runIsolatedIntegrationSuite(): Promise<{
     fs.rmSync(tempArtifactDir, { recursive: true, force: true })
 
     console.log(`📄 Artefato gerado e movido atomicamente para: ${finalArtifactPath}`)
-  } else {
-    if (fs.existsSync(finalArtifactPath)) {
+    console.log(`[ISOLATED_SUITE_EXECUTION_COMPLETE] nonce=${report.securityMarkers.testNonceShortHash} port=${report.network.portMasked} duration=${report.summary.durationMs}ms total=${report.summary.totalScenarios} passed=${report.summary.passedScenarios} exit=${report.summary.exitCode}`)
+  } else {    if (fs.existsSync(finalArtifactPath)) {
       fs.unlinkSync(finalArtifactPath)
     }
     console.warn(
