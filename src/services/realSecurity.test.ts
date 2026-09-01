@@ -1,16 +1,42 @@
 /**
  * Testes de Segurança HTTP Reais contra o PocketBase backend.
  * Executa requisições HTTP reais contra a API do backend conectado para verificar RLS,
- * isolamento multi-tenant, restrições de privilégios, verificação real de Admin ativo por setup
- * autenticado por superadmin de teste, integridade de convites seguros (SHA-256 obrigatório,
- * concorrência, cancelamento, recusa, integridade do titular e ausência de vazamento de segredos),
- * e cleanup total no bloco finally (contagem zero de resíduos efêmeros).
+ * isolamento multi-tenant, restrições de privilégios, snapshot rigoroso de invariância das contas seed,
+ * integridade de convites seguros (SHA-256 obrigatório, concorrência, cancelamento, recusa, integridade do titular
+ * e ausência de vazamento de segredos), e cleanup total no bloco finally (contagem zero de resíduos efêmeros).
+ *
+ * POLÍTICA DE CREDENCIAIS:
+ * - ZERO credenciais fixas no código executável.
+ * - Cenários que exigem autoridade superadmin aceitam EXCLUSIVAMENTE token/credencial de runtime
+ *   injetada via ambiente (PB_SUPERUSER_TOKEN / SUPERUSER_TOKEN / POCKETBASE_SUPERADMIN_TOKEN).
+ * - Se a credencial de runtime não estiver presente, a suíte/setup falha explicitamente com mensagem
+ *   sem segredos.
  */
 import PocketBase from 'pocketbase'
 
 export interface RealSecurityTestResult {
   passed: boolean
   results: Array<{ name: string; ok: boolean; detail?: string }>
+}
+
+interface SeedSnapshot {
+  userCount: number
+  userIds: string[]
+  usersSummary: Array<{
+    id: string
+    role: string
+    status: string
+    verified: boolean
+    tenant: string
+  }>
+  membershipsCount: number
+  membershipsSummary: Array<{
+    id: string
+    user: string
+    tenant: string
+    role: string
+    status: string
+  }>
 }
 
 export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
@@ -53,6 +79,30 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
     return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
   }
 
+  // Obter credencial/token de superadmin exclusivamente de variáveis de ambiente de runtime
+  const globalObj: any = typeof globalThis !== 'undefined' ? globalThis : {}
+  const nodeProcess: any = typeof globalObj.process !== 'undefined' ? globalObj.process : undefined
+  const runtimeSuperuserToken = (nodeProcess?.env?.PB_SUPERUSER_TOKEN ||
+    nodeProcess?.env?.SUPERUSER_TOKEN ||
+    nodeProcess?.env?.POCKETBASE_SUPERADMIN_TOKEN ||
+    (typeof import.meta !== 'undefined' && (import.meta as any).env?.PB_SUPERUSER_TOKEN) ||
+    (typeof import.meta !== 'undefined' && (import.meta as any).env?.SUPERUSER_TOKEN) ||
+    '') as string
+
+  if (!runtimeSuperuserToken) {
+    const missingTokenError =
+      'Falha de execução: Credencial de runtime de superadmin (PB_SUPERUSER_TOKEN) não fornecida no ambiente. Nenhuma credencial fixa ou fallback é permitida.'
+    results.push({
+      name: 'Setup de Autoridade Privilegiada (Superadmin de Runtime)',
+      ok: false,
+      detail: missingTokenError,
+    })
+    return {
+      passed: false,
+      results,
+    }
+  }
+
   // Tenants reais
   const floraniaTenantId = '1e6lxk1tvyt27ok'
   const tangaraTenantId = 'brfahrpkg6uvula'
@@ -80,6 +130,12 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
 
   // Clientes autenticados para os cenários
   const superadminClient = new PocketBase(pbUrl)
+  // Autenticação direta com o token de runtime de superadmin (superuser / admin auth)
+  superadminClient.authStore.save(runtimeSuperuserToken, {
+    id: 'superuser',
+    role: 'superadmin',
+  } as any)
+
   const floraniaAdminClient = new PocketBase(pbUrl)
   const tangaraAdminClient = new PocketBase(pbUrl)
   const floraniaServidorClient = new PocketBase(pbUrl)
@@ -91,11 +147,57 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
   let tangaraAdminUserId = ''
   let thirdUserId = ''
 
+  // Snapshot inicial do estado dos usuários seed e vínculos
+  const protectedSeedIds = [
+    'uxnit0c8oensr67', // Dr. Silval Salomão (superadmin)
+    '6gea9t5lk6z1x00', // Ana Silva (admin florania)
+    '166gp4mdaxy2av4', // Carlos Santos (servidor florania)
+    'z3cbxpj8h6xl9z3', // Mariana Costa (servidor florania)
+    'br3gos31bmxfllw', // Pedro Oliveira (admin tangara)
+    '92b3oxlgc3q965x', // Sofia Ferreira (servidor tangara)
+    'dn3ubij1vmuj9mf', // João Pereira (servidor tangara)
+    'brf0wdudisx0inr', // Lucas Almeida (admin parazinho)
+    'c26yzjtppm5glbi', // Fernanda Lima (servidor parazinho)
+    'sfiv25ug27w7gfd', // Roberto Dias (servidor parazinho)
+  ]
+
+  async function captureSeedSnapshot(): Promise<SeedSnapshot> {
+    const rawUsers = await superadminClient.collection('users').getFullList()
+    const seedUsers = rawUsers
+      .filter((u) => protectedSeedIds.includes(u.id))
+      .sort((a, b) => a.id.localeCompare(b.id))
+
+    const rawMemberships = await superadminClient.collection('user_memberships').getFullList()
+    const seedMemberships = rawMemberships
+      .filter((m) => protectedSeedIds.includes(m.user))
+      .sort((a, b) => a.id.localeCompare(b.id))
+
+    return {
+      userCount: seedUsers.length,
+      userIds: seedUsers.map((u) => u.id),
+      usersSummary: seedUsers.map((u) => ({
+        id: u.id,
+        role: u.role,
+        status: u.status,
+        verified: u.verified,
+        tenant: u.tenant || '',
+      })),
+      membershipsCount: seedMemberships.length,
+      membershipsSummary: seedMemberships.map((m) => ({
+        id: m.id,
+        user: m.user,
+        tenant: m.tenant,
+        role: m.role,
+        status: m.status,
+      })),
+    }
+  }
+
+  let initialSeedSnapshot: SeedSnapshot | null = null
+
   try {
-    // 0. Autenticação inicial do Superadmin de teste dedicado
-    await superadminClient
-      .collection('users')
-      .authWithPassword('testrunner.superadmin@bussola.local', 'TestRunnerSuperAdmin2026!#$Pass')
+    // Captura inicial de snapshot
+    initialSeedSnapshot = await captureSeedSnapshot()
 
     // 1. Criar Servidor Florânia Efêmero via cadastro público padrão (role=servidor, status=pendente)
     const srvRegRes: any = await publicClient.send('/backend/v1/auth/register-public', {
@@ -118,7 +220,7 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
       ephemeralMembershipIdsToClean.push(srvRegRes.membershipId)
     }
 
-    // 2. Setup Privilegiado de Teste por Superadmin Autenticado:
+    // 2. Setup Privilegiado de Teste por Superadmin Autenticado via Runtime Token:
     // Auto-registro das fixtures e aprovação oficial com promoção para admin+ativo pelo superadmin
     const admFRegRes: any = await publicClient.send('/backend/v1/auth/register-public', {
       method: 'POST',
@@ -201,7 +303,7 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
       ephemeralMembershipIdsToClean.push(thirdRegRes.membershipId)
     }
 
-    // Autenticar clientes de teste com suas credenciais próprias
+    // Autenticar clientes de teste com suas credenciais próprias geradas dinamicamente
     await floraniaAdminClient
       .collection('users')
       .authWithPassword(ephemeralFloraniaAdminEmail, floraniaAdminPassword)
@@ -282,23 +384,61 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
       },
     )
 
-    // Cenário 1b: Invariância real: As 10 contas seed históricas e seus vínculos originais estão preservados
+    // Cenário 1b: Snapshot real de invariância: As 10 contas seed históricas e seus vínculos/roles permanecem preservados e intactos
     await assertTest(
-      'Cenário 1b: As 10 identidades seed históricas e seus vínculos/roles permanecem preservados e intactos',
+      'Cenário 1b: Snapshot real de invariância: As 10 identidades seed e seus vínculos/roles permanecem exatamente iguais',
       async () => {
-        const expectedSeedUserIds = [
-          'uxnit0c8oensr67', // superadmin
-          '6gea9t5lk6z1x00', // admin1 florania
-          '166gp4mdaxy2av4', // servidor1 florania
-          'z3cbxpj8h6xl9z3', // servidor2 florania
-          'br3gos31bmxfllw', // admin1 tangara
-          '92b3oxlgc3q965x', // servidor1 tangara
-          'dn3ubij1vmuj9mf', // servidor2 tangara
-          'brf0wdudisx0inr', // admin1 parazinho
-          'c26yzjtppm5glbi', // servidor1 parazinho
-          'sfiv25ug27w7gfd', // servidor2 parazinho
-        ]
+        if (!initialSeedSnapshot) {
+          return false
+        }
 
+        // Consultar via cliente autorizado o estado atual
+        const currentSnapshot = await captureSeedSnapshot()
+
+        // 1. Asserção das 10 identidades seed
+        if (currentSnapshot.userCount !== 10 || initialSeedSnapshot.userCount !== 10) {
+          return false
+        }
+
+        // 2. Asserção dos IDs exatos
+        const allUserIdsMatch =
+          currentSnapshot.userIds.length === 10 &&
+          currentSnapshot.userIds.every((id, idx) => id === initialSeedSnapshot?.userIds[idx])
+        if (!allUserIdsMatch) return false
+
+        // 3. Asserção das propriedades de cada usuário seed (role, status, verified, tenant)
+        const allUsersDetailsMatch = currentSnapshot.usersSummary.every((u, idx) => {
+          const init = initialSeedSnapshot?.usersSummary[idx]
+          if (!init) return false
+          return (
+            u.id === init.id &&
+            u.role === init.role &&
+            u.status === init.status &&
+            u.verified === init.verified &&
+            u.tenant === init.tenant
+          )
+        })
+        if (!allUsersDetailsMatch) return false
+
+        // 4. Asserção dos vínculos / memberships dos seed users
+        if (currentSnapshot.membershipsCount !== initialSeedSnapshot.membershipsCount) {
+          return false
+        }
+
+        const allMembershipsMatch = currentSnapshot.membershipsSummary.every((m, idx) => {
+          const init = initialSeedSnapshot?.membershipsSummary[idx]
+          if (!init) return false
+          return (
+            m.id === init.id &&
+            m.user === init.user &&
+            m.tenant === init.tenant &&
+            m.role === init.role &&
+            m.status === init.status
+          )
+        })
+        if (!allMembershipsMatch) return false
+
+        // 5. Verificar status dos 3 municípios seed
         const client = new PocketBase(pbUrl)
         const seedTenants = ['florania', 'tangara', 'parazinho']
         let allTenantsActive = true
@@ -315,8 +455,7 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
           }
         }
 
-        const hasAllExpectedSeeds = expectedSeedUserIds.length === 10
-        return allTenantsActive && hasAllExpectedSeeds
+        return allTenantsActive
       },
     )
 
@@ -868,7 +1007,7 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
     // CLEANUP EFÊMERO TOTAL (Zero resíduos garantidos)
     // ==========================================
     try {
-      // 1. Limpar convites efêmeros
+      // 1. Limpar convites efêmeros (nunca toca em seed)
       for (const invId of ephemeralInvitationIdsToClean) {
         try {
           await superadminClient.collection('invitations').delete(invId)
@@ -877,17 +1016,26 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
         }
       }
 
-      // 2. Limpar memberships efêmeras
+      // 2. Limpar memberships efêmeras (assegura que não é de seed)
       for (const memId of ephemeralMembershipIdsToClean) {
         try {
-          await superadminClient.collection('user_memberships').delete(memId)
+          const mem = await superadminClient
+            .collection('user_memberships')
+            .getOne(memId)
+            .catch(() => null)
+          if (mem && !protectedSeedIds.includes(mem.user)) {
+            await superadminClient.collection('user_memberships').delete(memId)
+          }
         } catch {
           /* ignore */
         }
       }
 
-      // 3. Limpar usuários efêmeros e suas memberships residuais
+      // 3. Limpar usuários efêmeros e suas memberships residuais (estritamente não-seed)
       for (const uId of ephemeralUserIdsToClean) {
+        if (protectedSeedIds.includes(uId)) {
+          continue // Proteção absoluta dos seed users
+        }
         try {
           const uMems = await superadminClient.collection('user_memberships').getFullList({
             filter: `user = "${uId}"`,
@@ -903,6 +1051,27 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
         } catch {
           /* ignore */
         }
+      }
+
+      // Confirmação de contagem zero de fixtures efêmeras criadas nesta execução
+      let remainingEphemeralUsers = 0
+      for (const uId of ephemeralUserIdsToClean) {
+        if (!protectedSeedIds.includes(uId)) {
+          try {
+            await superadminClient.collection('users').getOne(uId)
+            remainingEphemeralUsers++
+          } catch {
+            // Excluído com sucesso
+          }
+        }
+      }
+
+      if (remainingEphemeralUsers > 0) {
+        results.push({
+          name: 'Cleanup Efêmero em Finally (Confirmação de Resíduos Zero)',
+          ok: false,
+          detail: `Falha no cleanup: ${remainingEphemeralUsers} registros efêmeros não foram removidos.`,
+        })
       }
     } catch (_) {
       // Cleanup tolerante
