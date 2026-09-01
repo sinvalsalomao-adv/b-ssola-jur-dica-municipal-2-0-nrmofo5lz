@@ -206,7 +206,7 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
     return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
   }
 
-  // Obter credencial de superadmin do runner
+  // Obter credencial de superadmin efêmero do runner e autenticar EXCLUSIVAMENTE via _superusers (PocketBase v0.26+)
   const runtimeSuperuserEmail = (nodeProcess?.env?.EPHEMERAL_SUPERADMIN_EMAIL || '') as string
   const runtimeSuperuserPassword = (nodeProcess?.env?.EPHEMERAL_SUPERADMIN_PASSWORD || '') as string
   let runtimeSuperuserToken = (nodeProcess?.env?.PB_SUPERUSER_TOKEN ||
@@ -217,33 +217,34 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
   if (!runtimeSuperuserToken && runtimeSuperuserEmail && runtimeSuperuserPassword) {
     try {
       const authSetupClient = new PocketBase(pbUrl)
-      try {
-        const authData = await (authSetupClient as any).admins?.authWithPassword(
-          runtimeSuperuserEmail,
-          runtimeSuperuserPassword,
-        )
-        if (authData?.token) {
-          runtimeSuperuserToken = authData.token
-        }
-      } catch {
-        const authData = await authSetupClient
-          .collection('users')
-          .authWithPassword(runtimeSuperuserEmail, runtimeSuperuserPassword)
-        if (authData?.token) {
-          runtimeSuperuserToken = authData.token
-        }
+      const authData = await authSetupClient
+        .collection('_superusers')
+        .authWithPassword(runtimeSuperuserEmail, runtimeSuperuserPassword)
+      if (authData?.token && typeof authData.token === 'string' && authData.token.length > 20) {
+        runtimeSuperuserToken = authData.token
+      } else {
+        throw new Error('Token retornado por _superusers inválido ou vazio.')
       }
-    } catch {
-      /* continue */
+    } catch (authErr: any) {
+      const authFailMsg = `Falha na autenticação exclusiva do superuser efêmero via _superusers: ${authErr?.message || authErr}`
+      results.push({
+        scenarioId: 'AUTH-SUPERADMIN',
+        name: 'Setup de Autoridade Privilegiada (Superadmin de Runtime via _superusers)',
+        ok: false,
+        detail: authFailMsg,
+        expectedStatus: 'TOKEN_ACQUIRED',
+        receivedStatus: 'AUTH_FAILED',
+      })
+      return { passed: false, results }
     }
   }
 
   if (!runtimeSuperuserToken) {
     const missingTokenError =
-      'Falha de execução: Credencial de runtime de superadmin não fornecida no ambiente efêmero.'
+      'Falha de execução: Credencial de runtime de superadmin não fornecida ou token ausente no ambiente efêmero.'
     results.push({
       scenarioId: 'AUTH-SUPERADMIN',
-      name: 'Setup de Autoridade Privilegiada (Superadmin de Runtime)',
+      name: 'Setup de Autoridade Privilegiada (Superadmin de Runtime via _superusers)',
       ok: false,
       detail: missingTokenError,
       expectedStatus: 'TOKEN_ACQUIRED',

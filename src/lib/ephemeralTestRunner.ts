@@ -278,43 +278,23 @@ export async function startEphemeralPocketBase(): Promise<EphemeralInstance> {
   const runnerInitContent = `
 migrate((app) => {
   // 1. Criar marcador exclusivo de ambiente de teste
-  try {
-    const markersCol = app.findCollectionByNameOrId("security_audit_markers");
-    const markerRecord = new Record(markersCol);
-    markerRecord.set("marker_key", "test_environment");
-    markerRecord.set("version", "ephemeral_isolated_v4");
-    markerRecord.set("details", JSON.stringify({
-      isEphemeralTestEnv: true,
-      nonce: "${testNonce}",
-      createdAt: new Date().toISOString()
-    }));
-    app.save(markerRecord);
-  } catch (err) {
-    console.log("Erro ao criar marcador de teste:", err);
-  }
+  const markersCol = app.findCollectionByNameOrId("security_audit_markers");
+  const markerRecord = new Record(markersCol);
+  markerRecord.set("marker_key", "test_environment");
+  markerRecord.set("version", "ephemeral_isolated_v4");
+  markerRecord.set("details", JSON.stringify({
+    isEphemeralTestEnv: true,
+    nonce: "${testNonce}",
+    createdAt: new Date().toISOString()
+  }));
+  app.save(markerRecord);
 
-  // 2. Criar superadmin efêmero de runtime
-  try {
-    const superusersCol = app.findCollectionByNameOrId("_superusers");
-    const superuserRecord = new Record(superusersCol);
-    superuserRecord.setEmail("${superadminEmail}");
-    superuserRecord.setPassword("${superadminPassword}");
-    superuserRecord.set("role", "superadmin");
-    app.save(superuserRecord);
-  } catch (err) {
-    // PocketBase v0.26+ compat
-    try {
-      const users = app.findCollectionByNameOrId("_pb_users_auth_");
-      const record = new Record(users);
-      record.setEmail("${superadminEmail}");
-      record.setPassword("${superadminPassword}");
-      record.setVerified(true);
-      record.set("name", "Superadmin Efemero");
-      record.set("role", "superadmin");
-      record.set("status", "ativo");
-      app.save(record);
-    } catch { /* intentionally ignored */ }
-  }
+  // 2. Criar superuser efêmero exclusivo no collection _superusers (PocketBase v0.26+)
+  const superusersCol = app.findCollectionByNameOrId("_superusers");
+  const superuserRecord = new Record(superusersCol);
+  superuserRecord.setEmail("${superadminEmail}");
+  superuserRecord.setPassword("${superadminPassword}");
+  app.save(superuserRecord);
 }, (app) => {})
 `
   fs.writeFileSync(runnerInitMigrationPath, runnerInitContent, 'utf-8')
@@ -349,32 +329,97 @@ migrate((app) => {
     if (cleanedUp) return
     cleanedUp = true
 
-    // 1. Encerra o processo do PocketBase
-    if (child && !child.killed) {
-      try {
-        child.kill('SIGTERM')
-        await new Promise((r) => setTimeout(r, 200))
-        if (!child.killed) {
-          child.kill('SIGKILL')
+    // 1. Encerramento determinístico do processo sem mascaramento
+    if (child) {
+      const pid = child.pid
+      let processTerminated = false
+
+      if (child.exitCode !== null || child.signalCode !== null) {
+        processTerminated = true
+      } else {
+        const exitPromise = new Promise<void>((resolve) => {
+          child.once('exit', () => resolve())
+        })
+
+        try {
+          child.kill('SIGTERM')
+        } catch {
+          /* process may already be dead */
         }
-      } catch {
-        /* ignore */
+
+        const sigtermTimedOut = await Promise.race([
+          exitPromise.then(() => false),
+          new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 2500)),
+        ])
+
+        if (sigtermTimedOut && child.exitCode === null && child.signalCode === null) {
+          try {
+            child.kill('SIGKILL')
+          } catch {
+            /* process may already be dead */
+          }
+
+          const sigkillTimedOut = await Promise.race([
+            exitPromise.then(() => false),
+            new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 2500)),
+          ])
+
+          if (!sigkillTimedOut) {
+            processTerminated = true
+          }
+        } else {
+          processTerminated = true
+        }
+      }
+
+      // Confirmar que o PID realmente não existe mais no SO
+      if (pid) {
+        try {
+          process.kill(pid, 0)
+          // Se não lançou exceção, o processo ainda está ativo!
+          throw new Error(
+            `Processo do PocketBase (PID ${pid}) ainda está em execução após SIGTERM/SIGKILL.`,
+          )
+        } catch (err: any) {
+          // ESRCH indica que o processo não existe mais (comportamento esperado)
+          if (err?.code !== 'ESRCH') {
+            throw new Error(`Falha ao verificar terminação do PID ${pid}: ${err?.message || err}`)
+          }
+        }
+      }
+
+      if (!processTerminated) {
+        throw new Error('Falha ao encerrar processo filho do PocketBase.')
       }
     }
 
-    // 2. Remove diretório temporário
-    try {
-      if (fs.existsSync(tempDir)) {
-        fs.rmSync(tempDir, { recursive: true, force: true })
-      }
-    } catch {
-      /* ignore */
+    // 2. Remoção estrita do diretório temporário e confirmação de ausência de resíduos
+    if (fs.existsSync(tempDir)) {
+      fs.rmSync(tempDir, { recursive: true, force: true })
+    }
+
+    if (fs.existsSync(tempDir)) {
+      throw new Error(`Resíduo de diretório temporário detectado após limpeza: ${tempDir}`)
     }
   }
 
   // Registrar listeners para limpeza em caso de saída inesperada ou sinal
-  process.on('SIGINT', () => cleanup().then(() => process.exit(1)))
-  process.on('SIGTERM', () => cleanup().then(() => process.exit(1)))
+  process.on('SIGINT', () => {
+    cleanup()
+      .then(() => process.exit(1))
+      .catch((err) => {
+        console.error('Erro no cleanup SIGINT:', err)
+        process.exit(1)
+      })
+  })
+  process.on('SIGTERM', () => {
+    cleanup()
+      .then(() => process.exit(1))
+      .catch((err) => {
+        console.error('Erro no cleanup SIGTERM:', err)
+        process.exit(1)
+      })
+  })
 
   // Aguardar healthcheck com timeout (7 segundos)
   const healthCheckTimeout = 7000

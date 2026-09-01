@@ -12,6 +12,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import os from 'node:os'
 import crypto from 'node:crypto'
 import { startEphemeralPocketBase } from './ephemeralTestRunner'
 import { runRealSecurityTests } from '../services/realSecurity.test'
@@ -70,6 +71,9 @@ export async function runIsolatedIntegrationSuite(): Promise<{
 
   // Interceptar chamadas globais de fetch para auditoria estrita de tráfego de rede
   const originalFetch = globalThis.fetch
+  let allowDownloadFromGitHub = true // Permitido estritamente na fase de obtenção do binário se necessário
+
+  // Guardrail de Rede: BLOQUEIA ativamente antes de qualquer socket/requisição
   globalThis.fetch = async (input: any, init?: any) => {
     let urlStr = ''
     if (typeof input === 'string') {
@@ -80,14 +84,32 @@ export async function runIsolatedIntegrationSuite(): Promise<{
       urlStr = input.url
     }
 
+    let parsed: URL
     try {
-      const parsed = new URL(urlStr)
-      capturedDestinations.add(
-        `${parsed.protocol}//${parsed.hostname}:${parsed.port || (parsed.protocol === 'https:' ? '443' : '80')}`,
-      )
+      parsed = new URL(urlStr)
     } catch {
-      capturedDestinations.add('unknown')
+      throw new Error(
+        `[NETWORK GUARDRAIL BLOCKED] URL inválida rejeitada antes de abrir socket: ${urlStr}`,
+      )
     }
+
+    const host = parsed.hostname.toLowerCase()
+    const isLocal = host === '127.0.0.1' || host === 'localhost'
+    const isGitHubRelease =
+      allowDownloadFromGitHub &&
+      (host === 'github.com' ||
+        host === 'objects.githubusercontent.com' ||
+        host === 'github-releases.githubusercontent.com')
+
+    if (!isLocal && !isGitHubRelease) {
+      throw new Error(
+        `[NETWORK GUARDRAIL BLOCKED] Requisição externa para '${host}' BLOQUEADA pelo guardrail antes de abrir socket. Apenas 127.0.0.1/localhost é permitido.`,
+      )
+    }
+
+    capturedDestinations.add(
+      `${parsed.protocol}//${parsed.hostname}:${parsed.port || (parsed.protocol === 'https:' ? '443' : '80')}`,
+    )
 
     return originalFetch(input, init)
   }
@@ -96,21 +118,43 @@ export async function runIsolatedIntegrationSuite(): Promise<{
   let previewUrlBlocked = false
   let nonLocalHostBlocked = false
   let missingNonceBlocked = false
+  let previewFetchGuardrailRejected = false
+  let externalHostFetchGuardrailRejected = false
 
+  // 1. Provar que o Guardrail de Fetch BLOQUEIA a URL real do preview sem abrir requisição de rede
+  const knownPreviewUrl = 'https://bussola-juridica-municipal-0e0e1--preview.goskip.app'
   try {
-    // 1. Tentar executar com URL externa/preview
+    await globalThis.fetch(knownPreviewUrl)
+  } catch (err: any) {
+    if (String(err?.message || err).includes('[NETWORK GUARDRAIL BLOCKED]')) {
+      previewFetchGuardrailRejected = true
+      previewUrlBlocked = true
+    }
+  }
+
+  // 2. Provar que qualquer outro host externo desconhecido é BLOQUEADO
+  try {
+    await globalThis.fetch('https://malicious-external-target.com/api')
+  } catch (err: any) {
+    if (String(err?.message || err).includes('[NETWORK GUARDRAIL BLOCKED]')) {
+      externalHostFetchGuardrailRejected = true
+      nonLocalHostBlocked = true
+    }
+  }
+
+  // 3. Teste negativo do Runner com URL externa
+  try {
     const prevUrlBackup = process.env.TEST_POCKETBASE_URL
     const prevNonceBackup = process.env.EPHEMERAL_TEST_NONCE
 
-    process.env.TEST_POCKETBASE_URL = 'https://preview-instance.example.com'
+    process.env.TEST_POCKETBASE_URL = knownPreviewUrl
     process.env.EPHEMERAL_TEST_NONCE = 'test_nonce_mock_123456789'
     const negRes1 = await runRealSecurityTests()
     if (!negRes1.passed && negRes1.results.some((r) => r.scenarioId === 'GUARDRAIL-HOST')) {
-      nonLocalHostBlocked = true
       previewUrlBlocked = true
     }
 
-    // 2. Tentar executar sem nonce
+    // 4. Teste negativo do Runner sem nonce
     process.env.TEST_POCKETBASE_URL = 'http://127.0.0.1:8090'
     process.env.EPHEMERAL_TEST_NONCE = ''
     const negRes2 = await runRealSecurityTests()
@@ -127,9 +171,11 @@ export async function runIsolatedIntegrationSuite(): Promise<{
 
   let ephemeralInstance: any = null
   let testResults: any = { passed: false, results: [] }
-  let tempDirExistedBeforeCleanup = false
-  let tempDirRemovedAfterCleanup = false
-  let childProcessTerminated = false
+  let cleanupObserved = {
+    childProcessTerminated: false,
+    tempDirectoryRemoved: false,
+    pidClean: false,
+  }
 
   try {
     console.log(
@@ -137,7 +183,9 @@ export async function runIsolatedIntegrationSuite(): Promise<{
     )
     ephemeralInstance = await startEphemeralPocketBase()
 
-    tempDirExistedBeforeCleanup = fs.existsSync(ephemeralInstance.tempDir)
+    // Uma vez obtido o binário e iniciado o PB local, desabilitar qualquer tráfego que não seja estritamente localhost
+    allowDownloadFromGitHub = false
+
     console.log(`✅ Instância efêmera ativa em 127.0.0.1:${ephemeralInstance.port}`)
 
     // Configurar variáveis de ambiente estritamente para o host local alocado
@@ -167,14 +215,42 @@ export async function runIsolatedIntegrationSuite(): Promise<{
     // Restaurar fetch original
     globalThis.fetch = originalFetch
 
-    // Cleanup estrito em finally
+    // Cleanup estrito sem mascaramento em finally
     if (ephemeralInstance) {
-      console.log('🧹 Executando cleanup da instância efêmera e do diretório temporário...')
-      await ephemeralInstance.cleanup()
+      console.log('🧹 Executando cleanup real da instância efêmera e do diretório temporário...')
+      const childPid = ephemeralInstance.childProcess?.pid
+      const tempDir = ephemeralInstance.tempDir
 
-      childProcessTerminated =
-        !ephemeralInstance.childProcess || ephemeralInstance.childProcess.killed
-      tempDirRemovedAfterCleanup = !fs.existsSync(ephemeralInstance.tempDir)
+      try {
+        await ephemeralInstance.cleanup()
+      } catch (cleanErr: any) {
+        console.error('Erro durante chamada de cleanup:', cleanErr)
+      }
+
+      // Verificar encerramento do processo sem máscaras
+      let pidStillExists = false
+      if (childPid) {
+        try {
+          process.kill(childPid, 0)
+          pidStillExists = true
+        } catch (err: any) {
+          pidStillExists = err?.code !== 'ESRCH'
+        }
+      }
+
+      const tempDirExists = fs.existsSync(tempDir)
+
+      cleanupObserved = {
+        childProcessTerminated: !pidStillExists,
+        tempDirectoryRemoved: !tempDirExists,
+        pidClean: !pidStillExists,
+      }
+
+      if (pidStillExists || tempDirExists) {
+        console.error(
+          `Falha crítica de cleanup: PID vivo: ${pidStillExists}, Diretório presente: ${tempDirExists}`,
+        )
+      }
     }
   }
 
@@ -183,7 +259,7 @@ export async function runIsolatedIntegrationSuite(): Promise<{
   const passedScenarios = testResults.results.filter((r: any) => r.ok).length
   const failedScenarios = totalScenarios - passedScenarios
 
-  // Redigir nonce para hash curto (primeiros 8 caracteres de SHA-256)
+  // Redigir nonce para hash curto (primeiros 12 caracteres de SHA-256)
   const nonceHash = ephemeralInstance?.testNonce
     ? crypto.createHash('sha256').update(ephemeralInstance.testNonce).digest('hex').slice(0, 12)
     : 'none'
@@ -191,8 +267,22 @@ export async function runIsolatedIntegrationSuite(): Promise<{
   // Verificar destinos de rede: todos devem ser estritamente 127.0.0.1 ou localhost
   const destinationsArray = Array.from(capturedDestinations)
   const allDestinationsLocal = destinationsArray.every(
-    (d) => d.includes('127.0.0.1') || d.includes('localhost') || d.includes('github.com'), // github apenas se houve download de release verificado
+    (d) =>
+      d.includes('127.0.0.1') ||
+      d.includes('localhost') ||
+      d.includes('github.com') ||
+      d.includes('githubusercontent.com'),
   )
+
+  const isSuccess =
+    testResults.passed &&
+    previewFetchGuardrailRejected &&
+    externalHostFetchGuardrailRejected &&
+    cleanupObserved.childProcessTerminated &&
+    cleanupObserved.tempDirectoryRemoved &&
+    cleanupObserved.pidClean
+
+  const exitCode = isSuccess ? 0 : 1
 
   const report: IsolatedSuiteReport = {
     timestamp: new Date().toISOString(),
@@ -209,19 +299,20 @@ export async function runIsolatedIntegrationSuite(): Promise<{
       capturedDestinations: destinationsArray.map((d) =>
         d.includes('127.0.0.1') || d.includes('localhost')
           ? 'http://127.0.0.1:[REDACTED_PORT]'
-          : d.includes('github.com')
+          : d.includes('github.com') || d.includes('githubusercontent.com')
             ? 'https://github.com/pocketbase/pocketbase/releases/download/[REDACTED]'
             : '[EXTERNAL_DESTINATION_REDACTED]',
       ),
-      externalRequestsBlocked: allDestinationsLocal,
+      externalRequestsBlocked:
+        allDestinationsLocal && previewFetchGuardrailRejected && externalHostFetchGuardrailRejected,
     },
     securityMarkers: {
       testNonceShortHash: nonceHash,
       ephemeralMarkerVerified: true,
     },
     guardrailNegativeTest: {
-      previewUrlBlockedBeforeWrite: previewUrlBlocked,
-      nonLocalHostBlocked,
+      previewUrlBlockedBeforeWrite: previewUrlBlocked && previewFetchGuardrailRejected,
+      nonLocalHostBlocked: nonLocalHostBlocked && externalHostFetchGuardrailRejected,
       missingNonceBlocked,
     },
     summary: {
@@ -229,7 +320,7 @@ export async function runIsolatedIntegrationSuite(): Promise<{
       passedScenarios,
       failedScenarios,
       durationMs,
-      exitCode: testResults.passed ? 0 : 1,
+      exitCode,
     },
     scenarios: testResults.results.map((r: any) => ({
       scenarioId: r.scenarioId || 'SCENARIO',
@@ -240,23 +331,40 @@ export async function runIsolatedIntegrationSuite(): Promise<{
       detail: r.detail,
     })),
     cleanupConfirmation: {
-      childProcessTerminated: childProcessTerminated || true,
-      tempDirectoryRemoved: tempDirRemovedAfterCleanup || true,
+      childProcessTerminated: cleanupObserved.childProcessTerminated,
+      tempDirectoryRemoved: cleanupObserved.tempDirectoryRemoved,
       previewUntouched: true,
     },
   }
 
-  // Gravar artefato redigido
+  // GRAVAÇÃO ATÔMICA DO ARTEFATO:
+  // Só gravar o artefato final se exitCode === 0.
+  // Criar em diretório temporário e mover atomicamente.
   const artifactDir = path.join(process.cwd(), 'reports')
-  fs.mkdirSync(artifactDir, { recursive: true })
-  const artifactPath = path.join(artifactDir, 'security-isolated-execution-artifact.json')
-  fs.writeFileSync(artifactPath, JSON.stringify(report, null, 2), 'utf-8')
+  const finalArtifactPath = path.join(artifactDir, 'security-isolated-execution-artifact.json')
 
-  console.log(`📄 Artefato redigido gerado em: ${artifactPath}`)
+  if (exitCode === 0) {
+    fs.mkdirSync(artifactDir, { recursive: true })
+    const tempArtifactDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pb_artifact_atomic_'))
+    const tempArtifactPath = path.join(tempArtifactDir, 'temp-artifact.json')
+
+    fs.writeFileSync(tempArtifactPath, JSON.stringify(report, null, 2), 'utf-8')
+    fs.renameSync(tempArtifactPath, finalArtifactPath)
+    fs.rmSync(tempArtifactDir, { recursive: true, force: true })
+
+    console.log(`📄 Artefato gerado e movido atomicamente para: ${finalArtifactPath}`)
+  } else {
+    if (fs.existsSync(finalArtifactPath)) {
+      fs.unlinkSync(finalArtifactPath)
+    }
+    console.warn(
+      '⚠️ Execução falhou ou não atendeu critérios de segurança. Nenhum artefato de sucesso produzido.',
+    )
+  }
 
   return {
-    success: testResults.passed && report.summary.exitCode === 0,
-    exitCode: report.summary.exitCode,
+    success: isSuccess,
+    exitCode,
     report,
   }
 }
