@@ -43,14 +43,17 @@ onRecordCreateRequest((e) => {
     if (userStatus === 'ativo' && userTenant && userTenant === mentionTenant) {
       isUserActiveInTenant = true
     } else {
-      // Verificar em user_memberships
+      // Verificar em user_memberships com parametrização oficial
       try {
+        const memFilter = "user = {:userId} && tenant = {:tenantId} && status = 'ativo'"
+        const memParams = { userId: targetUserId, tenantId: mentionTenant }
         const memberships = $app.findRecordsByFilter(
           'user_memberships',
-          "user = '" + targetUserId + "' && tenant = '" + mentionTenant + "' && status = 'ativo'",
+          memFilter,
           '',
           1,
           0,
+          memParams,
         )
         if (memberships.length > 0) {
           isUserActiveInTenant = true

@@ -579,14 +579,14 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
       },
     )
 
-    // Cenário 8: Injeção de filtros no endpoint tenant-users/list é sanitizada e bloqueada
+    // Cenário 8: Injeção de filtros em todos os campos dinâmicos é parametrizada e não permite evasão/ampliação
     await assertTest(
-      'Cenário 8: Filter injection em tenant, userId, status e busca retorna 400/403 e é sanitizado',
+      'Cenário 8: Filter injection em tenant, userId, status e busca retorna 400/403 ou não amplia escopo',
       async () => {
         let injection1Blocked = false
         try {
           await floraniaServidorClient.send(
-            `/backend/v1/tenant-users/list?tenant=${floraniaTenantId}' || '1'='1`,
+            `/backend/v1/tenant-users/list?tenant=${encodeURIComponent(floraniaTenantId + "' || '1'='1")}`,
             { method: 'GET' },
           )
         } catch (err: any) {
@@ -596,14 +596,39 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
         let injection2Blocked = false
         try {
           await floraniaServidorClient.send(
-            `/backend/v1/tenant-users/list?tenant=${floraniaTenantId}&status=ativo' || status!=''`,
+            `/backend/v1/tenant-users/list?tenant=${floraniaTenantId}&status=${encodeURIComponent("ativo' || status!=''")}`,
             { method: 'GET' },
           )
         } catch (err: any) {
           injection2Blocked = err.status === 400 || err.status === 403
         }
 
-        return injection1Blocked && injection2Blocked
+        // Teste de consulta válida com busca contendo acento e apóstrofo
+        let legitimateSearchWorks = false
+        try {
+          const listRes: any = await floraniaAdminClient.send(
+            `/backend/v1/tenant-users/list?tenant=${floraniaTenantId}&search=${encodeURIComponent("D'Ávila")}`,
+            { method: 'GET' },
+          )
+          legitimateSearchWorks = listRes && Array.isArray(listRes.items)
+        } catch {
+          legitimateSearchWorks = false
+        }
+
+        // Teste de busca por userId malicioso no view
+        let viewInjectionBlocked = false
+        try {
+          await floraniaAdminClient.send(
+            `/backend/v1/tenant-users/view?tenant=${floraniaTenantId}&userId=${encodeURIComponent("fake' || '1'='1")}`,
+            { method: 'GET' },
+          )
+        } catch (err: any) {
+          viewInjectionBlocked = err.status === 400 || err.status === 403 || err.status === 404
+        }
+
+        return (
+          injection1Blocked && injection2Blocked && legitimateSearchWorks && viewInjectionBlocked
+        )
       },
     )
 

@@ -53,17 +53,19 @@ routerAdd(
       }
 
       // Revalida explicitamente que o autenticado possui membership admin ATIVA no tenant solicitado
-      const escapedAuthId = authId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-      const escapedTenant = requestedTenant.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
       const checkFilter =
-        "user = '" +
-        escapedAuthId +
-        "' && tenant = '" +
-        escapedTenant +
-        "' && role = 'admin' && status = 'ativo'"
+        "user = {:userId} && tenant = {:tenantId} && role = 'admin' && status = 'ativo'"
+      const checkParams = { userId: authId, tenantId: requestedTenant }
 
       try {
-        const adminMems = $app.findRecordsByFilter('user_memberships', checkFilter, '', 1, 0)
+        const adminMems = $app.findRecordsByFilter(
+          'user_memberships',
+          checkFilter,
+          '',
+          1,
+          0,
+          checkParams,
+        )
         if (adminMems.length === 0) {
           return e.json(403, {
             code: 403,
@@ -78,14 +80,15 @@ routerAdd(
 
     try {
       let memFilter = "id != ''"
+      const memParams = {}
       if (effectiveTenantId) {
-        const safeEscapedTenant = effectiveTenantId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-        memFilter = "tenant = '" + safeEscapedTenant + "'"
+        memFilter = 'tenant = {:tenantId}'
+        memParams.tenantId = effectiveTenantId
       }
 
       if (statusFilter) {
-        const safeStatus = statusFilter.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-        memFilter += " && status = '" + safeStatus + "'"
+        memFilter += ' && status = {:status}'
+        memParams.status = statusFilter
       }
 
       const memberships = $app.findRecordsByFilter(
@@ -94,6 +97,7 @@ routerAdd(
         '-created',
         1000,
         0,
+        memParams,
       )
 
       const items = []
@@ -208,17 +212,19 @@ routerAdd(
         })
       }
 
-      const escapedAuthId = authId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-      const escapedTenant = requestedTenant.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
       const checkFilter =
-        "user = '" +
-        escapedAuthId +
-        "' && tenant = '" +
-        escapedTenant +
-        "' && role = 'admin' && status = 'ativo'"
+        "user = {:userId} && tenant = {:tenantId} && role = 'admin' && status = 'ativo'"
+      const checkParams = { userId: authId, tenantId: requestedTenant }
 
       try {
-        const adminMems = $app.findRecordsByFilter('user_memberships', checkFilter, '', 1, 0)
+        const adminMems = $app.findRecordsByFilter(
+          'user_memberships',
+          checkFilter,
+          '',
+          1,
+          0,
+          checkParams,
+        )
         if (adminMems.length === 0) {
           return e.json(403, {
             code: 403,
@@ -232,14 +238,21 @@ routerAdd(
     }
 
     try {
-      const escapedTargetUser = targetUserId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-      let filter = "user = '" + escapedTargetUser + "'"
+      let filter = 'user = {:targetUserId}'
+      const filterParams = { targetUserId: targetUserId }
       if (effectiveTenantId) {
-        const escapedEffectiveTenant = effectiveTenantId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-        filter += " && tenant = '" + escapedEffectiveTenant + "'"
+        filter += ' && tenant = {:effectiveTenantId}'
+        filterParams.effectiveTenantId = effectiveTenantId
       }
 
-      const targetMems = $app.findRecordsByFilter('user_memberships', filter, '-created', 1, 0)
+      const targetMems = $app.findRecordsByFilter(
+        'user_memberships',
+        filter,
+        '-created',
+        1,
+        0,
+        filterParams,
+      )
       if (targetMems.length === 0) {
         return e.json(404, { code: 404, message: 'Usuário não encontrado no município.' })
       }
@@ -316,17 +329,19 @@ routerAdd(
         })
       }
 
-      const escapedAuthId = authId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-      const escapedTenant = requestedTenant.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
       const checkFilter =
-        "user = '" +
-        escapedAuthId +
-        "' && tenant = '" +
-        escapedTenant +
-        "' && role = 'admin' && status = 'ativo'"
+        "user = {:userId} && tenant = {:tenantId} && role = 'admin' && status = 'ativo'"
+      const checkParams = { userId: authId, tenantId: requestedTenant }
 
       try {
-        const adminMems = $app.findRecordsByFilter('user_memberships', checkFilter, '', 1, 0)
+        const adminMems = $app.findRecordsByFilter(
+          'user_memberships',
+          checkFilter,
+          '',
+          1,
+          0,
+          checkParams,
+        )
         if (adminMems.length === 0) {
           return e.json(403, {
             code: 403,
@@ -339,11 +354,17 @@ routerAdd(
       }
     }
 
-    const escapedTarget = targetUserId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    const escapedEffectiveTenant = effectiveTenantId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    const memFilter = "user = '" + escapedTarget + "' && tenant = '" + escapedEffectiveTenant + "'"
+    const memFilter = 'user = {:targetUserId} && tenant = {:tenantId}'
+    const memParams = { targetUserId: targetUserId, tenantId: effectiveTenantId }
 
-    const targetMems = $app.findRecordsByFilter('user_memberships', memFilter, '-created', 1, 0)
+    const targetMems = $app.findRecordsByFilter(
+      'user_memberships',
+      memFilter,
+      '-created',
+      1,
+      0,
+      memParams,
+    )
     if (targetMems.length === 0) {
       return e.json(404, {
         code: 404,
@@ -386,14 +407,15 @@ routerAdd(
     const willDemoteOrDeactivate = newRole !== 'admin' || newStatus !== 'ativo'
 
     if (isTargetActiveAdmin && willDemoteOrDeactivate) {
-      const activeAdminsFilter =
-        "tenant = '" + escapedEffectiveTenant + "' && role = 'admin' && status = 'ativo'"
+      const activeAdminsFilter = "tenant = {:tenantId} && role = 'admin' && status = 'ativo'"
+      const activeAdminsParams = { tenantId: effectiveTenantId }
       const activeAdmins = $app.findRecordsByFilter(
         'user_memberships',
         activeAdminsFilter,
         '',
         10,
         0,
+        activeAdminsParams,
       )
       if (activeAdmins.length <= 1) {
         return e.json(400, {
@@ -491,17 +513,19 @@ routerAdd(
         })
       }
 
-      const escapedAuthId = authId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-      const escapedTenant = requestedTenant.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
       const checkFilter =
-        "user = '" +
-        escapedAuthId +
-        "' && tenant = '" +
-        escapedTenant +
-        "' && role = 'admin' && status = 'ativo'"
+        "user = {:userId} && tenant = {:tenantId} && role = 'admin' && status = 'ativo'"
+      const checkParams = { userId: authId, tenantId: requestedTenant }
 
       try {
-        const adminMems = $app.findRecordsByFilter('user_memberships', checkFilter, '', 1, 0)
+        const adminMems = $app.findRecordsByFilter(
+          'user_memberships',
+          checkFilter,
+          '',
+          1,
+          0,
+          checkParams,
+        )
         if (adminMems.length === 0) {
           return e.json(403, {
             code: 403,
@@ -514,11 +538,17 @@ routerAdd(
       }
     }
 
-    const escapedTarget = targetUserId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    const escapedEffectiveTenant = effectiveTenantId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    const memFilter = "user = '" + escapedTarget + "' && tenant = '" + escapedEffectiveTenant + "'"
+    const memFilter = 'user = {:targetUserId} && tenant = {:tenantId}'
+    const memParams = { targetUserId: targetUserId, tenantId: effectiveTenantId }
 
-    const targetMems = $app.findRecordsByFilter('user_memberships', memFilter, '-created', 1, 0)
+    const targetMems = $app.findRecordsByFilter(
+      'user_memberships',
+      memFilter,
+      '-created',
+      1,
+      0,
+      memParams,
+    )
     if (targetMems.length === 0) {
       return e.json(404, { code: 404, message: 'Usuário não encontrado no município.' })
     }
@@ -530,14 +560,15 @@ routerAdd(
 
     // Regra do Último Admin Ativo
     if (isTargetAdmin) {
-      const activeAdminsFilter =
-        "tenant = '" + escapedEffectiveTenant + "' && role = 'admin' && status = 'ativo'"
+      const activeAdminsFilter = "tenant = {:tenantId} && role = 'admin' && status = 'ativo'"
+      const activeAdminsParams = { tenantId: effectiveTenantId }
       const activeAdmins = $app.findRecordsByFilter(
         'user_memberships',
         activeAdminsFilter,
         '',
         10,
         0,
+        activeAdminsParams,
       )
       if (activeAdmins.length <= 1) {
         return e.json(400, {
@@ -559,13 +590,15 @@ routerAdd(
       $app.runInTransaction((txApp) => {
         txApp.delete(targetMembership)
 
-        const escapedTargetForOther = targetUserId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+        const otherMemsFilter = 'user = {:targetUserId}'
+        const otherMemsParams = { targetUserId: targetUserId }
         const otherMems = txApp.findRecordsByFilter(
           'user_memberships',
-          "user = '" + escapedTargetForOther + "'",
+          otherMemsFilter,
           '',
           10,
           0,
+          otherMemsParams,
         )
 
         if (otherMems.length === 0 && authRole === 'superadmin') {
@@ -642,17 +675,19 @@ routerAdd(
         })
       }
 
-      const escapedAuthId = authId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-      const escapedTenant = requestedTenant.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
       const checkFilter =
-        "user = '" +
-        escapedAuthId +
-        "' && tenant = '" +
-        escapedTenant +
-        "' && role = 'admin' && status = 'ativo'"
+        "user = {:userId} && tenant = {:tenantId} && role = 'admin' && status = 'ativo'"
+      const checkParams = { userId: authId, tenantId: requestedTenant }
 
       try {
-        const adminMems = $app.findRecordsByFilter('user_memberships', checkFilter, '', 1, 0)
+        const adminMems = $app.findRecordsByFilter(
+          'user_memberships',
+          checkFilter,
+          '',
+          1,
+          0,
+          checkParams,
+        )
         if (adminMems.length === 0) {
           return e.json(403, {
             code: 403,
@@ -778,17 +813,19 @@ routerAdd(
         })
       }
 
-      const escapedAuthId = authId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-      const escapedTenant = requestedTenant.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
       const checkFilter =
-        "user = '" +
-        escapedAuthId +
-        "' && tenant = '" +
-        escapedTenant +
-        "' && role = 'admin' && status = 'ativo'"
+        "user = {:userId} && tenant = {:tenantId} && role = 'admin' && status = 'ativo'"
+      const checkParams = { userId: authId, tenantId: requestedTenant }
 
       try {
-        const adminMems = $app.findRecordsByFilter('user_memberships', checkFilter, '', 1, 0)
+        const adminMems = $app.findRecordsByFilter(
+          'user_memberships',
+          checkFilter,
+          '',
+          1,
+          0,
+          checkParams,
+        )
         if (adminMems.length === 0) {
           return e.json(403, {
             code: 403,
@@ -804,15 +841,15 @@ routerAdd(
     const currentRole = targetMem.getString('role')
     const currentStatus = targetMem.getString('status')
     if (currentRole === 'admin' && currentStatus === 'ativo') {
-      const escapedTenantForAdmins = targetTenant.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-      const activeAdminsFilter =
-        "tenant = '" + escapedTenantForAdmins + "' && role = 'admin' && status = 'ativo'"
+      const activeAdminsFilter = "tenant = {:tenantId} && role = 'admin' && status = 'ativo'"
+      const activeAdminsParams = { tenantId: targetTenant }
       const activeAdmins = $app.findRecordsByFilter(
         'user_memberships',
         activeAdminsFilter,
         '',
         10,
         0,
+        activeAdminsParams,
       )
       if (activeAdmins.length <= 1) {
         return e.json(400, {

@@ -73,11 +73,10 @@ routerAdd(
 
         // Se houver uma membership pendente deste usuário no tenant do convite, marcar como rejeitado
         const tenantId = inv.getString('tenant')
-        const escapedUserId = authId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-        const escapedTenantId = tenantId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-        const memFilter = "user = '" + escapedUserId + "' && tenant = '" + escapedTenantId + "'"
+        const memFilter = 'user = {:userId} && tenant = {:tenantId}'
+        const memParams = { userId: authId, tenantId: tenantId }
 
-        const mems = txApp.findRecordsByFilter('user_memberships', memFilter, '', 1, 0)
+        const mems = txApp.findRecordsByFilter('user_memberships', memFilter, '', 1, 0, memParams)
         if (mems.length > 0 && mems[0].getString('status') === 'pendente') {
           mems[0].set('status', 'rejeitado')
           txApp.save(mems[0])
@@ -126,17 +125,19 @@ routerAdd(
 
     // Verificação de privilégios de Admin no tenant do convite
     if (authRole !== 'superadmin') {
-      const escapedAuthId = authId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-      const escapedTenantId = tenantId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
       const checkFilter =
-        "user = '" +
-        escapedAuthId +
-        "' && tenant = '" +
-        escapedTenantId +
-        "' && role = 'admin' && status = 'ativo'"
+        "user = {:userId} && tenant = {:tenantId} && role = 'admin' && status = 'ativo'"
+      const checkParams = { userId: authId, tenantId: tenantId }
 
       try {
-        const adminMems = $app.findRecordsByFilter('user_memberships', checkFilter, '', 1, 0)
+        const adminMems = $app.findRecordsByFilter(
+          'user_memberships',
+          checkFilter,
+          '',
+          1,
+          0,
+          checkParams,
+        )
         if (adminMems.length === 0) {
           return e.json(403, {
             code: 403,

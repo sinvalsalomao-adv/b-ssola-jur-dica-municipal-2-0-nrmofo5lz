@@ -113,13 +113,9 @@ routerAdd('POST', '/backend/v1/auth/register-public', (e) => {
     // Se a senha estiver correta, verificar se já tem membership nesse município
     let existingMems = []
     try {
-      existingMems = $app.findRecordsByFilter(
-        'user_memberships',
-        "user = '" + existingUser.id + "' && tenant = '" + tenantId + "'",
-        '',
-        1,
-        0,
-      )
+      const memFilter = 'user = {:userId} && tenant = {:tenantId}'
+      const memParams = { userId: existingUser.id, tenantId: tenantId }
+      existingMems = $app.findRecordsByFilter('user_memberships', memFilter, '', 1, 0, memParams)
     } catch (_) {}
 
     if (existingMems.length > 0) {

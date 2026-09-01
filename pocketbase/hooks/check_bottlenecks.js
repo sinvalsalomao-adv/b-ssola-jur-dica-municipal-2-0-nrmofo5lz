@@ -52,10 +52,11 @@ cronAdd('check_bottlenecks', '0 6 * * *', () => {
     try {
       var tsRecords = $app.findRecordsByFilter(
         'tenant_settings',
-        "tenant = '" + tenantId + "'",
+        'tenant = {:tenantId}',
         '',
         1,
         0,
+        { tenantId: tenantId },
       )
       if (tsRecords.length > 0) {
         var ts = tsRecords[0]
@@ -101,13 +102,9 @@ cronAdd('check_bottlenecks', '0 6 * * *', () => {
       } catch (_) {}
     }
 
-    var projects = $app.findRecordsByFilter(
-      'projects',
-      "tenant = '" + tenantId + "'",
-      '-created',
-      0,
-      0,
-    )
+    var projects = $app.findRecordsByFilter('projects', 'tenant = {:tenantId}', '-created', 0, 0, {
+      tenantId: tenantId,
+    })
 
     for (var j = 0; j < projects.length; j++) {
       var project = projects[j]
@@ -139,7 +136,8 @@ cronAdd('check_bottlenecks', '0 6 * * *', () => {
           try {
             existingGargalo = $app.findFirstRecordByFilter(
               'notifications',
-              "projeto_id = '" + projetoId + "' && tipo = 'Gargalo' && lida = false",
+              "projeto_id = {:projetoId} && tipo = 'Gargalo' && lida = false",
+              { projetoId: projetoId },
             )
           } catch (_) {}
 
@@ -180,7 +178,8 @@ cronAdd('check_bottlenecks', '0 6 * * *', () => {
           try {
             existingFatal = $app.findFirstRecordByFilter(
               'notifications',
-              "projeto_id = '" + projetoId + "' && tipo = 'Prazo Fatal' && lida = false",
+              "projeto_id = {:projetoId} && tipo = 'Prazo Fatal' && lida = false",
+              { projetoId: projetoId },
             )
           } catch (_) {}
 

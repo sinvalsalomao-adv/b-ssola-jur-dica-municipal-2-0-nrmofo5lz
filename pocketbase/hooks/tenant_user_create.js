@@ -55,17 +55,19 @@ routerAdd(
         return e.badRequestError('Município/Tenant é obrigatório.')
       }
 
-      const escapedAuthId = authId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-      const escapedTenant = checkTenant.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
       const checkFilter =
-        "user = '" +
-        escapedAuthId +
-        "' && tenant = '" +
-        escapedTenant +
-        "' && role = 'admin' && status = 'ativo'"
+        "user = {:userId} && tenant = {:tenantId} && role = 'admin' && status = 'ativo'"
+      const checkParams = { userId: authId, tenantId: checkTenant }
 
       try {
-        const adminMems = $app.findRecordsByFilter('user_memberships', checkFilter, '', 1, 0)
+        const adminMems = $app.findRecordsByFilter(
+          'user_memberships',
+          checkFilter,
+          '',
+          1,
+          0,
+          checkParams,
+        )
         if (adminMems.length === 0) {
           return e.json(403, {
             code: 403,
@@ -107,12 +109,18 @@ routerAdd(
       .slice(0, 19)
 
     // Rate limit persistente via tabela invitations
-    const escapedRecipHash = recipientHash.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    const rlDbFilter =
-      "rate_limit_hash = '" + escapedRecipHash + "' && created >= '" + fiveMinutesAgoIso + "'"
+    const rlDbFilter = 'rate_limit_hash = {:hash} && created >= {:since}'
+    const rlDbParams = { hash: recipientHash, since: fiveMinutesAgoIso }
     let recentDbCount = 0
     try {
-      const recentInvs = $app.findRecordsByFilter('invitations', rlDbFilter, '-created', 10, 0)
+      const recentInvs = $app.findRecordsByFilter(
+        'invitations',
+        rlDbFilter,
+        '-created',
+        10,
+        0,
+        rlDbParams,
+      )
       recentDbCount = recentInvs.length
     } catch (_) {}
 
@@ -175,12 +183,18 @@ routerAdd(
         }
 
         // 9. Membership em user_memberships: SEMPRE PENDENTE se for novo convite ou e-mail existente
-        const escapedUserId = userRecord.id.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-        const escapedEffTenant = effectiveTenantId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-        const memFilter = "user = '" + escapedUserId + "' && tenant = '" + escapedEffTenant + "'"
+        const memFilter = 'user = {:userId} && tenant = {:tenantId}'
+        const memParams = { userId: userRecord.id, tenantId: effectiveTenantId }
 
         let membershipRecord = null
-        const existingMems = txApp.findRecordsByFilter('user_memberships', memFilter, '', 1, 0)
+        const existingMems = txApp.findRecordsByFilter(
+          'user_memberships',
+          memFilter,
+          '',
+          1,
+          0,
+          memParams,
+        )
         if (existingMems.length > 0) {
           membershipRecord = existingMems[0]
           if (membershipRecord.getString('status') !== 'ativo') {
@@ -198,14 +212,16 @@ routerAdd(
         }
 
         // 10. R-3: Cancelar e liberar active_key de convites pendentes anteriores para reenvio transacionado
-        const escapedEmail = normalizedEmail.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-        const invFilter =
-          "tenant = '" +
-          escapedEffTenant +
-          "' && email = '" +
-          escapedEmail +
-          "' && status = 'pending'"
-        const existingInvs = txApp.findRecordsByFilter('invitations', invFilter, '-created', 10, 0)
+        const invFilter = "tenant = {:tenantId} && email = {:email} && status = 'pending'"
+        const invParams = { tenantId: effectiveTenantId, email: normalizedEmail }
+        const existingInvs = txApp.findRecordsByFilter(
+          'invitations',
+          invFilter,
+          '-created',
+          10,
+          0,
+          invParams,
+        )
 
         for (let i = 0; i < existingInvs.length; i++) {
           const oldInv = existingInvs[i]

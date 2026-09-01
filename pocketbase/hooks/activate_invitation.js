@@ -118,11 +118,17 @@ routerAdd(
         txApp.save(inv)
 
         // B. Criar ou ativar exatamente uma membership no tenant alvo
-        const escapedUserId = authId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-        const escapedTenantId = tenantId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-        const memFilter = "user = '" + escapedUserId + "' && tenant = '" + escapedTenantId + "'"
+        const memFilter = 'user = {:userId} && tenant = {:tenantId}'
+        const memParams = { userId: authId, tenantId: tenantId }
 
-        const existingMems = txApp.findRecordsByFilter('user_memberships', memFilter, '', 1, 0)
+        const existingMems = txApp.findRecordsByFilter(
+          'user_memberships',
+          memFilter,
+          '',
+          1,
+          0,
+          memParams,
+        )
         if (existingMems.length > 0) {
           membershipRecord = existingMems[0]
           membershipRecord.set('role', roleToAssign)
