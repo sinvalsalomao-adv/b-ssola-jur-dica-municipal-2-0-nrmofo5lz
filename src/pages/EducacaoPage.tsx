@@ -136,13 +136,23 @@ export default function EducacaoPage() {
             </p>
           </div>
         </div>
-        <Button
-          onClick={handleOpenCreateModal}
-          className="bg-[#3b82f6] hover:bg-[#2563eb] text-white gap-2 self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          Adicionar Trilha
-        </Button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <Button
+            variant="outline"
+            onClick={() => navigate('/educacao/grupos')}
+            className="border-[#3b82f6] text-[#3b82f6] hover:bg-blue-50 gap-2"
+          >
+            <GraduationCap className="w-4 h-4" />
+            Grupos de Acesso
+          </Button>
+          <Button
+            onClick={handleOpenCreateModal}
+            className="bg-[#3b82f6] hover:bg-[#2563eb] text-white gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Adicionar Trilha
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">

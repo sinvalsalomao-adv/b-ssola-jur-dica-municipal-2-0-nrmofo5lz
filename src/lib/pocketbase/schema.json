@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-01T13:06:20.370Z",
+  "generatedAt": "2026-09-01T13:26:30.320Z",
   "collections": [
     {
       "name": "users",
@@ -731,7 +731,15 @@
             "Criou resposta",
             "Editou resposta",
             "Removeu resposta",
-            "Mencionou usuário"
+            "Mencionou usuário",
+            "Criou secretaria",
+            "Editou secretaria",
+            "Excluiu secretaria",
+            "Criou grupo educacional",
+            "Editou grupo educacional",
+            "Excluiu grupo educacional",
+            "Adicionou membro ao grupo",
+            "Removeu membro do grupo"
           ]
         },
         {
@@ -2054,6 +2062,208 @@
       ],
       "indexes": [
         "CREATE UNIQUE INDEX idx_security_audit_marker_key ON security_audit_markers (marker_key)"
+      ]
+    },
+    {
+      "name": "secretarias",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.status ?= 'ativo'))",
+        "view": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.status ?= 'ativo'))",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+        "delete": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))"
+      },
+      "fields": [
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "sigla",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tenant",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "tenants"
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["ativo", "inativo"]
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_secretarias_tenant ON secretarias (tenant)",
+        "CREATE INDEX idx_secretarias_status ON secretarias (status)"
+      ]
+    },
+    {
+      "name": "education_groups",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.status ?= 'ativo'))",
+        "view": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.status ?= 'ativo'))",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+        "delete": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))"
+      },
+      "fields": [
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tenant",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "tenants"
+        },
+        {
+          "name": "secretaria",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "secretarias"
+        },
+        {
+          "name": "cargos_alvo",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["ativo", "inativo"]
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_education_groups_tenant ON education_groups (tenant)",
+        "CREATE INDEX idx_education_groups_secretaria ON education_groups (secretaria)",
+        "CREATE INDEX idx_education_groups_status ON education_groups (status)"
+      ]
+    },
+    {
+      "name": "education_group_members",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (user = @request.auth.id || tenant = @request.auth.tenant || @request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+        "view": "@request.auth.id != '' && (user = @request.auth.id || tenant = @request.auth.tenant || @request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+        "delete": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))"
+      },
+      "fields": [
+        {
+          "name": "group",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "education_groups"
+        },
+        {
+          "name": "user",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "tenant",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "tenants"
+        },
+        {
+          "name": "added_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["ativo", "inativo"]
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_edu_grp_mem_unique ON education_group_members (group, user)",
+        "CREATE INDEX idx_edu_grp_mem_group ON education_group_members (group)",
+        "CREATE INDEX idx_edu_grp_mem_user ON education_group_members (user)",
+        "CREATE INDEX idx_edu_grp_mem_tenant ON education_group_members (tenant)"
       ]
     }
   ]

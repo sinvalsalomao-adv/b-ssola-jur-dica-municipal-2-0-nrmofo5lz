@@ -13,6 +13,7 @@ import AdminAuditLogsPage from '@/pages/AdminAuditLogsPage'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 
 import { MainLayout } from '@/components/MainLayout'
+import AcademiaGroupsManager from '@/components/academia/AcademiaGroupsManager'
 import LoginPage from '@/pages/LoginPage'
 import OrgLoginPage from '@/pages/OrgLoginPage'
 import PublicRegisterPage from '@/pages/PublicRegisterPage'
@@ -61,6 +62,7 @@ const App = () => (
                   <Route path="/dfds/:id" element={<DfdDetailPage />} />
                   <Route path="/novo-dfd" element={<NovoDfdPage />} />
                   <Route path="/educacao" element={<EducacaoPage />} />
+                  <Route path="/educacao/grupos" element={<AcademiaGroupsManager />} />
                   <Route path="/educacao/trilha/:id" element={<TrackDetailPage />} />
                   <Route path="/educacao/trilha/:id/quiz" element={<QuizPage />} />
                   <Route path="/usuarios" element={<UsuariosPage />} />

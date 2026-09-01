@@ -108,6 +108,7 @@ export const MainLayout: React.FC = () => {
     '/controle': 'Central de Controle',
     '/dfds': 'Diagramas de Fluxo de Dados (DFDs)',
     '/educacao': 'Módulo de Educação',
+    '/educacao/grupos': 'Academia — Gestão de Grupos de Acesso',
     '/usuarios': 'Gestão de Usuários',
     '/novo-dfd': 'Novo DFD',
     '/superadmin': 'Painel do Superadministrador',

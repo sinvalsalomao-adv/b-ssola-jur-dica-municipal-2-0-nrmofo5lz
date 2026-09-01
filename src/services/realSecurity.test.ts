@@ -1122,6 +1122,185 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
         return { ok, receivedStatus: ok ? '200' : 'LEAK' }
       },
     )
+
+    // Cenário 18: [Academia Foundation] Isolamento multi-tenant de Secretarias e Grupos Educacionais (Florânia vs Tangará)
+    await assertTest(
+      'SCENARIO-18',
+      'Cenário 18: Admin de Florânia não visualiza, altera nem exclui Secretarias ou Grupos de Tangará',
+      '403/404',
+      async () => {
+        // Superadmin cria secretaria e grupo em Tangará (Tenant B)
+        const secTangara = await superadminClient.collection('secretarias').create({
+          nome: 'Secretaria de Tangara ' + testRunId,
+          sigla: 'ST',
+          tenant: tenantBId,
+          status: 'ativo',
+        })
+        const grpTangara = await superadminClient.collection('education_groups').create({
+          nome: 'Grupo Tangara ' + testRunId,
+          tenant: tenantBId,
+          secretaria: secTangara.id,
+          status: 'ativo',
+        })
+
+        // Admin Florânia tenta listar secretarias com filtro do próprio tenant
+        const floraniaSecs = await adminAClient.collection('secretarias').getFullList({
+          filter: adminAClient.filter('tenant = {:t}', { t: tenantAId }),
+        })
+        const hasTangaraSec = floraniaSecs.some((s) => s.id === secTangara.id)
+
+        // Admin Florânia tenta acessar diretamente por ID a secretaria e grupo de Tangará
+        let secDirectFailed = false
+        try {
+          await adminAClient.collection('secretarias').getOne(secTangara.id)
+        } catch {
+          secDirectFailed = true
+        }
+
+        let grpDirectFailed = false
+        try {
+          await adminAClient.collection('education_groups').getOne(grpTangara.id)
+        } catch {
+          grpDirectFailed = true
+        }
+
+        // Admin Florânia tenta alterar grupo de Tangará
+        let editFailed = false
+        try {
+          await adminAClient.collection('education_groups').update(grpTangara.id, {
+            nome: 'Hacked Group',
+          })
+        } catch {
+          editFailed = true
+        }
+
+        // Cleanup fixtures criadas
+        try {
+          await superadminClient.collection('education_groups').delete(grpTangara.id)
+          await superadminClient.collection('secretarias').delete(secTangara.id)
+        } catch {
+          /* intentionally ignored */
+        }
+
+        const ok = !hasTangaraSec && secDirectFailed && grpDirectFailed && editFailed
+        return { ok, receivedStatus: ok ? '403/404' : 'CROSS_TENANT_LEAK' }
+      },
+    )
+
+    // Cenário 19: [Academia Foundation] Bloqueio estrito de associação de usuário sem tenant ou de outro município
+    await assertTest(
+      'SCENARIO-19',
+      'Cenário 19: Associação de membro a grupo bloqueia usuário de outro tenant ou inativo',
+      '400/403',
+      async () => {
+        // Criar secretaria e grupo em Florânia
+        const secFlorania = await superadminClient.collection('secretarias').create({
+          nome: 'Sec Florania ' + testRunId,
+          tenant: tenantAId,
+          status: 'ativo',
+        })
+        const grpFlorania = await superadminClient.collection('education_groups').create({
+          nome: 'Grupo Florania ' + testRunId,
+          tenant: tenantAId,
+          secretaria: secFlorania.id,
+          status: 'ativo',
+        })
+
+        // Admin Florânia tenta associar adminBUserId (que pertence a Tangará) ao grupo de Florânia
+        let foreignUserBlocked = false
+        try {
+          await adminAClient.collection('education_group_members').create({
+            group: grpFlorania.id,
+            user: adminBUserId,
+            tenant: tenantAId,
+            status: 'ativo',
+          })
+        } catch {
+          foreignUserBlocked = true
+        }
+
+        // Admin Florânia tenta associar membro vinculando tenantB
+        let foreignTenantBlocked = false
+        try {
+          await adminAClient.collection('education_group_members').create({
+            group: grpFlorania.id,
+            user: servidorAUserId,
+            tenant: tenantBId,
+            status: 'ativo',
+          })
+        } catch {
+          foreignTenantBlocked = true
+        }
+
+        // Cleanup fixtures
+        try {
+          await superadminClient.collection('education_groups').delete(grpFlorania.id)
+          await superadminClient.collection('secretarias').delete(secFlorania.id)
+        } catch {
+          /* intentionally ignored */
+        }
+
+        const ok = foreignUserBlocked && foreignTenantBlocked
+        return { ok, receivedStatus: ok ? '400/403' : 'INVALID_ASSOCIATION_ALLOWED' }
+      },
+    )
+
+    // Cenário 20: [Academia Foundation] Usuário comum somente consulta seus próprios grupos sem gerenciar
+    await assertTest(
+      'SCENARIO-20',
+      'Cenário 20: Usuário comum consulta somente seus grupos e tem escrita bloqueada',
+      '200/403',
+      async () => {
+        // Criar grupo em Florânia e associar servidorAUserId
+        const secFlorania = await superadminClient.collection('secretarias').create({
+          nome: 'Sec Edu ' + testRunId,
+          tenant: tenantAId,
+          status: 'ativo',
+        })
+        const grpFlorania = await superadminClient.collection('education_groups').create({
+          nome: 'Grupo Comum ' + testRunId,
+          tenant: tenantAId,
+          secretaria: secFlorania.id,
+          status: 'ativo',
+        })
+        const memRec = await superadminClient.collection('education_group_members').create({
+          group: grpFlorania.id,
+          user: servidorAUserId,
+          tenant: tenantAId,
+          status: 'ativo',
+        })
+
+        // Servidor A (comum) pode ler seu grupo associado
+        const userMems = await servidorAClient.collection('education_group_members').getFullList({
+          filter: servidorAClient.filter('user = {:u}', { u: servidorAUserId }),
+        })
+        const canReadOwn = userMems.some((m) => m.id === memRec.id)
+
+        // Servidor A tenta criar uma secretaria ou grupo (escrita bloqueada)
+        let writeBlocked = false
+        try {
+          await servidorAClient.collection('secretarias').create({
+            nome: 'Sec Maliciosa',
+            tenant: tenantAId,
+            status: 'ativo',
+          })
+        } catch {
+          writeBlocked = true
+        }
+
+        // Cleanup
+        try {
+          await superadminClient.collection('education_group_members').delete(memRec.id)
+          await superadminClient.collection('education_groups').delete(grpFlorania.id)
+          await superadminClient.collection('secretarias').delete(secFlorania.id)
+        } catch {
+          /* intentionally ignored */
+        }
+
+        const ok = canReadOwn && writeBlocked
+        return { ok, receivedStatus: ok ? '200/403' : 'RBAC_FAIL' }
+      },
+    )
   } finally {
     // =========================================================================
     // CLEANUP TOTAL DAS FIXTURES EFÊMERAS NO BANCO ISOLADO

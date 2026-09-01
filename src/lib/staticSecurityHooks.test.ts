@@ -59,6 +59,7 @@ export const ACTIVE_HOOK_NAMES = [
   'tenant_user_create',
   'tenant_user_management',
   'user_security_guard',
+  'academia_security_guard',
 ]
 
 /**
