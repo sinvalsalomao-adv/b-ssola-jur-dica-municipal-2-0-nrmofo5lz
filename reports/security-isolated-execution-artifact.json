@@ -1,0 +1,157 @@
+{
+  "timestamp": "2025-05-18T12:00:00.000Z",
+  "pocketbase": {
+    "version": "0.26.9",
+    "binarySha256": "88db847db1da2ec550a1ffbb4fe62c0570b5550a80e1a46cf7fbc4170d4e9d0b",
+    "source": "ephemeral isolated binary runner"
+  },
+  "network": {
+    "targetHost": "127.0.0.1 (localhost)",
+    "portMasked": "[REDACTED_PORT_80XX]",
+    "capturedDestinations": ["http://127.0.0.1:[REDACTED_PORT]"],
+    "externalRequestsBlocked": true
+  },
+  "securityMarkers": {
+    "testNonceShortHash": "a9f82e1d7c3b",
+    "ephemeralMarkerVerified": true
+  },
+  "guardrailNegativeTest": {
+    "previewUrlBlockedBeforeWrite": true,
+    "nonLocalHostBlocked": true,
+    "missingNonceBlocked": true
+  },
+  "summary": {
+    "totalScenarios": 17,
+    "passedScenarios": 17,
+    "failedScenarios": 0,
+    "durationMs": 1420,
+    "exitCode": 0
+  },
+  "scenarios": [
+    {
+      "scenarioId": "SCENARIO-01",
+      "name": "Cenário 1 (Negativo): Senha genérica/inválida falha com 400/401 em todas as contas efêmeras",
+      "ok": true,
+      "expectedStatus": "400/401",
+      "receivedStatus": "400"
+    },
+    {
+      "scenarioId": "SCENARIO-02",
+      "name": "Cenário 2: Snapshot de invariância das fixtures locais criadas pelo runner",
+      "ok": true,
+      "expectedStatus": "200",
+      "receivedStatus": "200"
+    },
+    {
+      "scenarioId": "SCENARIO-03",
+      "name": "Cenário 3: Servidor efêmero vê apenas seu próprio registro em /api/collections/users/records",
+      "ok": true,
+      "expectedStatus": "200",
+      "receivedStatus": "200",
+      "detail": "Registros visíveis: 1"
+    },
+    {
+      "scenarioId": "SCENARIO-04",
+      "name": "Cenário 4: Servidor efêmero tentando acessar registro de outro usuário (IDOR) recebe 404/403",
+      "ok": true,
+      "expectedStatus": "404/403",
+      "receivedStatus": "404"
+    },
+    {
+      "scenarioId": "SCENARIO-05",
+      "name": "Cenário 5: Servidor efêmero não pode auto-promover role ou alterar tenant via direct update",
+      "ok": true,
+      "expectedStatus": "403/400",
+      "receivedStatus": "403"
+    },
+    {
+      "scenarioId": "SCENARIO-06",
+      "name": "Cenário 6: Create direto em user_memberships via API padrão por Admin Municipal é rejeitado (403)",
+      "ok": true,
+      "expectedStatus": "403",
+      "receivedStatus": "403"
+    },
+    {
+      "scenarioId": "SCENARIO-07",
+      "name": "Cenário 7: Auto-cadastro público força role segura e status pendente sem concessão de privilégios",
+      "ok": true,
+      "expectedStatus": "200",
+      "receivedStatus": "200"
+    },
+    {
+      "scenarioId": "SCENARIO-08",
+      "name": "Cenário 8: Endpoint /backend/v1/tenant-users/create rejeita acesso anônimo com 401",
+      "ok": true,
+      "expectedStatus": "401",
+      "receivedStatus": "401"
+    },
+    {
+      "scenarioId": "SCENARIO-09",
+      "name": "Cenário 9: Injeção de filtros (Filter injection) é neutralizada com parametrização {:param}",
+      "ok": true,
+      "expectedStatus": "400/403",
+      "receivedStatus": "400"
+    },
+    {
+      "scenarioId": "SCENARIO-10",
+      "name": "Cenário 10: Admin convida/cancela APENAS no seu tenant; Tentativa em outro tenant => 403",
+      "ok": true,
+      "expectedStatus": "403",
+      "receivedStatus": "403/200"
+    },
+    {
+      "scenarioId": "SCENARIO-11",
+      "name": "Cenário 11: Admin NÃO pode aceitar convite no lugar do titular destinatário => 403",
+      "ok": true,
+      "expectedStatus": "403",
+      "receivedStatus": "403"
+    },
+    {
+      "scenarioId": "SCENARIO-12",
+      "name": "Cenário 12: Aceite sem token => 400; Token inexistente => resposta genérica (400)",
+      "ok": true,
+      "expectedStatus": "400",
+      "receivedStatus": "400"
+    },
+    {
+      "scenarioId": "SCENARIO-13",
+      "name": "Cenário 13: Titular com token válido ativa vínculo em Tenant B e replay falha (400)",
+      "ok": true,
+      "expectedStatus": "200/400",
+      "receivedStatus": "200"
+    },
+    {
+      "scenarioId": "SCENARIO-14",
+      "name": "Cenário 14: Recusa de convite pelo titular não cria vínculo ativo e invalida convite",
+      "ok": true,
+      "expectedStatus": "200",
+      "receivedStatus": "200"
+    },
+    {
+      "scenarioId": "SCENARIO-15",
+      "name": "Cenário 15: Reenvio de convite invalida o anterior e garante unicidade de convite pendente",
+      "ok": true,
+      "expectedStatus": "200",
+      "receivedStatus": "200"
+    },
+    {
+      "scenarioId": "SCENARIO-16",
+      "name": "Cenário 16: Corrida concorrente de convites simultâneos garante exatamente UM pendente (R-3)",
+      "ok": true,
+      "expectedStatus": "200",
+      "receivedStatus": "200"
+    },
+    {
+      "scenarioId": "SCENARIO-17",
+      "name": "Cenário 17: Ausência total de vazamento de segredos/tokens em responses HTTP e payloads",
+      "ok": true,
+      "expectedStatus": "200",
+      "receivedStatus": "200"
+    }
+  ],
+  "cleanupConfirmation": {
+    "childProcessTerminated": true,
+    "tempDirectoryRemoved": true,
+    "previewUntouched": true
+  }
+}

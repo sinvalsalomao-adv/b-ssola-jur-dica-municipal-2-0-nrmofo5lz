@@ -1,20 +1,16 @@
 /**
- * Runner e Utilitários para Instância PocketBase Efêmera e Isolada
+ * Runner e Utilitários para Instância PocketBase Efêmera e Isolada (Segurança v4)
  *
  * Garante:
  * 1. Obtenção/execução do PocketBase com verificação estrita de SHA-256.
  * 2. Criação de diretório temporário isolado por execução (banco SQLite efêmero).
- * 3. Cópia das migrations (e hooks) do projeto para o diretório efêmero, incluindo
- *    migration efêmera exclusiva de runtime (marcador test_environment e superadmin efêmero).
- * 4. Alocação dinâmica de porta livre (127.0.0.1:dinamico).
- * 5. Verificação de healthcheck com timeout configurável.
- * 6. Guardrails de segurança antiacidente:
- *    - Base URL DEVE ser 127.0.0.1 ou localhost.
- *    - Presença obrigatória do Nonce/Marcador de ambiente efêmero (EPHEMERAL_TEST_NONCE).
- *    - Presença obrigatória do registro test_environment no banco efêmero.
- * 7. Execução dos testes com captura de logs REDIGIDOS (sem senhas/tokens vazados).
- * 8. Cleanup estrito em `finally`: encerramento do processo do PocketBase (mesmo em falha ou SIGINT/SIGTERM),
- *    remoção completa do diretório temporário e verificação de processos órfãos.
+ * 3. Criação da base efêmera a partir do CONTRATO CANÔNICO SANITIZADO (sem dados/PII/segredos do preview).
+ * 4. Verificação estrita de DRIFT entre o contrato canônico e o schema.json do projeto antes de inicializar.
+ * 5. Cópia dos hooks ativos para a instância efêmera.
+ * 6. Injeção dinâmica de Superadmin Efêmero e marcador test_environment com nonce criptográfico.
+ * 7. Alocação dinâmica de porta livre em 127.0.0.1.
+ * 8. Interceptador de destinos de rede para provar que nenhuma requisição sai para o preview/produção.
+ * 9. Cleanup estrito em `finally`: encerramento de processos órfãos e remoção completa de diretórios temporários.
  */
 
 import fs from 'node:fs'
@@ -23,6 +19,11 @@ import os from 'node:os'
 import net from 'node:net'
 import crypto from 'node:crypto'
 import { spawn, type ChildProcess } from 'node:child_process'
+import {
+  CANONICAL_SCHEMA_CONTRACT,
+  checkSchemaDrift,
+  generateCanonicalMigrationJs,
+} from './schemaContract'
 
 export interface PocketBaseBinaryConfig {
   version: string
@@ -32,12 +33,11 @@ export interface PocketBaseBinaryConfig {
   downloadUrl: string
 }
 
-// Checksum e versão fixados do PocketBase v0.26.9 (versão do SDK do projeto: pocketbase ~0.26.9 / backend PocketBase v0.26.x-0.36.x)
-// Fornecemos tabela com hashes verificados para Linux x64/arm64 e Darwin x64/arm64.
+// Checksum e versão fixados do PocketBase v0.26.9
 export const PB_KNOWN_BINARIES: Record<string, { version: string; sha256: string; url: string }> = {
   linux_x64: {
     version: '0.26.9',
-    sha256: '88db847db1da2ec550a1ffbb4fe62c0570b5550a80e1a46cf7fbc4170d4e9d0b', // official pb 0.26.9 linux amd64
+    sha256: '88db847db1da2ec550a1ffbb4fe62c0570b5550a80e1a46cf7fbc4170d4e9d0b',
     url: 'https://github.com/pocketbase/pocketbase/releases/download/v0.26.9/pocketbase_0.26.9_linux_amd64.zip',
   },
   linux_arm64: {
@@ -64,6 +64,7 @@ export interface EphemeralInstance {
   testNonce: string
   superadminEmail: string
   superadminPassword: string
+  binaryInfo: { version: string; sha256: string; source: string }
   childProcess: ChildProcess | null
   cleanup: () => Promise<void>
 }
@@ -89,7 +90,7 @@ export async function getFreePort(): Promise<number> {
 }
 
 /**
- * Calcula o hash SHA-256 de um buffer ou arquivo
+ * Calcula o hash SHA-256 de um buffer
  */
 export function calculateSha256(data: Buffer): string {
   return crypto.createHash('sha256').update(data).digest('hex')
@@ -102,19 +103,27 @@ export async function resolvePocketBaseBinary(): Promise<{
   binaryPath: string
   source: string
   version: string
+  sha256: string
 }> {
-  // 1. Verificar variável de ambiente customizada
+  // 1. Variável de ambiente customizada
   const customBin = process.env.POCKETBASE_BIN_PATH
   if (customBin && fs.existsSync(customBin)) {
     try {
       fs.accessSync(customBin, fs.constants.X_OK)
-      return { binaryPath: customBin, source: 'POCKETBASE_BIN_PATH env var', version: 'custom' }
+      const binBuffer = fs.readFileSync(customBin)
+      const sha = calculateSha256(binBuffer)
+      return {
+        binaryPath: customBin,
+        source: 'POCKETBASE_BIN_PATH env var',
+        version: 'custom',
+        sha256: sha,
+      }
     } catch {
       // continua
     }
   }
 
-  // 2. Verificar caminhos padrão do sistema operacional
+  // 2. Caminhos padrão do sistema
   const candidatePaths = [
     '/usr/local/bin/pocketbase',
     '/usr/bin/pocketbase',
@@ -127,26 +136,35 @@ export async function resolvePocketBaseBinary(): Promise<{
     if (fs.existsSync(p)) {
       try {
         fs.accessSync(p, fs.constants.X_OK)
-        return { binaryPath: p, source: `local binary at ${p}`, version: '0.26.x' }
+        const binBuffer = fs.readFileSync(p)
+        const sha = calculateSha256(binBuffer)
+        return { binaryPath: p, source: `local binary at ${p}`, version: '0.26.x', sha256: sha }
       } catch {
         // continua
       }
     }
   }
 
-  // 3. Verificar cache em pasta temporária
+  // 3. Cache em pasta temporária
   const cacheDir = path.join(os.tmpdir(), 'pocketbase_test_bin_cache')
   const cachedBinary = path.join(cacheDir, 'pocketbase')
   if (fs.existsSync(cachedBinary)) {
     try {
       fs.accessSync(cachedBinary, fs.constants.X_OK)
-      return { binaryPath: cachedBinary, source: 'cached binary in tmpdir', version: '0.26.9' }
+      const binBuffer = fs.readFileSync(cachedBinary)
+      const sha = calculateSha256(binBuffer)
+      return {
+        binaryPath: cachedBinary,
+        source: 'cached binary in tmpdir',
+        version: '0.26.9',
+        sha256: sha,
+      }
     } catch {
       // continua
     }
   }
 
-  // 4. Se não encontrar, tenta baixar e validar o checksum SHA-256 de forma estrita
+  // 4. Download seguro com verificação estrita de SHA-256
   const platform = process.platform === 'darwin' ? 'darwin' : 'linux'
   const arch = process.arch === 'arm64' ? 'arm64' : 'x64'
   const key = `${platform}_${arch}`
@@ -158,12 +176,10 @@ export async function resolvePocketBaseBinary(): Promise<{
     )
   }
 
-  // Tentar download seguro com verificação estrita de SHA-256
   try {
     fs.mkdirSync(cacheDir, { recursive: true })
     const zipPath = path.join(cacheDir, `pocketbase_${config.version}.zip`)
 
-    // Usar fetch nativo do Node 18+
     const res = await fetch(config.url)
     if (!res.ok) {
       throw new Error(`Falha HTTP ao baixar PocketBase de ${config.url}: status ${res.status}`)
@@ -172,7 +188,6 @@ export async function resolvePocketBaseBinary(): Promise<{
     const arrayBuffer = await res.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
 
-    // Validar SHA-256
     const actualHash = calculateSha256(buffer)
     if (actualHash !== config.sha256) {
       throw new Error(
@@ -182,15 +197,18 @@ export async function resolvePocketBaseBinary(): Promise<{
 
     fs.writeFileSync(zipPath, buffer)
 
-    // Descompactar arquivo seguro
     const { execSync } = await import('node:child_process')
     execSync(`unzip -o -q "${zipPath}" -d "${cacheDir}"`)
     fs.chmodSync(cachedBinary, 0o755)
 
+    const binBuffer = fs.readFileSync(cachedBinary)
+    const binSha = calculateSha256(binBuffer)
+
     return {
       binaryPath: cachedBinary,
-      source: `downloaded and verified (SHA-256: ${actualHash})`,
+      source: `downloaded and verified (ZIP SHA-256: ${actualHash})`,
       version: config.version,
+      sha256: binSha,
     }
   } catch (err: any) {
     throw new Error(
@@ -200,9 +218,22 @@ export async function resolvePocketBaseBinary(): Promise<{
 }
 
 /**
- * Cria uma instância efêmera do PocketBase em 127.0.0.1 com porta dinâmica e banco temporário
+ * Cria uma instância efêmera do PocketBase em 127.0.0.1 com porta dinâmica,
+ * schema gerado a partir do CONTRATO CANÔNICO SANITIZADO e hooks ativos do repositório.
  */
 export async function startEphemeralPocketBase(): Promise<EphemeralInstance> {
+  // 1. Verificação obrigatória de Drift antes de iniciar
+  const schemaJsonPath = path.join(process.cwd(), 'src', 'lib', 'pocketbase', 'schema.json')
+  if (fs.existsSync(schemaJsonPath)) {
+    const rawSchema = JSON.parse(fs.readFileSync(schemaJsonPath, 'utf-8'))
+    const driftCheck = checkSchemaDrift(rawSchema)
+    if (driftCheck.hasDrift) {
+      throw new Error(
+        `Drift de schema detectado entre Contrato Canônico e schema.json:\n${driftCheck.differences.join('\n')}`,
+      )
+    }
+  }
+
   const binaryInfo = await resolvePocketBaseBinary()
   const port = await getFreePort()
   const testNonce = `test_nonce_${crypto.randomBytes(16).toString('hex')}`
@@ -216,18 +247,17 @@ export async function startEphemeralPocketBase(): Promise<EphemeralInstance> {
   fs.mkdirSync(pbMigrationsDir, { recursive: true })
   fs.mkdirSync(pbHooksDir, { recursive: true })
 
-  // 1. Copiar migrations do projeto para o diretório efêmero
-  const projectMigrationsDir = path.join(process.cwd(), 'pocketbase', 'migrations')
-  if (fs.existsSync(projectMigrationsDir)) {
-    const migrationFiles = fs.readdirSync(projectMigrationsDir)
-    for (const f of migrationFiles) {
-      if (f.endsWith('.js')) {
-        fs.copyFileSync(path.join(projectMigrationsDir, f), path.join(pbMigrationsDir, f))
-      }
-    }
-  }
+  // 2. Criar a migration canônica sanitizada (0001_canonical_schema.js) no diretório efêmero
+  // Esta migration cria todo o schema sanitizado (collections, fields, indexes, RLS)
+  // SEM depender da cadeia incompleta ou de migrações ausentes no preview.
+  const canonicalMigrationContent = generateCanonicalMigrationJs()
+  fs.writeFileSync(
+    path.join(pbMigrationsDir, '0001_canonical_schema.js'),
+    canonicalMigrationContent,
+    'utf-8',
+  )
 
-  // 2. Copiar hooks do projeto para o diretório efêmero
+  // 3. Copiar hooks do projeto para o diretório efêmero
   const projectHooksDir = path.join(process.cwd(), 'pocketbase', 'hooks')
   if (fs.existsSync(projectHooksDir)) {
     const hookFiles = fs.readdirSync(projectHooksDir)
@@ -238,13 +268,13 @@ export async function startEphemeralPocketBase(): Promise<EphemeralInstance> {
     }
   }
 
-  // 3. Gerar credenciais do Superadmin Efêmero de Runtime
+  // 4. Gerar credenciais dinâmicas do Superadmin Efêmero de Runtime
   const superadminEmail = `ephemeral.superadmin.${crypto.randomBytes(6).toString('hex')}@isolated.local`
   const superadminPassword = `SuperAdm_${crypto.randomBytes(12).toString('hex')}Aa1!@#`
 
-  // 4. Inserir migration de bootstrap exclusivo do runner efêmero (NUNCA gravado no preview)
+  // 5. Inserir migration de bootstrap exclusivo do runner efêmero (0002_ephemeral_runner_init.js)
   // Cria o marcador test_environment com o nonce exclusivo e o superadmin efêmero
-  const runnerInitMigrationPath = path.join(pbMigrationsDir, '9999_ephemeral_runner_init.js')
+  const runnerInitMigrationPath = path.join(pbMigrationsDir, '0002_ephemeral_runner_init.js')
   const runnerInitContent = `
 migrate((app) => {
   // 1. Criar marcador exclusivo de ambiente de teste
@@ -346,7 +376,7 @@ migrate((app) => {
   process.on('SIGINT', () => cleanup().then(() => process.exit(1)))
   process.on('SIGTERM', () => cleanup().then(() => process.exit(1)))
 
-  // Aguardar healthcheck com timeout (5 segundos)
+  // Aguardar healthcheck com timeout (7 segundos)
   const healthCheckTimeout = 7000
   const startTime = Date.now()
   let isHealthy = false
@@ -378,6 +408,11 @@ migrate((app) => {
     testNonce,
     superadminEmail,
     superadminPassword,
+    binaryInfo: {
+      version: binaryInfo.version,
+      sha256: binaryInfo.sha256,
+      source: binaryInfo.source,
+    },
     childProcess: child,
     cleanup,
   }
