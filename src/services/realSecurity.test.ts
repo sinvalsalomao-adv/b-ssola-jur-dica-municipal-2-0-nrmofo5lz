@@ -41,9 +41,95 @@ interface SeedSnapshot {
 
 export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
   const results: Array<{ name: string; ok: boolean; detail?: string }> = []
-  const pbUrl =
-    (typeof globalThis !== 'undefined' && (globalThis as any).process?.env?.VITE_POCKETBASE_URL) ||
-    'https://bussola-juridica-municipal-0e0e1.shrd00.internal.goskip.dev'
+
+  const globalObj: any = typeof globalThis !== 'undefined' ? globalThis : {}
+  const nodeProcess: any = typeof globalObj.process !== 'undefined' ? globalObj.process : undefined
+
+  const pbUrl = (nodeProcess?.env?.TEST_POCKETBASE_URL ||
+    nodeProcess?.env?.VITE_POCKETBASE_URL ||
+    '') as string
+
+  const testNonce = (nodeProcess?.env?.EPHEMERAL_TEST_NONCE || '') as string
+
+  // =========================================================================
+  // GUARDRAILS ANTIACIDENTE OBRIGATÓRIOS (ITEM 4 DO PROBLEMA DE SEGURANÇA 4)
+  // =========================================================================
+  // 1. A base URL DEVE ser estritamente localhost ou 127.0.0.1
+  const isLocalUrl =
+    pbUrl.startsWith('http://127.0.0.1:') ||
+    pbUrl.startsWith('http://localhost:') ||
+    pbUrl.startsWith('https://127.0.0.1:') ||
+    pbUrl.startsWith('https://localhost:')
+
+  if (!isLocalUrl) {
+    const errorMsg =
+      `Bloqueio Antiacidente: A URL de teste configurada (${pbUrl || 'vazia'}) NÃO é 127.0.0.1/localhost. ` +
+      `Testes de integração com escritas/mutações NUNCA podem apontar para preview ou produção.`
+    results.push({
+      name: 'Guardrail Antiacidente: Verificação de Host Local Efêmero',
+      ok: false,
+      detail: errorMsg,
+    })
+    return { passed: false, results }
+  }
+
+  // 2. O runner DEVE fornecer um nonce/marcador de ambiente de teste correspondente
+  if (!testNonce || testNonce.length < 8) {
+    const errorMsg =
+      'Bloqueio Antiacidente: Nonce de ambiente efêmero (EPHEMERAL_TEST_NONCE) ausente ou inválido. ' +
+      'Os testes de segurança reais exigem execução controlada através do runner efêmero isolado.'
+    results.push({
+      name: 'Guardrail Antiacidente: Verificação do Nonce de Ambiente Efêmero',
+      ok: false,
+      detail: errorMsg,
+    })
+    return { passed: false, results }
+  }
+
+  // 3. Verificação do marcador test_environment exclusivo no banco antes de qualquer operação
+  try {
+    const testCheckClient = new PocketBase(pbUrl)
+    const markerRecord = await testCheckClient
+      .collection('security_audit_markers')
+      .getFirstListItem("marker_key = 'test_environment'")
+      .catch(() => null)
+
+    if (!markerRecord) {
+      const errorMsg =
+        'Bloqueio Antiacidente: O banco de dados alvo NÃO possui o registro exclusivo `test_environment` em security_audit_markers. ' +
+        'Execução abortada antes de qualquer operação de escrita para proteger bases reais.'
+      results.push({
+        name: 'Guardrail Antiacidente: Verificação de Registro test_environment no Banco Efêmero',
+        ok: false,
+        detail: errorMsg,
+      })
+      return { passed: false, results }
+    }
+
+    // Verificar se o nonce no banco confere com o nonce do processo
+    const markerDetails =
+      typeof markerRecord.details === 'string'
+        ? JSON.parse(markerRecord.details)
+        : markerRecord.details
+    if (!markerDetails || markerDetails.nonce !== testNonce) {
+      const errorMsg =
+        'Bloqueio Antiacidente: O nonce gravado no banco de dados não corresponde ao EPHEMERAL_TEST_NONCE do runner. ' +
+        'Possível conflito de instâncias ou banco inadequado.'
+      results.push({
+        name: 'Guardrail Antiacidente: Integridade de Nonce do Banco Efêmero',
+        ok: false,
+        detail: errorMsg,
+      })
+      return { passed: false, results }
+    }
+  } catch (err: any) {
+    results.push({
+      name: 'Guardrail Antiacidente: Verificação de Marcador de Ambiente de Teste',
+      ok: false,
+      detail: `Falha ao validar marcador de teste no banco: ${err?.message || err}`,
+    })
+    return { passed: false, results }
+  }
 
   async function assertTest(name: string, fn: () => Promise<boolean>) {
     try {
@@ -80,18 +166,42 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
   }
 
   // Obter credencial/token de superadmin exclusivamente de variáveis de ambiente de runtime
-  const globalObj: any = typeof globalThis !== 'undefined' ? globalThis : {}
-  const nodeProcess: any = typeof globalObj.process !== 'undefined' ? globalObj.process : undefined
-  const runtimeSuperuserToken = (nodeProcess?.env?.PB_SUPERUSER_TOKEN ||
+  const runtimeSuperuserEmail = (nodeProcess?.env?.EPHEMERAL_SUPERADMIN_EMAIL || '') as string
+  const runtimeSuperuserPassword = (nodeProcess?.env?.EPHEMERAL_SUPERADMIN_PASSWORD || '') as string
+  let runtimeSuperuserToken = (nodeProcess?.env?.PB_SUPERUSER_TOKEN ||
     nodeProcess?.env?.SUPERUSER_TOKEN ||
     nodeProcess?.env?.POCKETBASE_SUPERADMIN_TOKEN ||
-    (typeof import.meta !== 'undefined' && (import.meta as any).env?.PB_SUPERUSER_TOKEN) ||
-    (typeof import.meta !== 'undefined' && (import.meta as any).env?.SUPERUSER_TOKEN) ||
     '') as string
+
+  // Se o runner passou email e password efêmeros, realiza autenticação via PocketBase
+  if (!runtimeSuperuserToken && runtimeSuperuserEmail && runtimeSuperuserPassword) {
+    try {
+      const authSetupClient = new PocketBase(pbUrl)
+      // Tenta superusers auth ou fallback de coleção users
+      try {
+        const authData = await (authSetupClient as any).admins?.authWithPassword(
+          runtimeSuperuserEmail,
+          runtimeSuperuserPassword,
+        )
+        if (authData?.token) {
+          runtimeSuperuserToken = authData.token
+        }
+      } catch {
+        const authData = await authSetupClient
+          .collection('users')
+          .authWithPassword(runtimeSuperuserEmail, runtimeSuperuserPassword)
+        if (authData?.token) {
+          runtimeSuperuserToken = authData.token
+        }
+      }
+    } catch (authErr: any) {
+      // continua para checagem abaixo
+    }
+  }
 
   if (!runtimeSuperuserToken) {
     const missingTokenError =
-      'Falha de execução: Credencial de runtime de superadmin (PB_SUPERUSER_TOKEN) não fornecida no ambiente. Nenhuma credencial fixa ou fallback é permitida.'
+      'Falha de execução: Credencial de runtime de superadmin (EPHEMERAL_SUPERADMIN_* ou PB_SUPERUSER_TOKEN) não fornecida no ambiente efêmero.'
     results.push({
       name: 'Setup de Autoridade Privilegiada (Superadmin de Runtime)',
       ok: false,

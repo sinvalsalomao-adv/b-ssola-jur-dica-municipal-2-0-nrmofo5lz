@@ -278,8 +278,7 @@ routerAdd(
           })
 
           const appOrigin =
-            $os.getenv('PUBLIC_URL') ||
-            'https://bussola-juridica-municipal-0e0e1.shrd00.internal.goskip.dev'
+            $os.getenv('PUBLIC_URL') || $os.getenv('APP_URL') || 'http://localhost:5173'
           const inviteUrl = appOrigin + '/convite#token=' + rawToken
           const subject = '[Bússola Jurídica] Convite de Acesso Municipal'
           const html =
