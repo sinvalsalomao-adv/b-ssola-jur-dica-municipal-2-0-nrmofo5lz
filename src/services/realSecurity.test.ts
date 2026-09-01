@@ -667,7 +667,10 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
         })
 
         const tInvs = await tangaraAdminClient.collection('invitations').getFullList({
-          filter: `tenant = "${tangaraTenantId}" && email = "${tangaraEmail}" && status = "pending"`,
+          filter: tangaraAdminClient.filter(
+            'tenant = {:tenantId} && email = {:email} && status = "pending"',
+            { tenantId: tangaraTenantId, email: tangaraEmail },
+          ),
         })
         if (tInvs.length === 0) return false
         const tangaraInvId = tInvs[0].id
@@ -720,7 +723,10 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
         })
 
         const invs = await floraniaAdminClient.collection('invitations').getFullList({
-          filter: `tenant = "${floraniaTenantId}" && email = "${targetEmail}" && status = "pending"`,
+          filter: floraniaAdminClient.filter(
+            'tenant = {:tenantId} && email = {:email} && status = "pending"',
+            { tenantId: floraniaTenantId, email: targetEmail },
+          ),
         })
         if (invs.length === 0) return false
         const invId = invs[0].id
@@ -796,7 +802,10 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
         })
 
         const pendingInvs = await tangaraAdminClient.collection('invitations').getFullList({
-          filter: `tenant = "${tangaraTenantId}" && email = "${ephemeralFloraniaServidorEmail}" && status = "pending"`,
+          filter: tangaraAdminClient.filter(
+            'tenant = {:tenantId} && email = {:email} && status = "pending"',
+            { tenantId: tangaraTenantId, email: ephemeralFloraniaServidorEmail },
+          ),
           sort: '-created',
         })
         if (pendingInvs.length === 0) return false
@@ -822,7 +831,9 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
         const tangaraMems = await floraniaServidorClient
           .collection('user_memberships')
           .getFullList({
-            filter: `tenant = "${tangaraTenantId}"`,
+            filter: floraniaServidorClient.filter('tenant = {:tenantId}', {
+              tenantId: tangaraTenantId,
+            }),
           })
         const tangaraIsActive = tangaraMems.length === 1 && tangaraMems[0].status === 'ativo'
 
@@ -881,7 +892,10 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
         })
 
         const invs = await floraniaAdminClient.collection('invitations').getFullList({
-          filter: `tenant = "${floraniaTenantId}" && email = "${declineEmail}" && status = "pending"`,
+          filter: floraniaAdminClient.filter(
+            'tenant = {:tenantId} && email = {:email} && status = "pending"',
+            { tenantId: floraniaTenantId, email: declineEmail },
+          ),
         })
         if (invs.length === 0) return false
         const invId = invs[0].id
@@ -901,7 +915,9 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
         })
 
         const mems = await declineClient.collection('user_memberships').getFullList({
-          filter: `tenant = "${floraniaTenantId}"`,
+          filter: declineClient.filter('tenant = {:tenantId}', {
+            tenantId: floraniaTenantId,
+          }),
         })
         const notActive = mems.every((m) => m.status !== 'ativo')
 
@@ -939,16 +955,22 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
         })
 
         const pendingInvs = await floraniaAdminClient.collection('invitations').getFullList({
-          filter: `tenant = "${floraniaTenantId}" && email = "${resendEmail}" && status = "pending"`,
+          filter: floraniaAdminClient.filter(
+            'tenant = {:tenantId} && email = {:email} && status = "pending"',
+            { tenantId: floraniaTenantId, email: resendEmail },
+          ),
         })
 
         const totalInvs = await floraniaAdminClient.collection('invitations').getFullList({
-          filter: `tenant = "${floraniaTenantId}" && email = "${resendEmail}"`,
+          filter: floraniaAdminClient.filter('tenant = {:tenantId} && email = {:email}', {
+            tenantId: floraniaTenantId,
+            email: resendEmail,
+          }),
         })
         totalInvs.forEach((i) => ephemeralInvitationIdsToClean.push(i.id))
 
         const userInvs = await floraniaAdminClient.collection('users').getFullList({
-          filter: `email = "${resendEmail}"`,
+          filter: floraniaAdminClient.filter('email = {:email}', { email: resendEmail }),
         })
         if (userInvs.length > 0) ephemeralUserIdsToClean.push(userInvs[0].id)
 
@@ -990,16 +1012,22 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
         await Promise.all([p1, p2])
 
         const pendingInvs = await floraniaAdminClient.collection('invitations').getFullList({
-          filter: `tenant = "${floraniaTenantId}" && email = "${raceEmail}" && status = "pending"`,
+          filter: floraniaAdminClient.filter(
+            'tenant = {:tenantId} && email = {:email} && status = "pending"',
+            { tenantId: floraniaTenantId, email: raceEmail },
+          ),
         })
 
         const allInvs = await floraniaAdminClient.collection('invitations').getFullList({
-          filter: `tenant = "${floraniaTenantId}" && email = "${raceEmail}"`,
+          filter: floraniaAdminClient.filter('tenant = {:tenantId} && email = {:email}', {
+            tenantId: floraniaTenantId,
+            email: raceEmail,
+          }),
         })
         allInvs.forEach((i) => ephemeralInvitationIdsToClean.push(i.id))
 
         const userRecs = await floraniaAdminClient.collection('users').getFullList({
-          filter: `email = "${raceEmail}"`,
+          filter: floraniaAdminClient.filter('email = {:email}', { email: raceEmail }),
         })
         if (userRecs.length > 0) ephemeralUserIdsToClean.push(userRecs[0].id)
 
@@ -1063,7 +1091,7 @@ export async function runRealSecurityTests(): Promise<RealSecurityTestResult> {
         }
         try {
           const uMems = await superadminClient.collection('user_memberships').getFullList({
-            filter: `user = "${uId}"`,
+            filter: superadminClient.filter('user = {:userId}', { userId: uId }),
           })
           for (const m of uMems) {
             try {
