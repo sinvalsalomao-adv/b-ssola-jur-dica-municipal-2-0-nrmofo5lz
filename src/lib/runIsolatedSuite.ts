@@ -423,8 +423,11 @@ export async function runIsolatedIntegrationSuite(): Promise<{
     fs.rmSync(tempArtifactDir, { recursive: true, force: true })
 
     console.log(`📄 Artefato gerado e movido atomicamente para: ${finalArtifactPath}`)
-    console.log(`[ISOLATED_SUITE_EXECUTION_COMPLETE] nonce=${report.securityMarkers.testNonceShortHash} port=${report.network.portMasked} duration=${report.summary.durationMs}ms total=${report.summary.totalScenarios} passed=${report.summary.passedScenarios} exit=${report.summary.exitCode}`)
-  } else {    if (fs.existsSync(finalArtifactPath)) {
+    console.log(
+      `[ISOLATED_SUITE_EXECUTION_COMPLETE] nonce=${report.securityMarkers.testNonceShortHash} port=${report.network.portMasked} duration=${report.summary.durationMs}ms total=${report.summary.totalScenarios} passed=${report.summary.passedScenarios} exit=${report.summary.exitCode}`,
+    )
+  } else {
+    if (fs.existsSync(finalArtifactPath)) {
       fs.unlinkSync(finalArtifactPath)
     }
     console.warn(
