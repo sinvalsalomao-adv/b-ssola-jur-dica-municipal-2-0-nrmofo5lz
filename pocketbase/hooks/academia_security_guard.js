@@ -281,7 +281,7 @@ onRecordCreateRequest((e) => {
   // Validate that associated secretaria belongs strictly to the same tenant
   if (secretariaId) {
     try {
-      const secRec = $app.findFirstRecordByData('secretarias', 'id', secretariaId)
+      const secRec = $app.findRecordById('secretarias', secretariaId)
       if (!secRec || secRec.getString('tenant') !== targetTenant) {
         return e.json(400, {
           code: 400,
@@ -379,7 +379,7 @@ onRecordUpdateRequest((e) => {
 
   if (targetSecretaria) {
     try {
-      const secRec = $app.findFirstRecordByData('secretarias', 'id', targetSecretaria)
+      const secRec = $app.findRecordById('secretarias', targetSecretaria)
       if (!secRec || secRec.getString('tenant') !== originalTenant) {
         return e.json(400, {
           code: 400,
@@ -544,40 +544,50 @@ onRecordCreateRequest((e) => {
 
   // 2. Validate group belongs to targetTenant
   try {
-    const groupRec = $app.findFirstRecordByData('education_groups', 'id', targetGroupId)
+    const groupRec = $app.findRecordById('education_groups', targetGroupId)
     if (!groupRec || groupRec.getString('tenant') !== targetTenant) {
       return e.json(400, {
         code: 400,
-        message: 'O grupo educacional informado é inválido ou de outro município.',
+        message: 'Não foi possível associar o membro ao grupo informado.',
       })
     }
   } catch (_) {
     return e.json(400, {
       code: 400,
-      message: 'Grupo educacional não encontrado.',
+      message: 'Não foi possível associar o membro ao grupo informado.',
     })
   }
 
-  // 3. Validate user belongs to targetTenant with status 'ativo' (no foreign or inactive or tenantless user)
+  // 3. Validate user exists and belongs to targetTenant with status 'ativo' (no foreign or inactive or tenantless user)
   let isUserActiveInTenant = false
   try {
-    const memFilter = "user = {:userId} && tenant = {:tenantId} && status = 'ativo'"
-    const memParams = { userId: targetUserId, tenantId: targetTenant }
-    const userMems = $app.findRecordsByFilter('user_memberships', memFilter, '', 1, 0, memParams)
-    if (userMems.length > 0) {
+    const uRec = $app.findRecordById('users', targetUserId)
+    if (!uRec) {
+      return e.json(400, {
+        code: 400,
+        message: 'Não foi possível associar o membro ao grupo informado.',
+      })
+    }
+
+    const uTenant = uRec.getString('tenant')
+    const uStatus = uRec.getString('status')
+    if (uTenant && uTenant === targetTenant && uStatus === 'ativo') {
       isUserActiveInTenant = true
     } else {
-      // Fallback check on users record
-      const uRec = $app.findFirstRecordByData('users', 'id', targetUserId)
-      if (
-        uRec &&
-        uRec.getString('tenant') === targetTenant &&
-        uRec.getString('status') === 'ativo'
-      ) {
+      // Check active membership in user_memberships
+      const memFilter = "user = {:userId} && tenant = {:tenantId} && status = 'ativo'"
+      const memParams = { userId: targetUserId, tenantId: targetTenant }
+      const userMems = $app.findRecordsByFilter('user_memberships', memFilter, '', 1, 0, memParams)
+      if (userMems.length > 0) {
         isUserActiveInTenant = true
       }
     }
-  } catch (_) {}
+  } catch (_) {
+    return e.json(400, {
+      code: 400,
+      message: 'Não foi possível associar o membro ao grupo informado.',
+    })
+  }
 
   if (!isUserActiveInTenant) {
     return e.json(400, {
@@ -607,7 +617,7 @@ onRecordAfterCreateSuccess((e) => {
 
   let targetUserName = 'Usuário'
   try {
-    const uRec = $app.findFirstRecordByData('users', 'id', targetUserId)
+    const uRec = $app.findRecordById('users', targetUserId)
     targetUserName = uRec.getString('name') || uRec.getString('email') || 'Usuário'
   } catch (_) {}
 
@@ -682,7 +692,7 @@ onRecordAfterDeleteSuccess((e) => {
 
   let targetUserName = 'Usuário'
   try {
-    const uRec = $app.findFirstRecordByData('users', 'id', targetUserId)
+    const uRec = $app.findRecordById('users', targetUserId)
     targetUserName = uRec.getString('name') || uRec.getString('email') || 'Usuário'
   } catch (_) {}
 

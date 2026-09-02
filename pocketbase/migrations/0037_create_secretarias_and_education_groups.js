@@ -201,6 +201,7 @@ migrate(
     }
   },
   (app) => {
+    // 1. Reverter exclusão de coleções
     try {
       const c1 = app.findCollectionByNameOrId('education_group_members')
       app.delete(c1)
@@ -212,6 +213,31 @@ migrate(
     try {
       const c3 = app.findCollectionByNameOrId('secretarias')
       app.delete(c3)
+    } catch (_) {}
+
+    // 2. Reverter os 8 action_type adicionados a audit_logs, preservando os valores históricos anteriores
+    try {
+      const auditLogsCol = app.findCollectionByNameOrId('audit_logs')
+      const actionTypeField = auditLogsCol.fields.getByName('action_type')
+      if (actionTypeField && actionTypeField.values) {
+        const addedTypes = [
+          'Criou secretaria',
+          'Editou secretaria',
+          'Excluiu secretaria',
+          'Criou grupo educacional',
+          'Editou grupo educacional',
+          'Excluiu grupo educacional',
+          'Adicionou membro ao grupo',
+          'Removeu membro do grupo',
+        ]
+        const filteredValues = actionTypeField.values.filter(
+          (val) => addedTypes.indexOf(val) === -1,
+        )
+        if (filteredValues.length !== actionTypeField.values.length) {
+          actionTypeField.values = filteredValues
+          app.save(auditLogsCol)
+        }
+      }
     } catch (_) {}
   },
 )
