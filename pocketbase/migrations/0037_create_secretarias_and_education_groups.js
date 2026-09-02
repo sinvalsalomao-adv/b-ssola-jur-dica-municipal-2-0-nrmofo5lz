@@ -201,41 +201,57 @@ migrate(
     }
   },
   (app) => {
-    // 1. Reverter exclusão de coleções
+    // Helper para buscar por múltiplos casings
+    const findCol = (name1, name2) => {
+      try {
+        return app.findCollectionByNameOrId(name1)
+      } catch (_) {
+        if (name2) {
+          try {
+            return app.findCollectionByNameOrId(name2)
+          } catch (_) {}
+        }
+        return null
+      }
+    }
+
+    // 1. Reverter exclusão de coleções na ordem correta de dependência
     try {
-      const c1 = app.findCollectionByNameOrId('education_group_members')
-      app.delete(c1)
+      const c1 = findCol('education_group_members', 'Education_group_members')
+      if (c1) app.delete(c1)
     } catch (_) {}
     try {
-      const c2 = app.findCollectionByNameOrId('education_groups')
-      app.delete(c2)
+      const c2 = findCol('education_groups', 'Education_groups')
+      if (c2) app.delete(c2)
     } catch (_) {}
     try {
-      const c3 = app.findCollectionByNameOrId('secretarias')
-      app.delete(c3)
+      const c3 = findCol('secretarias', 'Secretarias')
+      if (c3) app.delete(c3)
     } catch (_) {}
 
     // 2. Reverter os 8 action_type adicionados a audit_logs, preservando os valores históricos anteriores
     try {
-      const auditLogsCol = app.findCollectionByNameOrId('audit_logs')
-      const actionTypeField = auditLogsCol.fields.getByName('action_type')
-      if (actionTypeField && actionTypeField.values) {
-        const addedTypes = [
-          'Criou secretaria',
-          'Editou secretaria',
-          'Excluiu secretaria',
-          'Criou grupo educacional',
-          'Editou grupo educacional',
-          'Excluiu grupo educacional',
-          'Adicionou membro ao grupo',
-          'Removeu membro do grupo',
-        ]
-        const filteredValues = actionTypeField.values.filter(
-          (val) => addedTypes.indexOf(val) === -1,
-        )
-        if (filteredValues.length !== actionTypeField.values.length) {
-          actionTypeField.values = filteredValues
-          app.save(auditLogsCol)
+      const auditLogsCol = findCol('audit_logs', 'Audit_logs')
+      if (auditLogsCol) {
+        const actionTypeField = auditLogsCol.fields.getByName('action_type')
+        if (actionTypeField && actionTypeField.values) {
+          const addedTypes = [
+            'Criou secretaria',
+            'Editou secretaria',
+            'Excluiu secretaria',
+            'Criou grupo educacional',
+            'Editou grupo educacional',
+            'Excluiu grupo educacional',
+            'Adicionou membro ao grupo',
+            'Removeu membro do grupo',
+          ]
+          const filteredValues = actionTypeField.values.filter(
+            (val) => addedTypes.indexOf(val) === -1,
+          )
+          if (filteredValues.length !== actionTypeField.values.length) {
+            actionTypeField.values = filteredValues
+            app.save(auditLogsCol)
+          }
         }
       }
     } catch (_) {}
