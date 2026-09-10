@@ -200,7 +200,7 @@ export default function AcademiaGroupsManager() {
     setSelectedGroup(grp)
     setLoadingMembers(true)
     try {
-      const members = await getGroupMembers(grp.id)
+      const members = await getGroupMembers(grp.id, selectedTenantId || grp.tenant)
       setGroupMembers(members)
     } catch (err) {
       toast.error('Erro ao listar membros do grupo: ' + sanitizeError(err).message)

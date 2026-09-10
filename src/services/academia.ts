@@ -10,13 +10,26 @@ import type {
   AddGroupMemberData,
 } from '@/types/academia'
 
+// --- HELPERS ---
+
+function getTenantQueryParams(tenantId?: string): { tenant: string } | undefined {
+  if (!tenantId) return undefined
+  const authRecord = pb.authStore.record
+  if (authRecord && authRecord.role === 'superadmin') {
+    return { tenant: tenantId }
+  }
+  return undefined
+}
+
 // --- SECRETARIAS ---
 
 export async function getSecretariasByTenant(tenantId: string): Promise<SecretariaRecord[]> {
   if (!tenantId) return []
+  const query = getTenantQueryParams(tenantId)
   return pb.collection('secretarias').getFullList<SecretariaRecord>({
     filter: pb.filter('tenant = {:tenantId}', { tenantId }),
     sort: 'nome',
+    ...(query ? { query } : {}),
   })
 }
 
@@ -44,10 +57,12 @@ export async function getEducationGroupsByTenant(
   tenantId: string,
 ): Promise<EducationGroupRecord[]> {
   if (!tenantId) return []
+  const query = getTenantQueryParams(tenantId)
   return pb.collection('education_groups').getFullList<EducationGroupRecord>({
     filter: pb.filter('tenant = {:tenantId}', { tenantId }),
     expand: 'secretaria',
     sort: 'nome',
+    ...(query ? { query } : {}),
   })
 }
 
@@ -74,12 +89,17 @@ export async function deleteEducationGroup(id: string): Promise<boolean> {
 
 // --- GROUP MEMBERS ---
 
-export async function getGroupMembers(groupId: string): Promise<EducationGroupMemberRecord[]> {
+export async function getGroupMembers(
+  groupId: string,
+  tenantId?: string,
+): Promise<EducationGroupMemberRecord[]> {
   if (!groupId) return []
+  const query = getTenantQueryParams(tenantId)
   return pb.collection('education_group_members').getFullList<EducationGroupMemberRecord>({
     filter: pb.filter('group = {:groupId}', { groupId }),
     expand: 'user',
     sort: '-created',
+    ...(query ? { query } : {}),
   })
 }
 
@@ -94,10 +114,12 @@ export async function getUserGroupMemberships(
     filterStr += ' && tenant = {:tenantId}'
     params.tenantId = tenantId
   }
+  const query = getTenantQueryParams(tenantId)
   return pb.collection('education_group_members').getFullList<EducationGroupMemberRecord>({
     filter: pb.filter(filterStr, params),
     expand: 'group,group.secretaria',
     sort: '-created',
+    ...(query ? { query } : {}),
   })
 }
 
