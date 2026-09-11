@@ -3,8 +3,10 @@ import { normalizeNotification } from '@/services/controle'
 import type { NotificationItem } from '@/types/controle'
 
 function enrichNotification(r: any): NotificationItem {
+  const base = normalizeNotification(r)
   return {
-    ...normalizeNotification(r),
+    ...base,
+    projectId: base.projetoId,
     deliveryStatus: r.delivery_status || 'enviada',
     scheduledFor: r.scheduled_for || '',
     deliveredAt: r.delivered_at || '',
@@ -21,11 +23,15 @@ function enrichNotification(r: any): NotificationItem {
 }
 
 export const getUnreadNotifications = async (
-  tenantId: string,
+  tenantId?: string,
   limit = 5,
 ): Promise<NotificationItem[]> => {
+  const filterParts = [`lida = false`, `delivery_status = 'enviada'`]
+  if (tenantId && tenantId !== 'all') {
+    filterParts.push(`tenant = "${tenantId}"`)
+  }
   const result = await pb.collection('notifications').getList(1, limit, {
-    filter: `tenant = "${tenantId}" && lida = false && delivery_status = 'enviada'`,
+    filter: filterParts.join(' && '),
     sort: '-created',
     expand: 'tenant',
   })
@@ -33,23 +39,30 @@ export const getUnreadNotifications = async (
 }
 
 export const getNotificationsPaginated = async (
-  tenantId: string,
+  tenantId: string | undefined,
   page: number,
   perPage: number,
-  filters?: { tipo?: string; lida?: string; role?: string },
+  filters?: { tipo?: string; lida?: string; role?: string; targetUser?: string },
 ) => {
-  let filter = `tenant = "${tenantId}"`
+  const filterParts: string[] = []
+  if (tenantId && tenantId !== 'all') {
+    filterParts.push(`tenant = "${tenantId}"`)
+  }
   if (filters?.role === 'servidor') {
-    filter += ` && delivery_status = 'enviada'`
+    filterParts.push(`delivery_status = 'enviada'`)
   }
   if (filters?.tipo && filters.tipo !== 'Todos') {
-    filter += ` && tipo = "${filters.tipo}"`
+    filterParts.push(`tipo = "${filters.tipo}"`)
   }
   if (filters?.lida && filters.lida !== 'Todos') {
-    filter += ` && lida = ${filters.lida === 'true' ? 'true' : 'false'}`
+    filterParts.push(`lida = ${filters.lida === 'true' ? 'true' : 'false'}`)
   }
+  if (filters?.targetUser) {
+    filterParts.push(`target_user = "${filters.targetUser}"`)
+  }
+  const filter = filterParts.join(' && ')
   const result = await pb.collection('notifications').getList(page, perPage, {
-    filter,
+    filter: filter || undefined,
     sort: '-created',
     expand: 'tenant',
   })
@@ -62,9 +75,13 @@ export const getNotificationsPaginated = async (
   }
 }
 
-export const getUnreadNotificationsCount = async (tenantId: string): Promise<number> => {
+export const getUnreadNotificationsCount = async (tenantId?: string): Promise<number> => {
+  const filterParts = [`lida = false`, `delivery_status = 'enviada'`]
+  if (tenantId && tenantId !== 'all') {
+    filterParts.push(`tenant = "${tenantId}"`)
+  }
   const result = await pb.collection('notifications').getList(1, 1, {
-    filter: `tenant = "${tenantId}" && lida = false && delivery_status = 'enviada'`,
+    filter: filterParts.join(' && '),
   })
   return result.totalItems
 }
@@ -95,9 +112,13 @@ export const markNotificationAsRead = async (id: string, userId?: string, tenant
   return pb.collection('notifications').update(id, { lida: true })
 }
 
-export const markAllNotificationsAsRead = async (tenantId: string) => {
+export const markAllNotificationsAsRead = async (tenantId?: string) => {
+  const filterParts = [`lida = false`, `delivery_status = 'enviada'`]
+  if (tenantId && tenantId !== 'all') {
+    filterParts.push(`tenant = "${tenantId}"`)
+  }
   const records = await pb.collection('notifications').getFullList({
-    filter: `tenant = "${tenantId}" && lida = false && delivery_status = 'enviada'`,
+    filter: filterParts.join(' && '),
   })
   await Promise.all(records.map((r) => pb.collection('notifications').update(r.id, { lida: true })))
 }

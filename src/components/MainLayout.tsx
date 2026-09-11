@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   KanbanSquare,
   FileText,
-  Gauge,
   GraduationCap,
   Users,
   Compass,
@@ -12,7 +11,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Bell,
-  Search,
   Shield,
   BarChart3,
   Settings,
@@ -20,6 +18,8 @@ import {
   User as UserIcon,
   History,
   UserRoundCog,
+  BookOpen,
+  ChevronRight as BreadcrumbSeparator,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
@@ -83,18 +83,18 @@ export const MainLayout: React.FC = () => {
   const isAdminOrSuperadmin = isSuperadmin || user?.role === 'admin'
 
   const navItems = [
-    { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+    { label: 'Visão Geral', path: '/dashboard', icon: LayoutDashboard, exact: true },
     { label: 'Bússola', path: '/bussola', icon: KanbanSquare },
-    { label: 'Central de Controle', path: '/controle', icon: Gauge },
     { label: 'DFDs', path: '/dfds', icon: FileText },
-    { label: 'Educação', path: '/educacao', icon: GraduationCap },
+    { label: 'Educação', path: '/educacao', icon: GraduationCap, exact: true },
+    { label: 'Academia', path: '/academia', icon: BookOpen },
+    { label: 'Notificações', path: '/notificacoes', icon: Bell },
     ...(isAdminOrSuperadmin ? [{ label: 'Usuários', path: '/usuarios', icon: Users }] : []),
-    ...(isSuperadmin ? [{ label: 'Superadmin', path: '/superadmin', icon: Shield }] : []),
     ...(isAdminOrSuperadmin ? [{ label: 'Relatórios', path: '/relatorios', icon: BarChart3 }] : []),
-    ...(user?.role === 'admin'
+    ...(isAdminOrSuperadmin
       ? [{ label: 'Logs de Auditoria', path: '/audit-logs', icon: History }]
       : []),
-    { label: 'Notificações', path: '/notificacoes', icon: Bell },
+    ...(isSuperadmin ? [{ label: 'Superadmin', path: '/superadmin', icon: Shield }] : []),
     ...(isAdminOrSuperadmin
       ? [{ label: 'Configurações', path: '/configuracoes', icon: Settings }]
       : []),
@@ -102,20 +102,21 @@ export const MainLayout: React.FC = () => {
   ]
 
   const pageTitles: Record<string, string> = {
-    '/': 'Dashboard',
-    '/dashboard': 'Dashboard',
-    '/bussola': 'Bússola',
-    '/controle': 'Central de Controle',
+    '/': 'Visão Geral',
+    '/dashboard': 'Visão Geral',
+    '/bussola': 'Bússola (Kanban de Projetos)',
+    '/controle': 'Visão Geral',
     '/dfds': 'Diagramas de Fluxo de Dados (DFDs)',
-    '/educacao': 'Módulo de Educação',
+    '/educacao': 'Módulo de Educação (Cursos e Trilhas)',
     '/educacao/grupos': 'Academia — Gestão de Grupos de Acesso',
+    '/academia': 'Academia — Grupos de Acesso e Secretarias',
     '/usuarios': 'Gestão de Usuários',
     '/novo-dfd': 'Novo DFD',
     '/superadmin': 'Painel do Superadministrador',
     '/relatorios': 'Relatórios Comparativos',
-    '/notificacoes': 'Notificações',
+    '/notificacoes': 'Central de Notificações',
     '/audit-logs': 'Logs de Auditoria',
-    '/configuracoes': 'Configurações',
+    '/configuracoes': 'Configurações do Sistema',
     '/perfil': 'Meu Perfil',
   }
 
@@ -127,8 +128,15 @@ export const MainLayout: React.FC = () => {
         const Icon = item.icon
         const isActive =
           location.pathname === item.path ||
-          (item.path === '/dashboard' && location.pathname === '/') ||
-          (item.path === '/dfds' && location.pathname === '/novo-dfd')
+          (item.path === '/dashboard' &&
+            (location.pathname === '/' || location.pathname === '/controle')) ||
+          (item.path === '/academia' &&
+            (location.pathname === '/educacao/grupos' || location.pathname === '/academia')) ||
+          (item.path === '/dfds' &&
+            (location.pathname === '/novo-dfd' || location.pathname.startsWith('/dfds/'))) ||
+          (!item.exact &&
+            item.path !== '/dashboard' &&
+            location.pathname.startsWith(item.path + '/'))
 
         const linkContent = (
           <Link
@@ -335,6 +343,16 @@ export const MainLayout: React.FC = () => {
 
           {/* Main Body */}
           <main className="flex-1 p-4 md:p-6 overflow-x-hidden">
+            {/* Breadcrumbs simples */}
+            {location.pathname !== '/' && location.pathname !== '/dashboard' && (
+              <div className="mb-4 flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
+                <Link to="/dashboard" className="hover:text-primary transition-colors">
+                  Início
+                </Link>
+                <BreadcrumbSeparator className="w-3.5 h-3.5 text-gray-400" />
+                <span className="font-medium text-foreground">{currentTitle}</span>
+              </div>
+            )}
             <Outlet />
           </main>
         </div>

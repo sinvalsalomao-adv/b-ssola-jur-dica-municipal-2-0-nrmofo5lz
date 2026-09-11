@@ -69,18 +69,22 @@ export const cancelRecurringNotification = async (id: string) => {
 }
 
 export const getAuditLogsPaginated = async (
-  tenantId: string,
+  tenantId: string | undefined,
   page: number,
   perPage: number,
   search?: string,
 ) => {
-  let filter = `tenant = "${tenantId}"`
+  const filterParts: string[] = []
+  if (tenantId && tenantId !== 'all') {
+    filterParts.push(`tenant = "${tenantId}"`)
+  }
   if (search && search.trim()) {
     const s = search.trim()
-    filter += ` && (user_name ~ "${s}" || action_type ~ "${s}")`
+    filterParts.push(`(user_name ~ "${s}" || action_type ~ "${s}" || description ~ "${s}")`)
   }
+  const filter = filterParts.join(' && ')
   const result = await pb.collection('audit_logs').getList(page, perPage, {
-    filter,
+    filter: filter || undefined,
     sort: '-created',
   })
   return {

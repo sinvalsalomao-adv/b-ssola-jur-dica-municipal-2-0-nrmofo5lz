@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Toaster } from '@/components/ui/toaster'
 import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -21,7 +21,10 @@ import ConvitePage from '@/pages/ConvitePage'
 import Dashboard from '@/pages/Dashboard'
 
 import BussolaKanban from '@/pages/BussolaKanban'
-import ControlePage from '@/pages/ControlePage'
+function ControleRedirect() {
+  const location = useLocation()
+  return <Navigate to={`/dashboard${location.search}${location.hash}`} replace />
+}
 import DfdsPage from '@/pages/DfdsPage'
 import DfdDetailPage from '@/pages/DfdDetailPage'
 import NovoDfdPage from '@/pages/NovoDfdPage'
@@ -57,21 +60,57 @@ const App = () => (
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
                   <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/bussola" element={<BussolaKanban />} />
-                  <Route path="/controle" element={<ControlePage />} />
+                  <Route path="/controle" element={<ControleRedirect />} />
                   <Route path="/dfds" element={<DfdsPage />} />
                   <Route path="/dfds/:id" element={<DfdDetailPage />} />
                   <Route path="/novo-dfd" element={<NovoDfdPage />} />
                   <Route path="/educacao" element={<EducacaoPage />} />
                   <Route path="/educacao/grupos" element={<AcademiaGroupsManager />} />
+                  <Route path="/academia" element={<AcademiaGroupsManager />} />
                   <Route path="/educacao/trilha/:id" element={<TrackDetailPage />} />
                   <Route path="/educacao/trilha/:id/quiz" element={<QuizPage />} />
-                  <Route path="/usuarios" element={<UsuariosPage />} />
-                  <Route path="/relatorios" element={<RelatoriosPage />} />
+                  <Route
+                    path="/usuarios"
+                    element={
+                      <ProtectedRoute allowedRoles={['admin', 'superadmin']}>
+                        <UsuariosPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/relatorios"
+                    element={
+                      <ProtectedRoute allowedRoles={['admin', 'superadmin']}>
+                        <RelatoriosPage />
+                      </ProtectedRoute>
+                    }
+                  />
                   <Route path="/notificacoes" element={<NotificacoesPage />} />
-                  <Route path="/configuracoes" element={<ConfiguracoesPage />} />
+                  <Route
+                    path="/configuracoes"
+                    element={
+                      <ProtectedRoute allowedRoles={['admin', 'superadmin']}>
+                        <ConfiguracoesPage />
+                      </ProtectedRoute>
+                    }
+                  />
                   <Route path="/perfil" element={<PerfilPage />} />
-                  <Route path="/audit-logs" element={<AdminAuditLogsPage />} />
-                  <Route path="/superadmin" element={<SuperadminPage />} />
+                  <Route
+                    path="/audit-logs"
+                    element={
+                      <ProtectedRoute allowedRoles={['admin', 'superadmin']}>
+                        <AdminAuditLogsPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/superadmin"
+                    element={
+                      <ProtectedRoute allowedRoles={['superadmin']}>
+                        <SuperadminPage />
+                      </ProtectedRoute>
+                    }
+                  />
                 </Route>
                 <Route path="*" element={<NotFound />} />
               </Routes>

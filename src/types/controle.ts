@@ -15,6 +15,7 @@ export interface NotificationItem {
   mensagem?: string
   lida?: boolean
   projetoId?: string
+  projectId?: string
   deliveryStatus?: DeliveryStatus
   scheduledFor?: string
   deliveredAt?: string

@@ -3,8 +3,14 @@ import { Loader2 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { ReactNode } from 'react'
 
-export function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { isAuthenticated, loading } = useAuth()
+export function ProtectedRoute({
+  children,
+  allowedRoles,
+}: {
+  children?: ReactNode
+  allowedRoles?: string[]
+}) {
+  const { isAuthenticated, loading, user } = useAuth()
 
   if (loading) {
     return (
@@ -15,6 +21,10 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
   }
 
   if (!isAuthenticated) return <Navigate to="/login" replace />
+
+  if (allowedRoles && allowedRoles.length > 0 && user?.role && !allowedRoles.includes(user.role)) {
+    return <Navigate to="/dashboard" replace />
+  }
 
   return <>{children}</>
 }

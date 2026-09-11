@@ -130,6 +130,28 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
             window.dispatchEvent(new CustomEvent('openProjectSidePanelTab', { detail: { tab } }))
           }, 50)
         }
+      } else {
+        // Se ainda não estava carregado na lista local ou foi aberto antes do fetch concluir
+        import('@/services/projects')
+          .then(({ getProjects }) => {
+            getProjects()
+              .then((all) => {
+                const found = all.find((p) => p.id === projectId)
+                if (found) {
+                  setSelectedProject(found)
+                  setIsSidePanelOpen(true)
+                  if (tab) {
+                    setTimeout(() => {
+                      window.dispatchEvent(
+                        new CustomEvent('openProjectSidePanelTab', { detail: { tab } }),
+                      )
+                    }, 50)
+                  }
+                }
+              })
+              .catch(() => {})
+          })
+          .catch(() => {})
       }
     }
 

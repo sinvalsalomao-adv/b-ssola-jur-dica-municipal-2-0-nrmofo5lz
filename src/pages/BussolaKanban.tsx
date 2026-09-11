@@ -78,6 +78,29 @@ export default function BussolaKanban() {
     moveProjectColumn,
   } = useProjects()
 
+  // Listener para evento 'openProjectById' emitido pelo NotificationBell ou outros atalhos
+  useEffect(() => {
+    const handleOpenProject = (e: any) => {
+      const { projectId, tab } = e.detail || {}
+      if (!projectId) return
+
+      const found = projects.find((p) => p.id === projectId)
+      if (found) {
+        openProjectDetails(found)
+        if (tab) {
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('openProjectSidePanelTab', { detail: { tab } }))
+          }, 50)
+        }
+      }
+    }
+
+    window.addEventListener('openProjectById', handleOpenProject)
+    return () => {
+      window.removeEventListener('openProjectById', handleOpenProject)
+    }
+  }, [projects, openProjectDetails])
+
   const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null)
   const [dragOverColumn, setDragOverColumn] = useState<ColumnType | null>(null)
   const [responsibleFilter, setResponsibleFilter] = useState('Todos')

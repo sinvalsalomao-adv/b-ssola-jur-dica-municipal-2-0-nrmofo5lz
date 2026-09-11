@@ -1,17 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import {
-  Bell,
-  AlertTriangle,
-  Clock,
-  CheckCheck,
-  ChevronLeft,
-  ChevronRight,
-  Plus,
-} from 'lucide-react'
+import { useAuth } from '@/context/AuthContext'
+import { useRealtime } from '@/hooks/use-realtime'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Select,
   SelectContent,
@@ -19,23 +13,39 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Skeleton } from '@/components/ui/skeleton'
-import { useAuth } from '@/context/AuthContext'
-import { useRealtime } from '@/hooks/use-realtime'
+import {
+  Bell,
+  CheckCheck,
+  Clock,
+  AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  ExternalLink,
+} from 'lucide-react'
 import {
   getNotificationsPaginated,
   markNotificationAsRead,
   markAllNotificationsAsRead,
 } from '@/services/notifications'
+import { getTenants } from '@/services/tenants'
 import { toast } from 'sonner'
 import { NewNotificationModal } from '@/components/admin/NewNotificationModal'
 import type { NotificationItem } from '@/types/controle'
+import type { Prefeitura } from '@/types/superadmin'
 
 const PER_PAGE = 10
 
 export default function NotificacoesPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const isSuperadmin = user?.role === 'superadmin'
+
+  const [availableTenants, setAvailableTenants] = useState<Prefeitura[]>([])
+  const [selectedTenantId, setSelectedTenantId] = useState<string>(
+    user?.tenantId || (isSuperadmin ? 'all' : ''),
+  )
+
   const [items, setItems] = useState<NotificationItem[]>([])
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
@@ -43,15 +53,28 @@ export default function NotificacoesPage() {
   const [loading, setLoading] = useState(true)
   const [filterTipo, setFilterTipo] = useState('Todos')
   const [filterLida, setFilterLida] = useState('Todos')
+  const [filterDestinatario, setFilterDestinatario] = useState<'todas' | 'para_mim'>('todas')
   const [createOpen, setCreateOpen] = useState(false)
 
+  // Carregar prefeituras para o superadmin
+  useEffect(() => {
+    if (isSuperadmin) {
+      getTenants()
+        .then((list) => setAvailableTenants(list))
+        .catch(() => {})
+    }
+  }, [isSuperadmin])
+
+  const effectiveTenantId = isSuperadmin ? selectedTenantId : user?.tenantId || ''
+
   const load = useCallback(async () => {
-    if (!user?.tenantId) return
+    if (!effectiveTenantId && !isSuperadmin) return
     setLoading(true)
     try {
-      const result = await getNotificationsPaginated(user.tenantId, page, PER_PAGE, {
+      const result = await getNotificationsPaginated(effectiveTenantId, page, PER_PAGE, {
         tipo: filterTipo,
         lida: filterLida,
+        targetUser: filterDestinatario === 'para_mim' ? user?.id : undefined,
       })
       setItems(result.items)
       setTotalPages(result.totalPages)
@@ -61,25 +84,30 @@ export default function NotificacoesPage() {
     } finally {
       setLoading(false)
     }
-  }, [user?.tenantId, page, filterTipo, filterLida])
+  }, [effectiveTenantId, isSuperadmin, page, filterTipo, filterLida, filterDestinatario, user?.id])
 
   useEffect(() => {
     load()
   }, [load])
   useEffect(() => {
     setPage(1)
-  }, [filterTipo, filterLida])
+  }, [filterTipo, filterLida, filterDestinatario, selectedTenantId])
+
   useRealtime(
     'notifications',
     () => {
       load()
     },
-    !!user?.tenantId,
+    !!effectiveTenantId || isSuperadmin,
   )
 
   const handleMarkRead = async (id: string) => {
     try {
-      await markNotificationAsRead(id)
+      await markNotificationAsRead(
+        id,
+        user?.id,
+        effectiveTenantId !== 'all' ? effectiveTenantId : undefined,
+      )
       load()
     } catch {
       /* ignore */
@@ -87,14 +115,24 @@ export default function NotificacoesPage() {
   }
 
   const handleMarkAllRead = async () => {
-    if (!user?.tenantId) return
     try {
-      await markAllNotificationsAsRead(user.tenantId)
+      await markAllNotificationsAsRead(effectiveTenantId !== 'all' ? effectiveTenantId : undefined)
       toast.success('Todas as notificações marcadas como lidas!')
       load()
     } catch {
       toast.error('Erro ao marcar notificações.')
     }
+  }
+
+  const handleOpenNotificationProject = (projectId?: string) => {
+    if (!projectId) {
+      navigate('/bussola')
+      return
+    }
+    navigate('/bussola')
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('openProjectById', { detail: { projectId } }))
+    }, 150)
   }
 
   return (
@@ -105,12 +143,15 @@ export default function NotificacoesPage() {
             <Bell className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-[#1c2a3e]">Notificações</h2>
-            <p className="text-xs text-gray-500">{totalItems} notificação(ões) encontrada(s)</p>
+            <h2 className="text-xl font-bold text-[#1c2a3e]">Notificações do Sistema</h2>
+            <p className="text-xs text-gray-500">
+              Avisos internos, gargalos e prazos vinculados a projetos e demandas municipais (
+              {totalItems} registros)
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {user?.role === 'admin' && (
+          {(user?.role === 'admin' || user?.role === 'superadmin') && (
             <Button
               onClick={() => setCreateOpen(true)}
               className="gap-2 text-xs bg-[#3b82f6] hover:bg-[#2563eb] text-white"
@@ -124,8 +165,63 @@ export default function NotificacoesPage() {
         </div>
       </div>
 
+      {/* Seletor de prefeitura para Superadmin */}
+      {isSuperadmin && (
+        <Card className="bg-slate-50 border border-slate-200">
+          <CardContent className="p-3">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              <span className="text-xs font-semibold text-slate-700 whitespace-nowrap">
+                Filtrar por Prefeitura:
+              </span>
+              <Select
+                value={selectedTenantId}
+                onValueChange={(val) => {
+                  setSelectedTenantId(val)
+                  setPage(1)
+                }}
+              >
+                <SelectTrigger className="w-full sm:w-80 h-9 bg-white text-xs">
+                  <SelectValue placeholder="Todas as prefeituras" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as prefeituras</SelectItem>
+                  {availableTenants.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Filtros da Central de Notificações */}
       <div className="flex flex-wrap items-center gap-3">
-        <Select value={filterTipo} onValueChange={setFilterTipo}>
+        <Select
+          value={filterDestinatario}
+          onValueChange={(val: 'todas' | 'para_mim') => {
+            setFilterDestinatario(val)
+            setPage(1)
+          }}
+        >
+          <SelectTrigger className="w-[190px] h-9 text-xs">
+            <SelectValue placeholder="Destinatário" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todas">Todas da prefeitura</SelectItem>
+            <SelectItem value="para_mim">Para mim (menções / diretas)</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={filterTipo}
+          onValueChange={(val) => {
+            setFilterTipo(val)
+            setPage(1)
+          }}
+        >
           <SelectTrigger className="w-[160px] h-9 text-xs">
             <SelectValue placeholder="Tipo" />
           </SelectTrigger>
@@ -133,9 +229,17 @@ export default function NotificacoesPage() {
             <SelectItem value="Todos">Todos os tipos</SelectItem>
             <SelectItem value="Gargalo">Gargalo</SelectItem>
             <SelectItem value="Prazo Fatal">Prazo Fatal</SelectItem>
+            <SelectItem value="Aviso Interno">Aviso Interno</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={filterLida} onValueChange={setFilterLida}>
+
+        <Select
+          value={filterLida}
+          onValueChange={(val) => {
+            setFilterLida(val)
+            setPage(1)
+          }}
+        >
           <SelectTrigger className="w-[160px] h-9 text-xs">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
@@ -180,7 +284,13 @@ export default function NotificacoesPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="font-bold text-sm text-[#1c2a3e]">{n.projectTitle}</h4>
+                      <h4
+                        className="font-bold text-sm text-[#1c2a3e] hover:underline cursor-pointer flex items-center gap-1"
+                        onClick={() => handleOpenNotificationProject(n.projectId)}
+                      >
+                        {n.projectTitle}
+                        {n.projectId && <ExternalLink className="w-3 h-3 text-gray-400" />}
+                      </h4>
                       <Badge
                         variant="outline"
                         className={`text-[9px] ${isFatal ? 'bg-red-50 text-red-700 border-red-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}
@@ -188,24 +298,45 @@ export default function NotificacoesPage() {
                         {n.alertType}
                       </Badge>
                       {!n.lida && <Badge className="text-[9px] bg-blue-500 text-white">Nova</Badge>}
+                      {n.targetUserId && n.targetUserId === user?.id && (
+                        <Badge
+                          variant="secondary"
+                          className="text-[9px] bg-blue-50 text-blue-700 border border-blue-200"
+                        >
+                          Para mim
+                        </Badge>
+                      )}
                     </div>
                     {n.mensagem && <p className="text-xs text-gray-600 mt-1">{n.mensagem}</p>}
-                    <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+                    <div className="flex items-center gap-3 mt-1 text-xs text-gray-400 flex-wrap">
                       {n.daysIdle > 0 && <span>{n.daysIdle} dias parado</span>}
                       <span>Coluna: {n.column}</span>
                       {n.responsible && <span>Resp: {n.responsible}</span>}
                     </div>
                   </div>
-                  {!n.lida && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleMarkRead(n.id)}
-                      className="text-xs text-blue-600 hover:bg-blue-50 shrink-0"
-                    >
-                      Marcar lida
-                    </Button>
-                  )}
+                  <div className="flex items-center gap-1 shrink-0">
+                    {n.projectId && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleOpenNotificationProject(n.projectId)}
+                        className="text-xs text-slate-600 hover:bg-slate-100"
+                        title="Abrir no Kanban"
+                      >
+                        Abrir
+                      </Button>
+                    )}
+                    {!n.lida && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleMarkRead(n.id)}
+                        className="text-xs text-blue-600 hover:bg-blue-50"
+                      >
+                        Marcar lida
+                      </Button>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             )

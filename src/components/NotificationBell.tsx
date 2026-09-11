@@ -51,19 +51,20 @@ export function NotificationBell() {
     }
     loadNotifications()
 
-    if (n.projetoId) {
+    const targetProjectId = n.projetoId || n.projectId
+    if (targetProjectId) {
       navigate('/bussola')
       const targetTab = n.alertType === 'Mencao' ? 'comments' : 'details'
       // Disparar evento para abrir projeto e aba correta
       setTimeout(() => {
         window.dispatchEvent(
           new CustomEvent('openProjectById', {
-            detail: { projectId: n.projetoId, tab: targetTab },
+            detail: { projectId: targetProjectId, tab: targetTab },
           }),
         )
       }, 150)
     } else {
-      navigate('/bussola')
+      navigate('/notificacoes')
     }
   }
 

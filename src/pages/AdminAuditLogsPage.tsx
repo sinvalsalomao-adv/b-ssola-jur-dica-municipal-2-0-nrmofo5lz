@@ -34,6 +34,13 @@ const ACTION_CONFIG: Record<string, { color: string; bg: string }> = {
 
 export default function AdminAuditLogsPage() {
   const { user } = useAuth()
+  const isSuperadmin = user?.role === 'superadmin'
+
+  const [availableTenants, setAvailableTenants] = useState<{ id: string; name: string }[]>([])
+  const [selectedTenantId, setSelectedTenantId] = useState<string>(
+    user?.tenantId || (isSuperadmin ? 'all' : ''),
+  )
+
   const [items, setItems] = useState<any[]>([])
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
@@ -41,11 +48,28 @@ export default function AdminAuditLogsPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
 
+  useEffect(() => {
+    if (isSuperadmin) {
+      import('@/services/tenants').then(({ getTenants }) => {
+        getTenants()
+          .then(setAvailableTenants)
+          .catch(() => {})
+      })
+    }
+  }, [isSuperadmin])
+
+  const effectiveTenantId = isSuperadmin ? selectedTenantId : user?.tenantId || ''
+
   const load = useCallback(async () => {
-    if (!user?.tenantId) return
+    if (!effectiveTenantId && !isSuperadmin) return
     setLoading(true)
     try {
-      const result = await getAuditLogsPaginated(user.tenantId, page, PER_PAGE, search || undefined)
+      const result = await getAuditLogsPaginated(
+        effectiveTenantId,
+        page,
+        PER_PAGE,
+        search || undefined,
+      )
       setItems(result.items)
       setTotalPages(result.totalPages)
       setTotalItems(result.totalItems)
@@ -54,7 +78,7 @@ export default function AdminAuditLogsPage() {
     } finally {
       setLoading(false)
     }
-  }, [user?.tenantId, page, search])
+  }, [effectiveTenantId, isSuperadmin, page, search])
 
   useEffect(() => {
     load()
@@ -62,14 +86,14 @@ export default function AdminAuditLogsPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [search])
+  }, [search, selectedTenantId])
 
   useRealtime(
     'audit_logs',
     () => {
       load()
     },
-    !!user?.tenantId,
+    !!effectiveTenantId || isSuperadmin,
   )
 
   if (user?.role !== 'admin' && user?.role !== 'superadmin') {
@@ -97,6 +121,35 @@ export default function AdminAuditLogsPage() {
           <p className="text-xs text-gray-500">{totalItems} registro(s) encontrado(s)</p>
         </div>
       </div>
+
+      {/* Seletor de prefeitura para Superadmin */}
+      {isSuperadmin && (
+        <Card className="bg-slate-50 border border-slate-200">
+          <CardContent className="p-3">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              <span className="text-xs font-semibold text-slate-700 whitespace-nowrap">
+                Filtrar por Prefeitura:
+              </span>
+              <select
+                aria-label="Filtrar por Prefeitura"
+                value={selectedTenantId}
+                onChange={(e) => {
+                  setSelectedTenantId(e.target.value)
+                  setPage(1)
+                }}
+                className="w-full sm:w-80 h-9 rounded-md border border-input bg-white px-3 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="all">Todas as prefeituras</option>
+                {availableTenants.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="relative max-w-sm">
         <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
