@@ -21,10 +21,6 @@ import ConvitePage from '@/pages/ConvitePage'
 import Dashboard from '@/pages/Dashboard'
 
 import BussolaKanban from '@/pages/BussolaKanban'
-function ControleRedirect() {
-  const location = useLocation()
-  return <Navigate to={`/dashboard${location.search}${location.hash}`} replace />
-}
 import DfdsPage from '@/pages/DfdsPage'
 import DfdDetailPage from '@/pages/DfdDetailPage'
 import NovoDfdPage from '@/pages/NovoDfdPage'
@@ -35,6 +31,16 @@ import NotificacoesPage from '@/pages/NotificacoesPage'
 import ConfiguracoesPage from '@/pages/ConfiguracoesPage'
 import PerfilPage from '@/pages/PerfilPage'
 import NotFound from '@/pages/NotFound'
+
+function ControleRedirect() {
+  const location = useLocation()
+  return <Navigate to={`/dashboard${location.search}${location.hash}`} replace />
+}
+
+function EducacaoGruposRedirect() {
+  const location = useLocation()
+  return <Navigate to={`/academia${location.search}${location.hash}`} replace />
+}
 
 const App = () => (
   <ErrorBoundary>
@@ -65,7 +71,7 @@ const App = () => (
                   <Route path="/dfds/:id" element={<DfdDetailPage />} />
                   <Route path="/novo-dfd" element={<NovoDfdPage />} />
                   <Route path="/educacao" element={<EducacaoPage />} />
-                  <Route path="/educacao/grupos" element={<AcademiaGroupsManager />} />
+                  <Route path="/educacao/grupos" element={<EducacaoGruposRedirect />} />
                   <Route path="/academia" element={<AcademiaGroupsManager />} />
                   <Route path="/educacao/trilha/:id" element={<TrackDetailPage />} />
                   <Route path="/educacao/trilha/:id/quiz" element={<QuizPage />} />
