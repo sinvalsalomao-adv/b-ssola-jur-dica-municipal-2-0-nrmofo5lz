@@ -131,7 +131,9 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated, defaultTe
         <form onSubmit={handleSubmit} className="space-y-3 py-1">
           {/* Campo Município / Prefeitura */}
           <div>
-            <Label className="text-xs font-semibold text-gray-700">Município / Prefeitura *</Label>
+            <Label className="text-xs font-semibold text-gray-700">
+              <span>Município / Prefeitura *</span>
+            </Label>
             {isSuperadmin ? (
               <Select value={selectedTenantId} onValueChange={setSelectedTenantId}>
                 <SelectTrigger className="mt-1">
@@ -140,7 +142,7 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated, defaultTe
                 <SelectContent>
                   {tenants.map((t) => (
                     <SelectItem key={t.id} value={t.id}>
-                      {t.name}
+                      <span>{t.name}</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -152,26 +154,44 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated, defaultTe
                 className="mt-1 bg-slate-50 text-gray-600 cursor-not-allowed"
               />
             )}
-            {errors.tenant && <p className="text-xs text-red-500 mt-1">{errors.tenant}</p>}
+            {errors.tenant && (
+              <p className="text-xs text-red-500 mt-1">
+                <span>{errors.tenant}</span>
+              </p>
+            )}
           </div>
 
           <div>
-            <Label className="text-xs font-semibold text-gray-700">Nome Completo *</Label>
+            <Label className="text-xs font-semibold text-gray-700">
+              <span>Nome Completo *</span>
+            </Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1" />
-            {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name}</p>}
+            {errors.name && (
+              <p className="text-xs text-red-500 mt-1">
+                <span>{errors.name}</span>
+              </p>
+            )}
           </div>
           <div>
-            <Label className="text-xs font-semibold text-gray-700">Email *</Label>
+            <Label className="text-xs font-semibold text-gray-700">
+              <span>Email *</span>
+            </Label>
             <Input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="mt-1"
             />
-            {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email}</p>}
+            {errors.email && (
+              <p className="text-xs text-red-500 mt-1">
+                <span>{errors.email}</span>
+              </p>
+            )}
           </div>
           <div>
-            <Label className="text-xs font-semibold text-gray-700">Papel *</Label>
+            <Label className="text-xs font-semibold text-gray-700">
+              <span>Papel *</span>
+            </Label>
             <Select value={role} onValueChange={(v) => setRole(v as UserRole)}>
               <SelectTrigger className="mt-1">
                 <SelectValue />
@@ -179,20 +199,22 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated, defaultTe
               <SelectContent>
                 {ROLES.map((r) => (
                   <SelectItem key={r.value} value={r.value}>
-                    {r.label}
+                    <span>{r.label}</span>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           <p className="text-[11px] text-gray-500 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-            O usuário convidado receberá uma mensagem para validar o acesso e definir sua própria
-            senha com segurança. Vínculos municipais só são ativados após o aceite formal do
-            titular.
+            <span>
+              O usuário convidado receberá uma mensagem para validar o acesso e definir sua própria
+              senha com segurança. Vínculos municipais só são ativados após o aceite formal do
+              titular.
+            </span>
           </p>
           <DialogFooter className="pt-3 border-t">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancelar
+              <span>Cancelar</span>
             </Button>
             <Button
               type="submit"
@@ -200,7 +222,7 @@ export function TenantUserCreateModal({ open, onOpenChange, onCreated, defaultTe
               className="bg-[#3b82f6] hover:bg-[#2563eb] text-white gap-1.5"
             >
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-              Enviar Convite / Criar
+              <span>Enviar Convite / Criar</span>
             </Button>
           </DialogFooter>
         </form>

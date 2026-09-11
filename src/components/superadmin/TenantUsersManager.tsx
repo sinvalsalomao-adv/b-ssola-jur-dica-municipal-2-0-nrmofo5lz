@@ -239,9 +239,17 @@ export function TenantUsersManager() {
               Gestão de Usuários e Acessos
             </h1>
             <p className="text-xs md:text-sm text-gray-500 mt-0.5">
-              {isSuperadmin
-                ? 'Gestão de usuários municipais, convites e aprovações de acesso (Visão Superadmin).'
-                : `Município: ${user?.prefeitura || '—'} — Servidores cadastrados e convites institucionais.`}
+              {isSuperadmin ? (
+                <span>
+                  Gestão de usuários municipais, convites e aprovações de acesso (Visão Superadmin).
+                </span>
+              ) : (
+                <span>
+                  <span>Município: </span>
+                  <span>{user?.prefeitura || '—'}</span>
+                  <span> — Servidores cadastrados e convites institucionais.</span>
+                </span>
+              )}
             </p>
           </div>
         </div>
@@ -260,7 +268,7 @@ export function TenantUsersManager() {
                   <SelectItem value="all">Todos os municípios</SelectItem>
                   {tenantsList.map((t) => (
                     <SelectItem key={t.id} value={t.id}>
-                      {t.name}
+                      <span>{t.name}</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -272,7 +280,8 @@ export function TenantUsersManager() {
             onClick={() => setCreateOpen(true)}
             aria-label="Convidar ou cadastrar novo servidor"
           >
-            <UserPlus className="w-4 h-4" aria-hidden="true" /> Convidar / Criar
+            <UserPlus className="w-4 h-4" aria-hidden="true" />
+            <span>Convidar / Criar</span>
           </Button>
         </div>
       </div>
@@ -285,20 +294,26 @@ export function TenantUsersManager() {
         <TabsList className="grid w-full max-w-lg grid-cols-3">
           <TabsTrigger value="users" className="gap-2">
             <Users className="w-4 h-4" />
-            <span>Ativos ({users.length})</span>
+            <span>
+              <span>Ativos </span>
+              <span>({users.length})</span>
+            </span>
           </TabsTrigger>
           <TabsTrigger value="pending" className="gap-2 relative">
             <UserCheck className="w-4 h-4" />
             <span>Pendências</span>
             {pendingMemberships.length > 0 && (
               <Badge className="ml-1.5 bg-amber-500 text-white hover:bg-amber-600 px-1.5 py-0 text-[10px] rounded-full">
-                {pendingMemberships.length}
+                <span>{pendingMemberships.length}</span>
               </Badge>
             )}
           </TabsTrigger>
           <TabsTrigger value="invitations" className="gap-2 relative">
             <Clock className="w-4 h-4" />
-            <span>Convites ({invitations.filter((i) => i.status === 'pending').length})</span>
+            <span>
+              <span>Convites </span>
+              <span>({invitations.filter((i) => i.status === 'pending').length})</span>
+            </span>
           </TabsTrigger>
         </TabsList>
 
@@ -339,17 +354,19 @@ export function TenantUsersManager() {
                     users.map((u) => (
                       <TableRow key={u.id} className="hover:bg-slate-50/50">
                         <TableCell className="text-sm font-medium text-[#1c2a3e]">
-                          {u.name || '—'}
+                          <span>{u.name || '—'}</span>
                         </TableCell>
-                        <TableCell className="text-sm text-gray-600">{u.email || '—'}</TableCell>
+                        <TableCell className="text-sm text-gray-600">
+                          <span>{u.email || '—'}</span>
+                        </TableCell>
                         {isSuperadmin && (
                           <TableCell className="text-xs text-gray-600 font-medium">
-                            {u.prefeituraName || '—'}
+                            <span>{u.prefeituraName || '—'}</span>
                           </TableCell>
                         )}
                         <TableCell>
                           <Badge className={ROLE_COLORS[u.role] || 'bg-slate-400 text-white'}>
-                            {ROLE_LABELS[u.role] || u.role}
+                            <span>{ROLE_LABELS[u.role] || u.role}</span>
                           </Badge>
                         </TableCell>
                         <TableCell className="text-center">
@@ -360,7 +377,7 @@ export function TenantUsersManager() {
                                 : 'bg-gray-400 text-white'
                             }
                           >
-                            {u.status === 'ativo' ? 'Ativo' : 'Inativo'}
+                            <span>{u.status === 'ativo' ? 'Ativo' : 'Inativo'}</span>
                           </Badge>
                         </TableCell>
                         <TableCell className="text-center">
@@ -396,7 +413,10 @@ export function TenantUsersManager() {
               </Table>
             </CardContent>
           </Card>
-          <p className="text-xs text-gray-400">{users.length} usuário(s) listado(s).</p>
+          <p className="text-xs text-gray-400">
+            <span>{users.length}</span>
+            <span> usuário(s) listado(s).</span>
+          </p>
         </TabsContent>
 
         {/* ABA 2: Aprovações Pendentes */}
@@ -444,11 +464,13 @@ export function TenantUsersManager() {
                               Nenhum cadastro pendente de aprovação
                             </p>
                             <p className="text-xs text-gray-400 max-w-sm text-center">
-                              Quando um servidor ou cidadão se cadastrar na página pública{' '}
+                              <span>
+                                Quando um servidor ou cidadão se cadastrar na página pública{' '}
+                              </span>
                               <code className="text-xs bg-slate-100 px-1 py-0.5 rounded text-blue-600">
                                 /cadastro/:slug
                               </code>
-                              , a solicitação aparecerá aqui para liberação.
+                              <span>, a solicitação aparecerá aqui para liberação.</span>
                             </p>
                           </div>
                         </TableCell>
@@ -457,23 +479,25 @@ export function TenantUsersManager() {
                       pendingMemberships.map((m) => (
                         <TableRow key={m.id} className="hover:bg-slate-50/50">
                           <TableCell className="text-sm font-medium text-[#1c2a3e]">
-                            {m.userName}
+                            <span>{m.userName}</span>
                           </TableCell>
                           <TableCell className="text-sm text-gray-600">
-                            {m.userEmail || '—'}
+                            <span>{m.userEmail || '—'}</span>
                           </TableCell>
                           {isSuperadmin && (
                             <TableCell className="text-xs text-gray-700 font-medium">
-                              {m.tenantName || '—'}
+                              <span>{m.tenantName || '—'}</span>
                             </TableCell>
                           )}
                           <TableCell>
                             <Badge className={ROLE_COLORS[m.role] || 'bg-slate-400 text-white'}>
-                              {ROLE_LABELS[m.role] || m.role}
+                              <span>{ROLE_LABELS[m.role] || m.role}</span>
                             </Badge>
                           </TableCell>
                           <TableCell className="text-xs text-gray-500">
-                            {m.created ? new Date(m.created).toLocaleDateString('pt-BR') : '—'}
+                            <span>
+                              {m.created ? new Date(m.created).toLocaleDateString('pt-BR') : '—'}
+                            </span>
                           </TableCell>
                           <TableCell className="text-center">
                             <div className="flex items-center justify-center gap-2">
@@ -488,7 +512,7 @@ export function TenantUsersManager() {
                                 ) : (
                                   <Check className="w-3.5 h-3.5" />
                                 )}
-                                Aprovar
+                                <span>Aprovar</span>
                               </Button>
                               <Button
                                 size="sm"
@@ -498,7 +522,7 @@ export function TenantUsersManager() {
                                 onClick={() => handleReject(m)}
                               >
                                 <X className="w-3.5 h-3.5" />
-                                Rejeitar
+                                <span>Rejeitar</span>
                               </Button>
                             </div>
                           </TableCell>
@@ -511,7 +535,8 @@ export function TenantUsersManager() {
             </CardContent>
           </Card>
           <p className="text-xs text-gray-400">
-            {pendingMemberships.length} solicitação(ões) pendente(s).
+            <span>{pendingMemberships.length}</span>
+            <span> solicitação(ões) pendente(s).</span>
           </p>
         </TabsContent>
 
@@ -566,17 +591,19 @@ export function TenantUsersManager() {
                       invitations.map((inv) => (
                         <TableRow key={inv.id} className="hover:bg-slate-50/50">
                           <TableCell className="text-sm font-medium text-[#1c2a3e]">
-                            {inv.name}
+                            <span>{inv.name}</span>
                           </TableCell>
-                          <TableCell className="text-sm text-gray-600">{inv.email}</TableCell>
+                          <TableCell className="text-sm text-gray-600">
+                            <span>{inv.email}</span>
+                          </TableCell>
                           {isSuperadmin && (
                             <TableCell className="text-xs text-gray-700 font-medium">
-                              {inv.tenantName || '—'}
+                              <span>{inv.tenantName || '—'}</span>
                             </TableCell>
                           )}
                           <TableCell>
                             <Badge className={ROLE_COLORS[inv.role] || 'bg-slate-400 text-white'}>
-                              {ROLE_LABELS[inv.role] || inv.role}
+                              <span>{ROLE_LABELS[inv.role] || inv.role}</span>
                             </Badge>
                           </TableCell>
                           <TableCell>
@@ -589,15 +616,17 @@ export function TenantUsersManager() {
                                     : 'bg-gray-400 text-white'
                               }
                             >
-                              {inv.status === 'pending'
-                                ? 'Pendente'
-                                : inv.status === 'accepted' || inv.status === 'activated'
-                                  ? 'Aceito'
-                                  : inv.status === 'rejected'
-                                    ? 'Recusado'
-                                    : inv.status === 'expired'
-                                      ? 'Expirado'
-                                      : 'Cancelado'}
+                              <span>
+                                {inv.status === 'pending'
+                                  ? 'Pendente'
+                                  : inv.status === 'accepted' || inv.status === 'activated'
+                                    ? 'Aceito'
+                                    : inv.status === 'rejected'
+                                      ? 'Recusado'
+                                      : inv.status === 'expired'
+                                        ? 'Expirado'
+                                        : 'Cancelado'}
+                              </span>
                             </Badge>
                           </TableCell>
                           <TableCell className="text-center">
@@ -614,7 +643,7 @@ export function TenantUsersManager() {
                                 ) : (
                                   <X className="w-3 h-3" />
                                 )}
-                                Cancelar
+                                <span>Cancelar</span>
                               </Button>
                             ) : (
                               <span className="text-xs text-gray-400">—</span>
@@ -628,7 +657,10 @@ export function TenantUsersManager() {
               )}
             </CardContent>
           </Card>
-          <p className="text-xs text-gray-400">{invitations.length} convite(s) listado(s).</p>
+          <p className="text-xs text-gray-400">
+            <span>{invitations.length}</span>
+            <span> convite(s) listado(s).</span>
+          </p>
         </TabsContent>
       </Tabs>
 
