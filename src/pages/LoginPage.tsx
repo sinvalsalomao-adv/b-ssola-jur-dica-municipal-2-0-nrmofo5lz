@@ -11,6 +11,13 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [error, setError] = useState('')
+  const { user } = useAuth()
+
+  useEffect(() => {
+    if (user?.role === 'superadmin') {
+      navigate('/superadmin', { replace: true })
+    }
+  }, [user, navigate])
 
   useEffect(() => {
     getOrganizacoes()
@@ -62,6 +69,21 @@ export default function LoginPage() {
                   className="pl-9 h-11"
                   autoFocus
                 />
+              </div>
+
+              {/* Acesso direto global para Superadmin */}
+              <div className="p-3 bg-blue-50/70 rounded-lg border border-blue-100 flex items-center justify-between text-xs">
+                <span className="text-blue-900 font-medium">
+                  Acesso de Gestão Global / Superadmin
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => navigate('/login/global')}
+                  className="h-7 text-xs bg-white text-blue-700 hover:bg-blue-100 border-blue-200"
+                >
+                  Entrar como Superadmin
+                </Button>
               </div>
 
               <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100">

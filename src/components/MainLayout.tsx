@@ -48,18 +48,28 @@ import { ProjectSidePanel } from '@/components/ProjectSidePanel'
 import { NewProjectModal } from '@/components/NewProjectModal'
 import { NotificationBell } from '@/components/NotificationBell'
 import { ProfileSwitcherDialog } from '@/components/ProfileSwitcherDialog'
+import { useUnsavedChanges } from '@/context/UnsavedChangesContext'
+import { Building2, Globe, Undo2 } from 'lucide-react'
 
 export const MainLayout: React.FC = () => {
   const location = useLocation()
   const navigate = useNavigate()
+  const { confirmTenantSwitch } = useUnsavedChanges()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false)
   const [profileSwitcherOpen, setProfileSwitcherOpen] = useState(false)
   const [logoutError, setLogoutError] = useState('')
-  const { user, originalUser, logout } = useAuth()
+  const { user, originalUser, logout, clearTenantContext } = useAuth()
   const isSuperadmin = user?.role === 'superadmin'
   const canSwitchProfile = originalUser?.role === 'superadmin'
+
+  const handleReturnToGlobal = () => {
+    confirmTenantSwitch(async () => {
+      await clearTenantContext()
+      navigate('/superadmin')
+    })
+  }
 
   const handleLogout = () => {
     try {
@@ -286,7 +296,46 @@ export const MainLayout: React.FC = () => {
                 </SheetContent>
               </Sheet>
 
-              <h1 className="text-lg md:text-xl font-bold text-[#1c2a3e]">{currentTitle}</h1>
+              <div className="flex items-center gap-3 flex-wrap">
+                <h1 className="text-lg md:text-xl font-bold text-[#1c2a3e]">{currentTitle}</h1>
+
+                {/* Indicador Permanente de Contexto */}
+                {isSuperadmin ? (
+                  <div className="flex items-center gap-1.5">
+                    {user?.tenantId && user?.prefeitura ? (
+                      <div className="flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-900 px-2.5 py-1 rounded-full text-xs font-semibold shadow-xs">
+                        <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                        <span className="truncate max-w-[160px] sm:max-w-[240px]">
+                          {user.prefeitura}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleReturnToGlobal}
+                          title="Voltar à visão global"
+                          className="h-5 px-1.5 text-[11px] text-blue-700 hover:text-blue-900 hover:bg-blue-100/70 ml-1 rounded"
+                        >
+                          <Undo2 className="w-3 h-3 mr-1" />
+                          Visão global
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-800 px-2.5 py-1 rounded-full text-xs font-semibold shadow-xs">
+                        <Globe className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Visão global</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 bg-slate-100 border border-slate-200 text-slate-800 px-2.5 py-1 rounded-full text-xs font-medium">
+                    <Building2 className="w-3.5 h-3.5 text-slate-500" />
+                    <span className="truncate max-w-[200px]">
+                      {user?.prefeitura || 'Prefeitura Municipal'}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Right side actions */}

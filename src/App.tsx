@@ -5,6 +5,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { AuthProvider } from '@/context/AuthContext'
 import { ProjectProvider } from '@/context/ProjectContext'
 import { EducationProvider } from '@/context/EducationContext'
+import { UnsavedChangesProvider } from '@/context/UnsavedChangesContext'
 import TrackDetailPage from '@/pages/TrackDetailPage'
 import QuizPage from '@/pages/QuizPage'
 import SuperadminPage from '@/pages/SuperadminPage'
@@ -46,83 +47,85 @@ const App = () => (
   <ErrorBoundary>
     <BrowserRouter>
       <AuthProvider>
-        <ProjectProvider>
-          <EducationProvider>
-            <TooltipProvider>
-              <Toaster />
-              <Sonner position="top-right" />
-              <Routes>
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/login/:slug" element={<OrgLoginPage />} />
-                <Route path="/cadastro/:slug" element={<PublicRegisterPage />} />
-                <Route path="/convite" element={<ConvitePage />} />
-                <Route
-                  element={
-                    <ProtectedRoute>
-                      <MainLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                  <Route path="/dashboard" element={<Dashboard />} />
-                  <Route path="/bussola" element={<BussolaKanban />} />
-                  <Route path="/controle" element={<ControleRedirect />} />
-                  <Route path="/dfds" element={<DfdsPage />} />
-                  <Route path="/dfds/:id" element={<DfdDetailPage />} />
-                  <Route path="/novo-dfd" element={<NovoDfdPage />} />
-                  <Route path="/educacao" element={<EducacaoPage />} />
-                  <Route path="/educacao/grupos" element={<EducacaoGruposRedirect />} />
-                  <Route path="/academia" element={<AcademiaGroupsManager />} />
-                  <Route path="/educacao/trilha/:id" element={<TrackDetailPage />} />
-                  <Route path="/educacao/trilha/:id/quiz" element={<QuizPage />} />
+        <UnsavedChangesProvider>
+          <ProjectProvider>
+            <EducationProvider>
+              <TooltipProvider>
+                <Toaster />
+                <Sonner position="top-right" />
+                <Routes>
+                  <Route path="/login" element={<LoginPage />} />
+                  <Route path="/login/:slug" element={<OrgLoginPage />} />
+                  <Route path="/cadastro/:slug" element={<PublicRegisterPage />} />
+                  <Route path="/convite" element={<ConvitePage />} />
                   <Route
-                    path="/usuarios"
                     element={
-                      <ProtectedRoute allowedRoles={['admin', 'superadmin']}>
-                        <UsuariosPage />
+                      <ProtectedRoute>
+                        <MainLayout />
                       </ProtectedRoute>
                     }
-                  />
-                  <Route
-                    path="/relatorios"
-                    element={
-                      <ProtectedRoute allowedRoles={['admin', 'superadmin']}>
-                        <RelatoriosPage />
-                      </ProtectedRoute>
-                    }
-                  />
-                  <Route path="/notificacoes" element={<NotificacoesPage />} />
-                  <Route
-                    path="/configuracoes"
-                    element={
-                      <ProtectedRoute allowedRoles={['admin', 'superadmin']}>
-                        <ConfiguracoesPage />
-                      </ProtectedRoute>
-                    }
-                  />
-                  <Route path="/perfil" element={<PerfilPage />} />
-                  <Route
-                    path="/audit-logs"
-                    element={
-                      <ProtectedRoute allowedRoles={['admin', 'superadmin']}>
-                        <AdminAuditLogsPage />
-                      </ProtectedRoute>
-                    }
-                  />
-                  <Route
-                    path="/superadmin"
-                    element={
-                      <ProtectedRoute allowedRoles={['superadmin']}>
-                        <SuperadminPage />
-                      </ProtectedRoute>
-                    }
-                  />
-                </Route>
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </TooltipProvider>
-          </EducationProvider>
-        </ProjectProvider>
+                  >
+                    <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                    <Route path="/dashboard" element={<Dashboard />} />
+                    <Route path="/bussola" element={<BussolaKanban />} />
+                    <Route path="/controle" element={<ControleRedirect />} />
+                    <Route path="/dfds" element={<DfdsPage />} />
+                    <Route path="/dfds/:id" element={<DfdDetailPage />} />
+                    <Route path="/novo-dfd" element={<NovoDfdPage />} />
+                    <Route path="/educacao" element={<EducacaoPage />} />
+                    <Route path="/educacao/grupos" element={<EducacaoGruposRedirect />} />
+                    <Route path="/academia" element={<AcademiaGroupsManager />} />
+                    <Route path="/educacao/trilha/:id" element={<TrackDetailPage />} />
+                    <Route path="/educacao/trilha/:id/quiz" element={<QuizPage />} />
+                    <Route
+                      path="/usuarios"
+                      element={
+                        <ProtectedRoute allowedRoles={['admin', 'superadmin']}>
+                          <UsuariosPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/relatorios"
+                      element={
+                        <ProtectedRoute allowedRoles={['admin', 'superadmin']}>
+                          <RelatoriosPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route path="/notificacoes" element={<NotificacoesPage />} />
+                    <Route
+                      path="/configuracoes"
+                      element={
+                        <ProtectedRoute allowedRoles={['admin', 'superadmin']}>
+                          <ConfiguracoesPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route path="/perfil" element={<PerfilPage />} />
+                    <Route
+                      path="/audit-logs"
+                      element={
+                        <ProtectedRoute allowedRoles={['admin', 'superadmin']}>
+                          <AdminAuditLogsPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/superadmin"
+                      element={
+                        <ProtectedRoute allowedRoles={['superadmin']}>
+                          <SuperadminPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                  </Route>
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </TooltipProvider>
+            </EducationProvider>
+          </ProjectProvider>
+        </UnsavedChangesProvider>
       </AuthProvider>
     </BrowserRouter>
   </ErrorBoundary>

@@ -87,7 +87,14 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     setLoading(true)
     setError(null)
     try {
-      const tenantFilter = user?.role === 'superadmin' ? undefined : user?.tenantId || undefined
+      // Se for superadmin sem tenant selecionado, não carrega lista de projetos municipais (mantém vazio para não misturar)
+      if (user?.role === 'superadmin' && !user?.tenantId) {
+        setProjects([])
+        setLoading(false)
+        return
+      }
+      const tenantFilter =
+        user?.role === 'superadmin' ? user?.tenantId || undefined : user?.tenantId || undefined
       const data = await getProjects(tenantFilter)
       setProjects(data)
     } catch (err: any) {
@@ -96,7 +103,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     } finally {
       setLoading(false)
     }
-  }, [user])
+  }, [user?.role, user?.tenantId])
 
   useEffect(() => {
     fetchTenants()

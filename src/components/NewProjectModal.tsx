@@ -26,10 +26,12 @@ import { toast } from 'sonner'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { normalizeDateForInput } from '@/lib/dateUtils'
 import { sanitizeInput } from '@/lib/sanitize'
+import { useUnsavedChanges } from '@/context/UnsavedChangesContext'
 
 export const NewProjectModal: React.FC = () => {
   const { isNewModalOpen, setIsNewModalOpen, addProject, saving, tenants } = useProjects()
   const { user } = useAuth()
+  const { registerGuard } = useUnsavedChanges()
   const isSuperadmin = user?.role === 'superadmin'
 
   const [title, setTitle] = useState('')
@@ -46,6 +48,65 @@ export const NewProjectModal: React.FC = () => {
   const [objeto, setObjeto] = useState('')
   const [justificativa, setJustificativa] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
+
+  // Guarda de alterações não salvas caso o superadmin mude de prefeitura
+  useEffect(() => {
+    if (!isNewModalOpen) return
+    const unregister = registerGuard({
+      id: 'NewProjectModal',
+      isDirty: () =>
+        isNewModalOpen &&
+        (!!title.trim() || !!description.trim() || !!objeto.trim() || !!justificativa.trim()),
+      onDiscard: () => {
+        setIsNewModalOpen(false)
+        resetForm()
+      },
+      onSave: async () => {
+        if (!title.trim() || !deadline) return false
+        const resolvedTenantId = isSuperadmin ? selectedTenantId : user?.tenantId
+        if (!resolvedTenantId) return false
+        const tenantObj = tenants.find((t) => t.id === resolvedTenantId)
+        const resolvedPrefeituraName = tenantObj?.name || user?.prefeitura || ''
+        try {
+          await addProject({
+            title: sanitizeInput(title.trim()),
+            description: sanitizeInput(description.trim()),
+            responsible: '',
+            responsibleUserId: responsibleUserId === 'none' ? '' : responsibleUserId,
+            deadline,
+            column,
+            prefeitura: resolvedPrefeituraName,
+            tenantId: resolvedTenantId,
+            priority,
+            objeto: sanitizeInput(objeto.trim()),
+            justificativa: sanitizeInput(justificativa.trim()),
+          })
+          setIsNewModalOpen(false)
+          resetForm()
+          return true
+        } catch {
+          return false
+        }
+      },
+    })
+    return unregister
+  }, [
+    isNewModalOpen,
+    title,
+    description,
+    objeto,
+    justificativa,
+    deadline,
+    column,
+    priority,
+    selectedTenantId,
+    responsibleUserId,
+    isSuperadmin,
+    user,
+    tenants,
+    addProject,
+    registerGuard,
+  ])
 
   useEffect(() => {
     if (isNewModalOpen) {

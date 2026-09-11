@@ -24,7 +24,8 @@ interface AuthContextType {
     password: string,
     tenantSlugOrId?: string,
   ) => Promise<{ error: any; user?: AuthUser }>
-  setTenantContext: (tenantId: string) => Promise<void>
+  setTenantContext: (tenantId: string | null) => Promise<void>
+  clearTenantContext: () => Promise<void>
   switchProfile: (userId: string) => Promise<void>
   restoreProfile: () => void
   logout: () => void
@@ -60,14 +61,15 @@ async function resolveAuthUser(
   }
 
   if (isSuperadminDirect) {
-    // Se o superadmin está com um contexto municipal específico selecionado/armazenado
+    // Se contextTenantId for null explícito ou sessionStorage vazio, fica sem contexto (Visão Global)
     let activeTenant: any = null
-    const targetTenantId = contextTenantId || sessionStorage.getItem('activeTenantId')
+    const targetTenantId =
+      contextTenantId !== undefined ? contextTenantId : sessionStorage.getItem('activeTenantId')
     if (targetTenantId) {
       try {
         activeTenant = await pb.collection('tenants').getOne(targetTenantId)
       } catch {
-        /* intentionally ignored */
+        sessionStorage.removeItem('activeTenantId')
       }
     }
 
@@ -76,9 +78,9 @@ async function resolveAuthUser(
       name: userRecord.name || userRecord.email || '',
       email: userRecord.email || '',
       role: 'superadmin',
-      prefeitura: activeTenant ? activeTenant.name : userRecord.expand?.tenant?.name || null,
-      tenantId: activeTenant ? activeTenant.id : userRecord.tenant || null,
-      tenantSlug: activeTenant ? activeTenant.slug : userRecord.expand?.tenant?.slug || null,
+      prefeitura: activeTenant ? activeTenant.name : null,
+      tenantId: activeTenant ? activeTenant.id : null,
+      tenantSlug: activeTenant ? activeTenant.slug : null,
       membershipId: null,
     }
   }
@@ -195,8 +197,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [])
 
-  const setTenantContext = async (tenantId: string) => {
-    sessionStorage.setItem('activeTenantId', tenantId)
+  const setTenantContext = async (tenantId: string | null) => {
+    if (tenantId) {
+      sessionStorage.setItem('activeTenantId', tenantId)
+    } else {
+      sessionStorage.removeItem('activeTenantId')
+    }
     if (pb.authStore.isValid && pb.authStore.record) {
       const record = await pb
         .collection('users')
@@ -207,6 +213,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setOriginalUser(updatedUser)
       }
     }
+  }
+
+  const clearTenantContext = async () => {
+    await setTenantContext(null)
   }
 
   const login = async (email: string, password: string, tenantSlugOrId?: string) => {
@@ -274,6 +284,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setOriginalUser(authenticatedUser)
       setUser(authenticatedUser)
       setIsAuthenticated(true)
+      // Se for superadmin, garantir que após login comece na visão global se nenhum tenant foi passado explicitamente
+      if (isSuperadmin && !tenantSlugOrId) {
+        sessionStorage.removeItem('activeTenantId')
+        authenticatedUser.tenantId = null
+        authenticatedUser.prefeitura = null
+        authenticatedUser.tenantSlug = null
+      }
+
       return { error: null, user: authenticatedUser }
     } catch (error) {
       return { error }
@@ -338,6 +356,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         loading,
         login,
         setTenantContext,
+        clearTenantContext,
         switchProfile,
         restoreProfile,
         logout,

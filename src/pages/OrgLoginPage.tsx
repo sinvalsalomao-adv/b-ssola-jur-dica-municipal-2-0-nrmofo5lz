@@ -30,6 +30,17 @@ export default function OrgLoginPage() {
       setLoading(false)
       return
     }
+    if (slug === 'global') {
+      setOrg({
+        id: 'global',
+        nome: 'Administração Global do Sistema',
+        slug: 'global',
+        cidade: 'Gestão Central',
+        estado: 'BR',
+      })
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setNotFound(false)
     setError('')
@@ -67,9 +78,9 @@ export default function OrgLoginPage() {
       setFailedAttempts(0)
       const role = loggedInUser?.role || (pb.authStore.record as any)?.role || 'servidor'
       if (role === 'superadmin') {
-        navigate('/superadmin')
+        navigate('/superadmin', { replace: true })
       } else {
-        navigate('/dashboard')
+        navigate('/dashboard', { replace: true })
       }
     }
   }

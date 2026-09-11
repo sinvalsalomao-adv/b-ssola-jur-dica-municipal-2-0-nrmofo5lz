@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { exportProjectsToPdf } from '@/lib/pdfExporter'
 import { formatDate } from '@/lib/dateUtils'
+import { TenantRequiredNotice } from '@/components/TenantRequiredNotice'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -235,6 +236,19 @@ export default function BussolaKanban() {
     if (!deadline) return false
     const d = new Date(deadline.substring(0, 10) + 'T23:59:59')
     return !isNaN(d.getTime()) && d < new Date()
+  }
+
+  const isSuperadminWithoutTenant = user?.role === 'superadmin' && !user?.tenantId
+
+  if (isSuperadminWithoutTenant) {
+    return (
+      <div className="space-y-4 animate-fade-in">
+        <TenantRequiredNotice
+          title="Selecione uma prefeitura para acessar a Bússola"
+          description="O Kanban e os projetos pertencem a prefeituras específicas. Como superadministrador na visão global, selecione um município para acompanhar as 7 etapas e gerenciar cards."
+        />
+      </div>
+    )
   }
 
   const hasActiveFilters = selectedCity !== 'Todas as Prefeituras' || responsibleFilter !== 'Todos'

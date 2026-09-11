@@ -4,9 +4,24 @@ import { RecentDfdsList } from '@/components/RecentDfdsList'
 import { DocumentTemplatesSection } from '@/components/DocumentTemplatesSection'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { FileText, PlusCircle, LayoutList } from 'lucide-react'
+import { useAuth } from '@/context/AuthContext'
+import { TenantRequiredNotice } from '@/components/TenantRequiredNotice'
 
 export default function DfdsPage() {
+  const { user } = useAuth()
   const [activeTab, setActiveTab] = useState<string>('recentes')
+  const isSuperadminWithoutTenant = user?.role === 'superadmin' && !user?.tenantId
+
+  if (isSuperadminWithoutTenant) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <TenantRequiredNotice
+          title="Selecione uma prefeitura para gerenciar DFDs"
+          description="Os Documentos de Formalização de Demanda são vinculados à gestão municipal. Como superadministrador na visão global, selecione uma prefeitura para elaborar novos DFDs ou consultar o histórico."
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">

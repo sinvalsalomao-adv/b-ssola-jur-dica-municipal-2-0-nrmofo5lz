@@ -10,11 +10,14 @@ import { getRecentDfds, getDfd } from '@/services/dfds'
 import { useRealtime } from '@/hooks/use-realtime'
 import { Skeleton } from '@/components/ui/skeleton'
 
+import { useAuth } from '@/context/AuthContext'
+import { TenantRequiredNotice } from '@/components/TenantRequiredNotice'
+
 export default function NovoDfdPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const editId = searchParams.get('id')
   const { user } = useAuth()
+  const editId = searchParams.get('id')
 
   const [recentDfds, setRecentDfds] = useState<DfdRecord[]>([])
   const [editingDfd, setEditingDfd] = useState<DfdRecord | null>(null)
@@ -59,6 +62,18 @@ export default function NovoDfdPage() {
   const handleDfdSaved = () => {
     loadDfds()
     if (editId) navigate('/novo-dfd')
+  }
+
+  const isSuperadminWithoutTenant = user?.role === 'superadmin' && !user?.tenantId
+  if (isSuperadminWithoutTenant) {
+    return (
+      <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
+        <TenantRequiredNotice
+          title="Selecione uma prefeitura para elaborar um DFD"
+          description="A elaboração e consulta de DFDs pertencem a uma prefeitura específica. Como superadministrador na visão global, selecione um município para continuar."
+        />
+      </div>
+    )
   }
 
   return (

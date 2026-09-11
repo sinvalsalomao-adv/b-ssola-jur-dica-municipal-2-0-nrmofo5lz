@@ -26,6 +26,7 @@ import { getFrasesAsStrings, saveOrIncrementFrase } from '@/services/frases'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { sanitizeInput } from '@/lib/sanitize'
+import { useUnsavedChanges } from '@/context/UnsavedChangesContext'
 
 interface DfdFormProps {
   dfd?: DfdRecord | null
@@ -36,6 +37,7 @@ interface DfdFormProps {
 export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
   const { addProject, updateProject, tenants } = useProjects()
   const { user } = useAuth()
+  const { registerGuard } = useUnsavedChanges()
   const navigate = useNavigate()
 
   const isSuperadmin = user?.role === 'superadmin'
@@ -74,6 +76,39 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
       setSelectedTenantId(user.tenantId)
     }
   }, [isEditing, dfd?.tenantId, isSuperadmin, user?.tenantId])
+
+  // Guarda de alterações não salvas no DfdForm
+  useEffect(() => {
+    const isDirty = () => {
+      if (isEditing) {
+        return (
+          title !== (dfd?.title || '') ||
+          objeto !== (dfd?.objeto || '') ||
+          descricao !== (dfd?.descricao || '') ||
+          justificativa !== (dfd?.justificativa || '')
+        )
+      }
+      return !!title.trim() || !!objeto.trim() || !!descricao.trim() || !!justificativa.trim()
+    }
+
+    const unregister = registerGuard({
+      id: 'DfdForm',
+      isDirty,
+      onDiscard: () => {
+        resetForm()
+      },
+      onSave: async () => {
+        // Tenta salvar como rascunho
+        try {
+          await handleSave(true)
+          return true
+        } catch {
+          return false
+        }
+      },
+    })
+    return unregister
+  }, [isEditing, dfd, title, objeto, descricao, justificativa, registerGuard])
 
   // Load users and phrases whenever the effective tenant changes
   useEffect(() => {
