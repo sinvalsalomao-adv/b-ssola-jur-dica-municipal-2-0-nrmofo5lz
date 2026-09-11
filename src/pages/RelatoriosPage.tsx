@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   Shield,
-  Lock,
   BarChart3,
   Layers,
   PieChart,
@@ -9,6 +8,7 @@ import {
   AlertTriangle,
   Download,
   FileDown,
+  Lock,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -37,6 +37,8 @@ import { UsersByRoleCard } from '@/components/reports/UsersByRoleCard'
 import { StalledItemsCard } from '@/components/reports/StalledItemsCard'
 import { NotificationsSummaryCard } from '@/components/reports/NotificationsSummaryCard'
 import { RecentAuditLogsCard } from '@/components/reports/RecentAuditLogsCard'
+import { PageHeader } from '@/components/common/PageHeader'
+import { EmptyState } from '@/components/common/StateDisplay'
 
 export default function RelatoriosPage() {
   const { user } = useAuth()
@@ -148,14 +150,12 @@ export default function RelatoriosPage() {
 
   if (user?.role !== 'superadmin' && user?.role !== 'admin') {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 animate-fade-in">
-        <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
-          <Lock className="w-8 h-8 text-red-600" />
-        </div>
-        <h2 className="text-2xl font-bold text-[#1c2a3e]">Acesso Negado</h2>
-        <p className="text-sm text-gray-500 text-center max-w-md">
-          Apenas administradores podem acessar o dashboard de relatórios.
-        </p>
+      <div className="max-w-md mx-auto py-16 animate-fade-in">
+        <EmptyState
+          icon={<Lock className="w-6 h-6 text-red-500" aria-hidden="true" />}
+          title="Acesso Restrito a Administradores"
+          description="Apenas administradores municipais e superadministradores possuem autorização para visualizar indicadores analíticos e consolidados."
+        />
       </div>
     )
   }
@@ -185,27 +185,33 @@ export default function RelatoriosPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-[#1c2a3e] flex items-center justify-center">
-            <Shield className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-[#1c2a3e]">Relatórios</h2>
-            <p className="text-xs text-gray-500">
-              Análise do município e comparativo entre prefeituras
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" className="gap-2 text-xs" onClick={handleExportCsv}>
-            <Download className="w-4 h-4" /> Exportar CSV
-          </Button>
-          <Button variant="outline" className="gap-2 text-xs" onClick={handleExportPdf}>
-            <FileDown className="w-4 h-4" /> Exportar PDF
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Relatórios & Indicadores"
+        description="Análise executiva do município com métricas de gargalo, distribuição de tarefas e comparativo institucional."
+        icon={BarChart3}
+        actions={
+          <>
+            <Button
+              variant="outline"
+              className="gap-2 text-xs border-slate-300 hover:bg-slate-50"
+              onClick={handleExportCsv}
+              aria-label="Exportar relatório em formato CSV"
+            >
+              <Download className="w-4 h-4 text-emerald-600" aria-hidden="true" />
+              Exportar CSV
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-2 text-xs border-slate-300 hover:bg-slate-50"
+              onClick={handleExportPdf}
+              aria-label="Exportar relatório em formato PDF"
+            >
+              <FileDown className="w-4 h-4 text-red-600" aria-hidden="true" />
+              Exportar PDF
+            </Button>
+          </>
+        }
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <UsersByRoleCard data={usersByRole} />

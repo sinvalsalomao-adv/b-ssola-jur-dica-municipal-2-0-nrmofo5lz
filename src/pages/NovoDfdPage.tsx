@@ -77,17 +77,25 @@ export default function NovoDfdPage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
-      <div className="flex items-center gap-4">
-        <Button variant="outline" size="icon" onClick={() => navigate('/dfds')}>
-          <ArrowLeft className="w-4 h-4" />
-        </Button>
-        <div>
-          <h2 className="text-2xl font-bold text-[#1c2a3e]">
-            {editId ? 'Editar DFD' : 'Novo DFD'}
-          </h2>
-          <p className="text-sm text-gray-500">
-            Documento de Formalização de Demanda — Lei nº 14.133/2021
-          </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => navigate('/dfds')}
+            className="h-9 w-9 border-slate-300 shrink-0"
+            aria-label="Voltar para a lista de DFDs"
+          >
+            <ArrowLeft className="w-4 h-4" aria-hidden="true" />
+          </Button>
+          <div className="min-w-0">
+            <h1 className="text-xl md:text-2xl font-bold text-[#1c2a3e] tracking-tight truncate">
+              {editId ? 'Editar DFD' : 'Novo DFD'}
+            </h1>
+            <p className="text-xs md:text-sm text-gray-500 mt-0.5">
+              Documento de Formalização de Demanda — Lei nº 14.133/2021
+            </p>
+          </div>
         </div>
       </div>
 

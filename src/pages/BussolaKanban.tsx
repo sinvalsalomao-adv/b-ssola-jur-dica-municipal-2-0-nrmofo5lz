@@ -40,8 +40,10 @@ import { getUsersByTenant } from '@/services/users'
 import { getParticipantsByTenant } from '@/services/participants'
 import { getAvatarUrl } from '@/services/profile'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Users } from 'lucide-react'
+import { Users, ChevronLeft, ChevronRight, LayoutGrid, List } from 'lucide-react'
 import type { ProjectParticipant } from '@/types/project'
+import { PageHeader } from '@/components/common/PageHeader'
+import { EmptyState, ErrorState } from '@/components/common/StateDisplay'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CORREÇÕES APLICADAS vs. versão original:
@@ -117,6 +119,8 @@ export default function BussolaKanban() {
   const [users, setUsers] = useState<{ id: string; name: string }[]>([])
   const [participantsMap, setParticipantsMap] = useState<Record<string, ProjectParticipant[]>>({})
   const [highlightProjectId, setHighlightProjectId] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<'board' | 'list'>('board')
+  const [selectedMobileCol, setSelectedMobileCol] = useState<ColumnType>(COLUMNS[0])
 
   // Sincronizar parâmetros de URL (quick, responsible, project)
   useEffect(() => {
@@ -337,46 +341,91 @@ export default function BussolaKanban() {
 
   if (error && projects.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-96 space-y-3 bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
-        <p className="text-red-500 text-sm font-medium">{error}</p>
-        <p className="text-gray-400 text-xs">Não foi possível carregar os projetos no momento.</p>
-        <Button
-          onClick={() => window.location.reload()}
-          variant="outline"
-          size="sm"
-          className="text-xs"
-        >
-          Tentar Novamente
-        </Button>
+      <div className="max-w-md mx-auto py-16 animate-fade-in">
+        <ErrorState
+          title="Erro ao carregar o quadro Bússola"
+          message={error || 'Não foi possível carregar os projetos no momento. Tente novamente.'}
+          onRetry={() => window.location.reload()}
+        />
       </div>
     )
   }
 
+  const handleClearAllFilters = () => {
+    setSelectedCity('Todas as Prefeituras')
+    setResponsibleFilter('Todos')
+    setStatusFilter('todos')
+    const next = new URLSearchParams(searchParams)
+    next.delete('quick')
+    next.delete('responsible')
+    next.delete('project')
+    setSearchParams(next)
+  }
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-        <div>
-          <h2 className="text-lg font-bold text-[#1c2a3e]">Bússola de Projetos</h2>
-          {/* CORREÇÃO 6: contagem de projetos filtrados */}
-          <p className="text-xs text-gray-500">
-            {hasActiveFilters
-              ? `${filteredProjects.length} projeto${filteredProjects.length !== 1 ? 's' : ''} com os filtros atuais`
-              : 'Acompanhamento das 7 etapas dos processos jurídico-administrativos.'}
-            {statusFilter !== 'todos' && (
-              <span className="ml-1.5 inline-flex items-center gap-1 font-semibold text-blue-600">
-                • Filtro:{' '}
-                {statusFilter === 'atrasados'
-                  ? 'Apenas Atrasados'
-                  : statusFilter === 'proximos'
-                    ? 'Prazos Próximos (7 dias)'
-                    : 'Meu Trabalho'}
-              </span>
-            )}
-          </p>
-        </div>
+      <PageHeader
+        title="Bússola de Projetos (Kanban)"
+        description={
+          hasActiveFilters
+            ? `${filteredProjects.length} projeto${filteredProjects.length !== 1 ? 's' : ''} exibidos conforme filtros ativos.`
+            : 'Acompanhamento ponta a ponta das 7 etapas dos processos municipais.'
+        }
+        actions={
+          <>
+            {/* Alternador de visualização em mobile/telas estreitas */}
+            <div className="flex md:hidden items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+              <Button
+                type="button"
+                variant={viewMode === 'board' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('board')}
+                className="h-7 px-2 text-xs"
+                aria-label="Visualização em Colunas Kanban"
+              >
+                <LayoutGrid className="w-3.5 h-3.5 mr-1" aria-hidden="true" />
+                Quadro
+              </Button>
+              <Button
+                type="button"
+                variant={viewMode === 'list' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('list')}
+                className="h-7 px-2 text-xs"
+                aria-label="Visualização em Lista por Etapa"
+              >
+                <List className="w-3.5 h-3.5 mr-1" aria-hidden="true" />
+                Lista
+              </Button>
+            </div>
 
+            <Button
+              variant="outline"
+              onClick={() =>
+                exportProjectsToPdf(filteredProjects, 'Relatório de Projetos - Bússola', selectedCity)
+              }
+              className="h-9 px-3 text-xs gap-1.5 border-slate-300 hover:bg-slate-50 text-[#1c2a3e] font-medium"
+              aria-label="Exportar projetos filtrados em PDF"
+            >
+              <FileText className="w-4 h-4 text-red-600" aria-hidden="true" />
+              <span className="hidden sm:inline">Exportar</span> PDF
+            </Button>
+            <Button
+              onClick={() => setIsNewModalOpen(true)}
+              className="bg-[#3b82f6] hover:bg-[#2563eb] text-white h-9 px-3 text-xs gap-1.5 shadow-sm"
+              aria-label="Criar novo projeto municipal"
+            >
+              <Plus className="w-4 h-4" aria-hidden="true" />
+              Novo Projeto
+            </Button>
+          </>
+        }
+      />
+
+      {/* Barra de Filtros e Ordenação */}
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 bg-white p-3.5 rounded-xl shadow-xs border border-gray-100">
         {/* Filtros Rápidos Operacionais */}
-        <div className="flex flex-wrap items-center gap-1.5 self-start xl:self-center">
+        <div className="flex flex-wrap items-center gap-1.5">
           <Button
             type="button"
             variant={statusFilter === 'todos' ? 'secondary' : 'ghost'}
@@ -388,6 +437,7 @@ export default function BussolaKanban() {
               setSearchParams(next)
             }}
             className="h-8 text-xs font-medium"
+            aria-label="Mostrar todos os projetos"
           >
             Todos
           </Button>
@@ -408,8 +458,9 @@ export default function BussolaKanban() {
                 ? 'bg-red-600 text-white'
                 : 'text-red-600 border-red-200 hover:bg-red-50'
             }`}
+            aria-label="Filtrar apenas projetos atrasados"
           >
-            <AlertTriangle className="w-3.5 h-3.5" />
+            <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />
             Atrasados
           </Button>
           <Button
@@ -429,8 +480,9 @@ export default function BussolaKanban() {
                 ? 'bg-amber-100 text-amber-900 border-amber-300'
                 : 'text-amber-700 border-amber-200 hover:bg-amber-50'
             }`}
+            aria-label="Filtrar projetos com prazos próximos em 7 dias"
           >
-            <Clock className="w-3.5 h-3.5" />
+            <Clock className="w-3.5 h-3.5" aria-hidden="true" />
             Prazos Próximos
           </Button>
           {user?.id && (
@@ -451,21 +503,21 @@ export default function BussolaKanban() {
                   ? 'bg-blue-600 text-white'
                   : 'text-blue-600 border-blue-200 hover:bg-blue-50'
               }`}
+              aria-label="Filtrar tarefas atribuídas ao meu usuário"
             >
-              <Sparkles className="w-3.5 h-3.5" />
+              <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
               Meu Trabalho
             </Button>
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          {' '}
-          {/* CORREÇÃO 1: prefeituras dinâmicas */}
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-gray-500 shrink-0" />
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Prefeitura */}
+          <div className="flex items-center gap-1.5">
+            <Filter className="w-3.5 h-3.5 text-gray-500 shrink-0" aria-hidden="true" />
             <Select value={selectedCity} onValueChange={setSelectedCity}>
-              <SelectTrigger className="w-[180px] h-9 text-xs font-medium">
-                <SelectValue placeholder="Selecione a Prefeitura" />
+              <SelectTrigger className="w-[170px] h-9 text-xs font-medium" aria-label="Filtrar por Prefeitura">
+                <SelectValue placeholder="Prefeitura" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="Todas as Prefeituras">Todas as Prefeituras</SelectItem>
@@ -477,11 +529,12 @@ export default function BussolaKanban() {
               </SelectContent>
             </Select>
           </div>
-          {/* Filtro por Responsável */}
-          <div className="flex items-center gap-1.5">
+
+          {/* Responsável */}
+          <div className="flex items-center gap-1">
             <Select value={responsibleFilter} onValueChange={setResponsibleFilter}>
-              <SelectTrigger className="w-[190px] h-9 text-xs font-medium">
-                <SelectValue placeholder="Filtrar por Responsável" />
+              <SelectTrigger className="w-[170px] h-9 text-xs font-medium" aria-label="Filtrar por Responsável">
+                <SelectValue placeholder="Responsável" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="Todos">Todos Responsáveis</SelectItem>
@@ -492,23 +545,13 @@ export default function BussolaKanban() {
                 ))}
               </SelectContent>
             </Select>
-            {responsibleFilter !== 'Todos' && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setResponsibleFilter('Todos')}
-                title="Limpar Filtro"
-                className="h-9 w-9 text-gray-400 hover:text-gray-700"
-              >
-                <X className="w-4 h-4" />
-              </Button>
-            )}
           </div>
+
           {/* Ordenação */}
-          <div className="flex items-center gap-2">
-            <ArrowUpDown className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+          <div className="flex items-center gap-1">
+            <ArrowUpDown className="w-3.5 h-3.5 text-gray-500 shrink-0" aria-hidden="true" />
             <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-              <SelectTrigger className="w-[180px] h-9 text-xs font-medium">
+              <SelectTrigger className="w-[160px] h-9 text-xs font-medium" aria-label="Critério de Ordenação">
                 <SelectValue placeholder="Ordenar por" />
               </SelectTrigger>
               <SelectContent>
@@ -518,27 +561,128 @@ export default function BussolaKanban() {
               </SelectContent>
             </Select>
           </div>
-          <Button
-            variant="outline"
-            onClick={() =>
-              exportProjectsToPdf(filteredProjects, 'Relatório de Projetos - Bússola', selectedCity)
-            }
-            className="h-9 px-3 text-xs gap-1.5 border-slate-300 hover:bg-slate-50 text-[#1c2a3e] font-medium ml-auto sm:ml-0"
-          >
-            <FileText className="w-4 h-4 text-red-600" />
-            Exportar PDF
-          </Button>
-          <Button
-            onClick={() => setIsNewModalOpen(true)}
-            className="bg-[#3b82f6] hover:bg-[#2563eb] text-white h-9 px-3 text-xs gap-1.5 shadow-sm"
-          >
-            <Plus className="w-4 h-4" />
-            Novo Projeto
-          </Button>
+
+          {hasActiveFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClearAllFilters}
+              className="h-9 px-2.5 text-xs text-slate-600 hover:text-red-600 gap-1"
+              aria-label="Limpar todos os filtros da Bússola"
+            >
+              <X className="w-3.5 h-3.5 text-red-500" aria-hidden="true" />
+              <span className="hidden sm:inline">Limpar</span>
+            </Button>
+          )}
         </div>
       </div>
 
-      <div className="overflow-x-auto pb-4">
+      {/* Seletor rápido de coluna para mobile em modo lista */}
+      <div className="md:hidden flex items-center gap-1.5 overflow-x-auto pb-1">
+        {COLUMNS.map((col) => {
+          const count = getProjectsByColumn(col).length
+          const isSelected = selectedMobileCol === col
+          return (
+            <button
+              key={col}
+              type="button"
+              onClick={() => {
+                setSelectedMobileCol(col)
+                if (viewMode !== 'list') setViewMode('list')
+              }}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+                isSelected
+                  ? 'bg-[#1c2a3e] text-white shadow-xs'
+                  : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              <span>{col}</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                  isSelected ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-600'
+                }`}
+              >
+                {count}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Modo Lista para telas mobile */}
+      {viewMode === 'list' && (
+        <div className="md:hidden space-y-3">
+          <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+              {selectedMobileCol}
+            </span>
+            <span className="text-xs font-semibold text-slate-500">
+              {getProjectsByColumn(selectedMobileCol).length} projetos
+            </span>
+          </div>
+
+          {getProjectsByColumn(selectedMobileCol).length === 0 ? (
+            <EmptyState
+              title={`Nenhum projeto em ${selectedMobileCol}`}
+              description="Nenhum processo jurídico está nesta etapa no momento."
+            />
+          ) : (
+            <div className="space-y-2.5">
+              {getProjectsByColumn(selectedMobileCol).map((project) => {
+                const overdue = isOverdue(project.deadline)
+                const formattedDate = formatDate(project.deadline, 'Sem prazo')
+                return (
+                  <Card
+                    key={`list-${project.id}`}
+                    onClick={() => openProjectDetails(project)}
+                    className="p-3.5 bg-white border border-slate-200 shadow-xs cursor-pointer hover:border-blue-400 transition-all"
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-1.5">
+                      <span className="text-xs font-bold text-[#1c2a3e] leading-snug">
+                        {project.title}
+                      </span>
+                      <Badge
+                        className={`text-[10px] px-2 py-0.5 font-bold ${
+                          project.priority === 'Alta'
+                            ? 'bg-red-100 text-red-700'
+                            : project.priority === 'Média'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-emerald-100 text-emerald-800'
+                        }`}
+                      >
+                        {project.priority}
+                      </Badge>
+                    </div>
+                    <p className="text-[11px] text-gray-500 line-clamp-2 mb-2">
+                      {project.description}
+                    </p>
+                    <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100">
+                      <span className="text-gray-500 text-[11px] font-medium">
+                        {project.prefeitura || 'Prefeitura'}
+                      </span>
+                      <div
+                        className={`flex items-center gap-1 font-semibold text-[11px] ${
+                          overdue ? 'text-red-600' : 'text-slate-600'
+                        }`}
+                      >
+                        {overdue ? (
+                          <AlertTriangle className="w-3.5 h-3.5 text-red-500" aria-hidden="true" />
+                        ) : (
+                          <Calendar className="w-3.5 h-3.5 text-gray-400" aria-hidden="true" />
+                        )}
+                        <span>{formattedDate}</span>
+                      </div>
+                    </div>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Quadro Kanban horizontal com affordance de rolagem */}
+      <div className={`${viewMode === 'list' ? 'hidden md:block' : 'block'} overflow-x-auto pb-4`}>
         <div className="flex gap-4 min-w-[1280px]">
           {COLUMNS.map((col) => {
             const columnProjects = getProjectsByColumn(col)
@@ -612,9 +756,11 @@ export default function BussolaKanban() {
                                   <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-6 w-6 text-gray-400 hover:text-gray-700 p-0 ml-1"
+                                    className="h-6 w-6 text-gray-400 hover:text-gray-700 p-0 ml-1 focus-visible:ring-2 focus-visible:ring-[#3b82f6]"
+                                    aria-label={`Opções para o projeto ${project.title}`}
+                                    title="Opções do card"
                                   >
-                                    <MoreHorizontal className="w-3.5 h-3.5" />
+                                    <MoreHorizontal className="w-3.5 h-3.5" aria-hidden="true" />
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-44 text-xs">
@@ -686,15 +832,26 @@ export default function BussolaKanban() {
                                 {project.responsible || 'Sem responsável'}
                               </span>
                             </div>
-                            {/* CORREÇÃO 5: badge de prazo vencido */}
+                            {/* CORREÇÃO 5: badge de prazo vencido com rótulo textual e ícone para acessibilidade */}
                             <div
-                              className={`flex items-center gap-1 font-medium ${overdue ? 'text-red-600' : 'text-slate-700'}`}
+                              className={`flex items-center gap-1 font-medium ${
+                                overdue ? 'text-red-600' : isUpcoming(project.deadline) ? 'text-amber-700' : 'text-slate-700'
+                              }`}
                             >
-                              <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                              {overdue ? (
+                                <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" aria-hidden="true" />
+                              ) : (
+                                <Calendar className="w-3.5 h-3.5 text-gray-400 shrink-0" aria-hidden="true" />
+                              )}
                               <span>{formattedDate}</span>
                               {overdue && (
-                                <span className="text-[9px] font-bold bg-red-100 text-red-600 px-1 rounded">
-                                  VENCIDO
+                                <span className="text-[9px] font-bold bg-red-100 text-red-700 border border-red-200 px-1 py-0.2 rounded">
+                                  ATRASADO
+                                </span>
+                              )}
+                              {!overdue && isUpcoming(project.deadline) && (
+                                <span className="text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200 px-1 py-0.2 rounded">
+                                  PRÓXIMO
                                 </span>
                               )}
                             </div>

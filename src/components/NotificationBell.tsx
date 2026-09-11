@@ -152,11 +152,15 @@ export function NotificationBell() {
         <Button
           variant="ghost"
           size="icon"
-          className="relative text-gray-500 hover:text-gray-900 rounded-full h-9 w-9"
+          className="relative text-gray-500 hover:text-gray-900 rounded-full h-9 w-9 focus-visible:ring-2 focus-visible:ring-[#3b82f6]"
           title="Notificações"
-          aria-label="Abrir notificações"
+          aria-label={
+            unreadCount > 0
+              ? `Notificações: ${unreadCount} não lida${unreadCount > 1 ? 's' : ''}`
+              : 'Notificações (nenhuma nova)'
+          }
         >
-          <Bell className="w-4 h-4" />
+          <Bell className="w-4 h-4" aria-hidden="true" />
           {unreadCount > 0 && (
             <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white shadow-sm ring-1 ring-white animate-in zoom-in">
               {unreadCount > 99 ? '99+' : unreadCount}

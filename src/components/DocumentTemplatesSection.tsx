@@ -29,6 +29,17 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { FileText, Plus, Edit2, Trash2, Loader2, Sparkles } from 'lucide-react'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 
@@ -219,18 +230,42 @@ export const DocumentTemplatesSection: React.FC = () => {
                       variant="ghost"
                       size="icon"
                       onClick={() => handleOpenEdit(tpl)}
-                      className="h-7 w-7 text-gray-400 hover:text-gray-700"
+                      className="h-7 w-7 text-gray-400 hover:text-gray-700 focus-visible:ring-2 focus-visible:ring-[#3b82f6]"
+                      aria-label={`Editar modelo ${tpl.name}`}
+                      title="Editar modelo"
                     >
-                      <Edit2 className="w-3.5 h-3.5" />
+                      <Edit2 className="w-3.5 h-3.5" aria-hidden="true" />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDelete(tpl.id)}
-                      className="h-7 w-7 text-gray-400 hover:text-red-600"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-gray-400 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-red-500"
+                          aria-label={`Excluir modelo ${tpl.name}`}
+                          title="Excluir modelo"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Excluir Modelo Oficial</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Deseja realmente remover o modelo &quot;{tpl.name}&quot;? Esta ação não pode ser desfeita.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => handleDelete(tpl.id)}
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                          >
+                            Excluir
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </div>
 
@@ -312,8 +347,9 @@ export const DocumentTemplatesSection: React.FC = () => {
                 type="submit"
                 disabled={saving}
                 className="bg-[#3b82f6] hover:bg-[#2563eb] text-white"
+                aria-label={editingTemplate ? 'Salvar alterações do modelo' : 'Confirmar criação do modelo'}
               >
-                {saving && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
+                {saving && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" aria-hidden="true" />}
                 {editingTemplate ? 'Salvar Alterações' : 'Criar Modelo'}
               </Button>
             </DialogFooter>

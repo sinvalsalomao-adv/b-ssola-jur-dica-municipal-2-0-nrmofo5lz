@@ -284,14 +284,16 @@ export function GenerateDocumentModal({
               Cancelar
             </Button>
             <Button
+              type="button"
               onClick={handleSave}
               disabled={isSaving}
-              className="bg-[#2e7d32] hover:bg-[#1b5e20] text-white gap-2"
+              className="bg-[#2e7d32] hover:bg-[#1b5e20] text-white gap-2 shadow-sm"
+              aria-label="Salvar documento gerado"
             >
               {isSaving ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
               ) : (
-                <Save className="w-4 h-4" />
+                <Save className="w-4 h-4" aria-hidden="true" />
               )}
               {isSaving ? 'Salvando...' : 'Salvar como Documento'}
             </Button>

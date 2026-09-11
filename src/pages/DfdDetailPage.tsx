@@ -191,20 +191,30 @@ export default function DfdDetailPage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-5 animate-fade-in">
-      <div className="flex items-center gap-3">
-        <Button variant="outline" size="icon" onClick={() => navigate('/dfds')}>
-          <ArrowLeft className="w-4 h-4" />
-        </Button>
-        <div className="flex-1">
-          <h2 className="text-xl font-bold text-[#1c2a3e]">
-            {editMode ? 'Editar DFD' : dfd.title}
-          </h2>
-          <p className="text-xs text-gray-500">Documento de Formalização de Demanda</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => navigate('/dfds')}
+            className="h-9 w-9 border-slate-300 shrink-0"
+            aria-label="Voltar para a lista de DFDs"
+          >
+            <ArrowLeft className="w-4 h-4" aria-hidden="true" />
+          </Button>
+          <div className="min-w-0">
+            <h1 className="text-xl md:text-2xl font-bold text-[#1c2a3e] tracking-tight truncate">
+              {editMode ? 'Editar DFD' : dfd.title}
+            </h1>
+            <p className="text-xs md:text-sm text-gray-500 mt-0.5">
+              Documento de Formalização de Demanda Municipal
+            </p>
+          </div>
         </div>
         <Badge
-          className={
+          className={`shrink-0 ${
             dfd.status === 'Finalizado' ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'
-          }
+          }`}
         >
           {dfd.status}
         </Badge>
@@ -273,11 +283,13 @@ export default function DfdDetailPage() {
                   <X className="w-4 h-4" /> Cancelar
                 </Button>
                 <Button
+                  type="button"
                   onClick={handleSave}
                   disabled={saving}
                   className="flex-1 bg-[#2e7d32] hover:bg-[#1b5e20] text-white gap-2"
+                  aria-label="Salvar alterações do DFD"
                 >
-                  <Save className="w-4 h-4" /> {saving ? 'Salvando...' : 'Salvar'}
+                  <Save className="w-4 h-4" aria-hidden="true" /> {saving ? 'Salvando...' : 'Salvar'}
                 </Button>
               </div>
             </>

@@ -6,6 +6,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { FileText, PlusCircle, LayoutList } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { TenantRequiredNotice } from '@/components/TenantRequiredNotice'
+import { PageHeader } from '@/components/common/PageHeader'
 
 export default function DfdsPage() {
   const { user } = useAuth()
@@ -25,16 +26,11 @@ export default function DfdsPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="bg-white p-4 rounded-xl shadow-xs border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-bold text-[#1c2a3e]">
-            Documentos de Formalização de Demanda (DFD)
-          </h2>
-          <p className="text-xs text-gray-500">
-            Elabore DFDs com frases padrão do setor jurídico e gerencie modelos de documentos.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Documentos de Formalização de Demanda (DFD)"
+        description="Elabore DFDs com justificativas padrão do setor jurídico, anexe documentos e consulte o histórico municipal."
+        icon={FileText}
+      />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="bg-white border border-gray-200 p-1 rounded-xl mb-4 inline-flex">

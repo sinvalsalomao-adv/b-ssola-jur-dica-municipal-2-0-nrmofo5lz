@@ -153,13 +153,45 @@ export default function TrackDetailPage() {
 
   return (
     <div className="space-y-6 animate-fade-in max-w-5xl mx-auto">
-      <div className="flex items-center gap-4">
-        <Button variant="outline" size="icon" onClick={() => navigate('/educacao')}>
-          <ArrowLeft className="w-4 h-4" />
-        </Button>
-        <div className="flex-1">
-          <h2 className="text-2xl font-bold text-[#1c2a3e]">{track.titulo}</h2>
-          <p className="text-sm text-gray-500">{track.descricao}</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => navigate('/educacao')}
+            className="h-9 w-9 border-slate-300 shrink-0"
+            aria-label="Voltar para a listagem de trilhas"
+          >
+            <ArrowLeft className="w-4 h-4" aria-hidden="true" />
+          </Button>
+          <div className="min-w-0">
+            <h1 className="text-xl md:text-2xl font-bold text-[#1c2a3e] tracking-tight truncate">
+              {track.titulo}
+            </h1>
+            <p className="text-xs md:text-sm text-gray-500 mt-0.5 line-clamp-2">
+              {track.descricao}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setQuizModalOpen(true)}
+            className="gap-1.5 text-xs h-9 border-slate-300"
+            aria-label="Gerenciar questões do quiz"
+          >
+            <ListChecks className="w-4 h-4" aria-hidden="true" />
+            Gerenciar Quiz
+          </Button>
+          <Button
+            onClick={handleOpenCreate}
+            className="bg-[#3b82f6] hover:bg-[#2563eb] text-white gap-1.5 text-xs h-9 shadow-sm"
+            aria-label="Adicionar aula a esta trilha"
+          >
+            <Plus className="w-4 h-4" aria-hidden="true" />
+            Adicionar Aula
+          </Button>
         </div>
       </div>
 
@@ -254,29 +286,32 @@ export default function TrackDetailPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-gray-600 hover:text-[#1c2a3e]"
+                        className="h-8 w-8 text-gray-600 hover:text-[#1c2a3e] focus-visible:ring-2 focus-visible:ring-[#3b82f6]"
                         onClick={() => handleOpenEdit(lesson)}
                         title="Editar Aula"
+                        aria-label={`Editar aula ${lesson.titulo}`}
                       >
-                        <Pencil className="w-3.5 h-3.5" />
+                        <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-[#3b82f6]"
+                        className="h-8 w-8 text-[#3b82f6] focus-visible:ring-2 focus-visible:ring-[#3b82f6]"
                         onClick={() => setCopyTarget(lesson)}
                         title="Copiar para outra Trilha"
+                        aria-label={`Copiar aula ${lesson.titulo} para outra trilha`}
                       >
-                        <Copy className="w-3.5 h-3.5" />
+                        <Copy className="w-3.5 h-3.5" aria-hidden="true" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-red-600"
+                        className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-500"
                         onClick={() => setDeleteTarget(lesson)}
                         title="Excluir Aula"
+                        aria-label={`Excluir aula ${lesson.titulo}`}
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                       </Button>
                     </div>
                   </div>

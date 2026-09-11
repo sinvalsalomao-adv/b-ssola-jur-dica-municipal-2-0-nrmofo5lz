@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { User, Mail, Shield, Camera, KeyRound, Loader2, Save } from 'lucide-react'
+import { User, Mail, Shield, Camera, KeyRound, Save, Lock } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,6 +15,8 @@ import {
   validatePasswordStrength,
 } from '@/components/PasswordStrengthIndicator'
 import { sanitizeInput } from '@/lib/sanitize'
+import { PageHeader } from '@/components/common/PageHeader'
+import { SubmitButton } from '@/components/common/StateDisplay'
 
 const ROLE_LABELS: Record<string, string> = {
   superadmin: 'Superadmin',
@@ -120,15 +122,11 @@ export default function PerfilPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-[#1c2a3e] flex items-center justify-center">
-          <User className="w-5 h-5 text-white" />
-        </div>
-        <div>
-          <h2 className="text-xl font-bold text-[#1c2a3e]">Meu Perfil</h2>
-          <p className="text-sm text-gray-500">Gerencie seus dados e senha de acesso.</p>
-        </div>
-      </div>
+      <PageHeader
+        title="Meu Perfil"
+        description="Gerencie seus dados pessoais, foto e credenciais de segurança de forma rápida."
+        icon={User}
+      />
 
       <Card className="bg-white border-0 shadow-subtle">
         <CardContent className="p-5 space-y-4">
@@ -141,14 +139,17 @@ export default function PerfilPage() {
                 </AvatarFallback>
               </Avatar>
               <button
+                type="button"
                 onClick={() => fileRef.current?.click()}
-                className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-[#3b82f6] flex items-center justify-center text-white shadow-md hover:bg-[#2563eb] transition-colors"
+                className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-[#3b82f6] flex items-center justify-center text-white shadow-md hover:bg-[#2563eb] transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#3b82f6]"
                 disabled={savingAvatar}
+                aria-label="Alterar foto do perfil"
+                title="Alterar foto do perfil"
               >
                 {savingAvatar ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 ) : (
-                  <Camera className="w-3.5 h-3.5" />
+                  <Camera className="w-3.5 h-3.5" aria-hidden="true" />
                 )}
               </button>
               <input
@@ -171,20 +172,28 @@ export default function PerfilPage() {
           </div>
 
           <div className="border-t pt-4">
-            <Label className="text-xs font-semibold text-gray-700">Nome</Label>
+            <Label htmlFor="perfil-nome" className="text-xs font-semibold text-gray-700">
+              Nome Completo
+            </Label>
             <div className="flex gap-2 mt-1">
-              <Input value={name} onChange={(e) => setName(e.target.value)} />
-              <Button
-                onClick={handleSaveName}
+              <Input
+                id="perfil-nome"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Seu nome completo"
                 disabled={savingName}
-                className="bg-[#3b82f6] hover:bg-[#2563eb] text-white shrink-0"
+              />
+              <SubmitButton
+                type="button"
+                onClick={handleSaveName}
+                submitting={savingName}
+                submittingText="Salvando..."
+                icon={<Save className="w-4 h-4" aria-hidden="true" />}
+                className="shrink-0"
+                aria-label="Salvar nome do perfil"
               >
-                {savingName ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-              </Button>
+                Salvar
+              </SubmitButton>
             </div>
           </div>
         </CardContent>
@@ -208,21 +217,29 @@ export default function PerfilPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs font-semibold text-gray-700">Nova Senha</Label>
+                <Label htmlFor="nova-senha" className="text-xs font-semibold text-gray-700">
+                  Nova Senha
+                </Label>
                 <Input
+                  id="nova-senha"
                   type="password"
                   value={newPwd}
                   onChange={(e) => setNewPwd(e.target.value)}
                   className="mt-1"
+                  disabled={savingPwd}
                 />
               </div>
               <div>
-                <Label className="text-xs font-semibold text-gray-700">Confirmar</Label>
+                <Label htmlFor="confirmar-senha" className="text-xs font-semibold text-gray-700">
+                  Confirmar Nova Senha
+                </Label>
                 <Input
+                  id="confirmar-senha"
                   type="password"
                   value={confirmPwd}
                   onChange={(e) => setConfirmPwd(e.target.value)}
                   className="mt-1"
+                  disabled={savingPwd}
                 />
               </div>
               {newPwd && (
@@ -231,18 +248,17 @@ export default function PerfilPage() {
                 </div>
               )}
             </div>
-            <Button
+            <SubmitButton
+              type="button"
               onClick={handleChangePassword}
-              disabled={savingPwd}
-              className="bg-[#3b82f6] hover:bg-[#2563eb] text-white gap-2"
+              submitting={savingPwd}
+              submittingText="Atualizando senha..."
+              disabled={!currentPwd || !newPwd || !confirmPwd}
+              icon={<Save className="w-4 h-4" aria-hidden="true" />}
+              aria-label="Salvar nova senha"
             >
-              {savingPwd ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Save className="w-4 h-4" />
-              )}
-              Salvar
-            </Button>
+              Salvar Senha
+            </SubmitButton>
           </div>
         </CardContent>
       </Card>

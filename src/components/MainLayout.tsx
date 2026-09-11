@@ -240,12 +240,14 @@ export const MainLayout: React.FC = () => {
               variant="ghost"
               size="icon"
               onClick={() => setCollapsed(!collapsed)}
-              className="text-[#c8d6e5] hover:text-white hover:bg-[#2a3f5f] hidden lg:flex"
+              className="text-[#c8d6e5] hover:text-white hover:bg-[#2a3f5f] hidden lg:flex focus-visible:ring-2 focus-visible:ring-white"
+              aria-label={collapsed ? 'Expandir barra lateral' : 'Recolher barra lateral'}
+              title={collapsed ? 'Expandir barra lateral' : 'Recolher barra lateral'}
             >
               {collapsed ? (
-                <ChevronRight className="w-4 h-4" />
+                <ChevronRight className="w-4 h-4" aria-hidden="true" />
               ) : (
-                <ChevronLeft className="w-4 h-4" />
+                <ChevronLeft className="w-4 h-4" aria-hidden="true" />
               )}
             </Button>
           </div>
@@ -276,7 +278,12 @@ export const MainLayout: React.FC = () => {
               {/* Mobile Drawer Hamburger */}
               <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
                 <SheetTrigger asChild>
-                  <Button variant="ghost" size="icon" className="md:hidden text-gray-700">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="md:hidden text-gray-700 focus-visible:ring-2 focus-visible:ring-[#3b82f6]"
+                    aria-label="Abrir menu de navegação lateral"
+                  >
                     <Menu className="w-6 h-6" />
                   </Button>
                 </SheetTrigger>

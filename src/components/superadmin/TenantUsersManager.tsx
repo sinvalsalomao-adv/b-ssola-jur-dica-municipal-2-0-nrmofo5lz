@@ -229,29 +229,31 @@ export function TenantUsersManager() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 animate-fade-in">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-10 h-10 rounded-lg bg-[#1c2a3e] flex items-center justify-center">
-            <Users className="w-5 h-5 text-white" />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-[#1c2a3e] flex items-center justify-center shrink-0 text-white shadow-xs">
+            <Users className="w-5 h-5 text-white" aria-hidden="true" />
           </div>
-          <div>
-            <h2 className="text-2xl font-bold text-[#1c2a3e]">Gestão de Usuários</h2>
-            <p className="text-sm text-gray-500">
+          <div className="min-w-0">
+            <h1 className="text-xl md:text-2xl font-bold text-[#1c2a3e] tracking-tight">
+              Gestão de Usuários e Acessos
+            </h1>
+            <p className="text-xs md:text-sm text-gray-500 mt-0.5">
               {isSuperadmin
-                ? 'Gestão de usuários municipais e aprovações de acesso (Visão Superadmin)'
-                : `Município: ${user?.prefeitura || '—'}`}
+                ? 'Gestão de usuários municipais, convites e aprovações de acesso (Visão Superadmin).'
+                : `Município: ${user?.prefeitura || '—'} — Servidores cadastrados e convites institucionais.`}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 flex-wrap shrink-0">
           {isSuperadmin && (
             <div className="w-52">
               <Select
                 value={selectedSuperadminTenant}
                 onValueChange={(val) => setSelectedSuperadminTenant(val)}
               >
-                <SelectTrigger className="h-9 text-xs">
-                  <Building2 className="w-3.5 h-3.5 mr-1 text-gray-500" />
+                <SelectTrigger className="h-9 text-xs" aria-label="Filtrar por município">
+                  <Building2 className="w-3.5 h-3.5 mr-1 text-gray-500" aria-hidden="true" />
                   <SelectValue placeholder="Filtrar município..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -265,8 +267,12 @@ export function TenantUsersManager() {
               </Select>
             </div>
           )}
-          <Button className="bg-[#3b82f6] text-white gap-2 h-9" onClick={() => setCreateOpen(true)}>
-            <UserPlus className="w-4 h-4" /> Convidar / Criar
+          <Button
+            className="bg-[#3b82f6] hover:bg-[#2563eb] text-white gap-1.5 h-9 text-xs shadow-sm"
+            onClick={() => setCreateOpen(true)}
+            aria-label="Convidar ou cadastrar novo servidor"
+          >
+            <UserPlus className="w-4 h-4" aria-hidden="true" /> Convidar / Criar
           </Button>
         </div>
       </div>
@@ -362,22 +368,24 @@ export function TenantUsersManager() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-gray-500 hover:text-[#3b82f6] hover:bg-blue-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                              className="h-8 w-8 text-gray-500 hover:text-[#3b82f6] hover:bg-blue-50 disabled:opacity-30 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-[#3b82f6]"
                               onClick={() => handleEdit(u)}
                               disabled={u.id === user?.id}
                               title="Editar Usuário"
+                              aria-label={`Editar usuário ${u.name}`}
                             >
-                              <Pencil className="w-3.5 h-3.5" />
+                              <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
                             </Button>
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-gray-500 hover:text-red-600 hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                              className="h-8 w-8 text-gray-500 hover:text-red-600 hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-red-500"
                               onClick={() => handleDelete(u)}
                               disabled={u.id === user?.id}
                               title="Excluir Usuário"
+                              aria-label={`Excluir usuário ${u.name}`}
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                             </Button>
                           </div>
                         </TableCell>

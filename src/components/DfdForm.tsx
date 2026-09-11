@@ -364,11 +364,12 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
               onClick={handleGenerateIA}
               disabled={isGenerating}
               className="text-xs gap-1.5 border-[#3b82f6] text-[#3b82f6] hover:bg-blue-50 h-8"
+              aria-label="Gerar justificativa técnica automaticamente via IA"
             >
               {isGenerating ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
               ) : (
-                <Sparkles className="w-3.5 h-3.5" />
+                <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
               )}
               {isGenerating ? 'Gerando...' : 'Gerar com IA'}
             </Button>
@@ -439,17 +440,33 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
             variant="outline"
             onClick={() => handleSave(true)}
             disabled={submitting || (isSuperadmin && !selectedTenantId)}
-            className="flex-1 border-[#4a6fa5] text-[#4a6fa5] hover:bg-[#4a6fa5] hover:text-white"
+            className="flex-1 border-[#4a6fa5] text-[#4a6fa5] hover:bg-slate-50"
+            aria-label="Salvar formulário como rascunho de DFD"
           >
-            {submitting ? 'Salvando...' : 'Salvar Rascunho'}
+            {submitting ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-1.5 animate-spin" aria-hidden="true" />
+                Salvando...
+              </>
+            ) : (
+              'Salvar Rascunho'
+            )}
           </Button>
           <Button
             type="button"
             onClick={() => handleSave(false)}
             disabled={submitting || (isSuperadmin && !selectedTenantId)}
-            className="flex-1 bg-[#2e7d32] hover:bg-[#1b5e20] text-white"
+            className="flex-1 bg-[#2e7d32] hover:bg-[#1b5e20] text-white shadow-sm"
+            aria-label="Finalizar e publicar Documento de Formalização de Demanda"
           >
-            {submitting ? 'Finalizando...' : 'Finalizar DFD'}
+            {submitting ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-1.5 animate-spin" aria-hidden="true" />
+                Finalizando...
+              </>
+            ) : (
+              'Finalizar DFD'
+            )}
           </Button>
         </div>
       </CardContent>

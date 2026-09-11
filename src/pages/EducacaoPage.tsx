@@ -2,14 +2,13 @@ import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   GraduationCap,
-  ArrowLeft,
   Clock,
   PlayCircle,
   CheckCircle2,
   Plus,
   Pencil,
   Trash2,
-  Loader2,
+  Users,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -39,6 +38,8 @@ import { useEducation } from '@/context/EducationContext'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 import type { TrackWithLessons } from '@/types/education'
+import { PageHeader } from '@/components/common/PageHeader'
+import { SubmitButton } from '@/components/common/StateDisplay'
 
 export default function EducacaoPage() {
   const navigate = useNavigate()
@@ -124,36 +125,32 @@ export default function EducacaoPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Button variant="outline" size="icon" onClick={() => navigate('/dashboard')}>
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <div>
-            <h2 className="text-2xl font-bold text-[#1c2a3e]">Módulo de Educação e Capacitação</h2>
-            <p className="text-sm text-gray-500">
-              Trilhas de aprendizagem jurídicas e administrativas para servidores municipais.
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 self-start sm:self-auto">
-          <Button
-            variant="outline"
-            onClick={() => navigate('/educacao/grupos')}
-            className="border-[#3b82f6] text-[#3b82f6] hover:bg-blue-50 gap-2"
-          >
-            <GraduationCap className="w-4 h-4" />
-            Grupos de Acesso
-          </Button>
-          <Button
-            onClick={handleOpenCreateModal}
-            className="bg-[#3b82f6] hover:bg-[#2563eb] text-white gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            Adicionar Trilha
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Módulo de Educação e Capacitação"
+        description="Trilhas de aprendizagem jurídicas e administrativas para servidores municipais."
+        icon={GraduationCap}
+        actions={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => navigate('/educacao/grupos')}
+              className="border-[#3b82f6] text-[#3b82f6] hover:bg-blue-50 gap-1.5 text-xs h-9"
+              aria-label="Gerenciar grupos de acesso da Academia"
+            >
+              <Users className="w-4 h-4" aria-hidden="true" />
+              Grupos de Acesso
+            </Button>
+            <Button
+              onClick={handleOpenCreateModal}
+              className="bg-[#3b82f6] hover:bg-[#2563eb] text-white gap-1.5 text-xs h-9 shadow-sm"
+              aria-label="Adicionar nova trilha de aprendizagem"
+            >
+              <Plus className="w-4 h-4" aria-hidden="true" />
+              Adicionar Trilha
+            </Button>
+          </>
+        }
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {(tracksWithProgress || []).map((track, index) => {
@@ -181,26 +178,28 @@ export default function EducacaoPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 text-gray-600 hover:text-[#1c2a3e] bg-white/80 backdrop-blur-sm rounded-full shadow-sm hover:bg-white"
+                      className="h-8 w-8 text-gray-600 hover:text-[#1c2a3e] bg-white/80 backdrop-blur-sm rounded-full shadow-sm hover:bg-white focus-visible:ring-2 focus-visible:ring-[#3b82f6]"
                       onClick={(e) => {
                         e.stopPropagation()
                         handleOpenEditModal(track)
                       }}
                       title="Editar Trilha"
+                      aria-label={`Editar trilha ${track.titulo}`}
                     >
-                      <Pencil className="w-3.5 h-3.5" />
+                      <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 text-red-600 hover:text-red-700 bg-white/80 backdrop-blur-sm rounded-full shadow-sm hover:bg-white"
+                      className="h-8 w-8 text-red-600 hover:text-red-700 bg-white/80 backdrop-blur-sm rounded-full shadow-sm hover:bg-white focus-visible:ring-2 focus-visible:ring-red-500"
                       onClick={(e) => {
                         e.stopPropagation()
                         setTrackToDelete(track)
                       }}
                       title="Excluir Trilha"
+                      aria-label={`Excluir trilha ${track.titulo}`}
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                     </Button>
                   </div>
                 </div>
@@ -312,14 +311,13 @@ export default function EducacaoPage() {
               >
                 Cancelar
               </Button>
-              <Button
-                type="submit"
-                disabled={submitting}
-                className="bg-[#3b82f6] hover:bg-[#2563eb] text-white"
+              <SubmitButton
+                submitting={submitting}
+                submittingText={editingTrack ? 'Salvando...' : 'Criando...'}
+                aria-label={editingTrack ? 'Salvar alterações da trilha' : 'Confirmar criação de trilha'}
               >
-                {submitting && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
                 {editingTrack ? 'Salvar Alterações' : 'Criar Trilha'}
-              </Button>
+              </SubmitButton>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -342,12 +340,15 @@ export default function EducacaoPage() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleConfirmDelete}
+              onClick={(e) => {
+                e.preventDefault()
+                handleConfirmDelete()
+              }}
               disabled={deleting}
               className="bg-red-600 hover:bg-red-700 text-white"
+              aria-label="Confirmar exclusão da trilha"
             >
-              {deleting && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
-              <span>Excluir</span>
+              {deleting ? 'Excluindo...' : 'Excluir Trilha'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

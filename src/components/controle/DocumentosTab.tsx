@@ -147,21 +147,25 @@ export const DocumentosTab: React.FC<DocumentosTabProps> = ({
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 text-blue-600 hover:bg-blue-50"
+                        className="h-7 w-7 text-blue-600 hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-[#3b82f6]"
                         onClick={() => {
                           setPreviewDoc(doc)
                           setPreviewOpen(true)
                         }}
+                        aria-label={`Visualizar documento ${doc.fileName}`}
+                        title="Visualizar documento"
                       >
-                        <Eye className="w-3.5 h-3.5" />
+                        <Eye className="w-3.5 h-3.5" aria-hidden="true" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 text-red-600 hover:bg-red-50"
+                        className="h-7 w-7 text-red-600 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-500"
                         onClick={() => setDeleteTarget(doc)}
+                        aria-label={`Excluir documento ${doc.fileName}`}
+                        title="Excluir documento"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                       </Button>
                     </div>
                   </TableCell>

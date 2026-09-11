@@ -380,9 +380,16 @@ export const NewProjectModal: React.FC = () => {
               type="submit"
               disabled={saving || (isSuperadmin && !selectedTenantId)}
               className="bg-[#3b82f6] hover:bg-[#2563eb] text-white"
+              aria-label="Confirmar criação do projeto"
             >
-              {saving && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
-              Criar Projeto
+              {saving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-1.5 animate-spin" aria-hidden="true" />
+                  Criando...
+                </>
+              ) : (
+                'Criar Projeto'
+              )}
             </Button>
           </DialogFooter>
         </form>

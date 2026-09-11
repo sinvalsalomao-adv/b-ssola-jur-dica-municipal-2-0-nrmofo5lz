@@ -18,6 +18,8 @@ import {
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { toast } from 'sonner'
 import { TenantRequiredNotice } from '@/components/TenantRequiredNotice'
+import { PageHeader } from '@/components/common/PageHeader'
+import { SubmitButton } from '@/components/common/StateDisplay'
 
 export default function ConfiguracoesPage() {
   const { user } = useAuth()
@@ -154,12 +156,11 @@ export default function ConfiguracoesPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
-      <div>
-        <h2 className="text-xl font-bold text-[#1c2a3e]">Configurações do Tenant</h2>
-        <p className="text-sm text-gray-500">
-          Ajuste limites de gargalo e configurações de e-mail para a sua prefeitura.
-        </p>
-      </div>
+      <PageHeader
+        title="Configurações do Município"
+        description="Ajuste os limites de alerta de gargalo do Kanban e parâmetros de envio de e-mails institucionais."
+        icon={Settings}
+      />
 
       <Card className="bg-white border-0 shadow-subtle">
         <CardContent className="p-5 space-y-4">
@@ -198,18 +199,16 @@ export default function ConfiguracoesPage() {
               className="w-20 h-8 text-center"
             />
           </div>
-          <Button
+          <SubmitButton
+            type="button"
             onClick={handleSaveLimits}
-            disabled={savingLimits}
-            className="bg-[#3b82f6] hover:bg-[#2563eb] text-white gap-2"
+            submitting={savingLimits}
+            submittingText="Salvando limites..."
+            icon={<Save className="w-4 h-4" aria-hidden="true" />}
+            aria-label="Salvar limites de gargalo do Kanban"
           >
-            {savingLimits ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Save className="w-4 h-4" />
-            )}
             Salvar Limites
-          </Button>
+          </SubmitButton>
         </CardContent>
       </Card>
 
@@ -279,18 +278,16 @@ export default function ConfiguracoesPage() {
               />
             </div>
           </div>
-          <Button
+          <SubmitButton
+            type="button"
             onClick={handleSaveSmtp}
-            disabled={savingSmtp}
-            className="bg-[#3b82f6] hover:bg-[#2563eb] text-white gap-2"
+            submitting={savingSmtp}
+            submittingText="Salvando configurações..."
+            icon={<Save className="w-4 h-4" aria-hidden="true" />}
+            aria-label="Salvar configurações de e-mail SMTP"
           >
-            {savingSmtp ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Save className="w-4 h-4" />
-            )}
             Salvar Configurações
-          </Button>
+          </SubmitButton>
         </CardContent>
       </Card>
     </div>

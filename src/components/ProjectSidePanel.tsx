@@ -10,6 +10,17 @@ import {
   SheetDescription,
   SheetFooter,
 } from '@/components/ui/sheet'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -192,10 +203,10 @@ export const ProjectSidePanel: React.FC = () => {
   }
 
   const handleDelete = async () => {
-    if (!confirm('Tem certeza que deseja excluir este projeto?')) return
     try {
       await deleteProject(selectedProject.id)
       toast.success('Projeto removido.')
+      setIsSidePanelOpen(false)
     } catch (err) {
       toast.error(getErrorMessage(err))
     }
@@ -244,7 +255,9 @@ export const ProjectSidePanel: React.FC = () => {
 
   return (
     <Sheet open={isSidePanelOpen} onOpenChange={setIsSidePanelOpen}>
-      <SheetContent className="w-full sm:max-w-[480px] bg-white p-6 overflow-y-auto flex flex-col justify-between">
+      <SheetContent
+        className="w-full max-w-full sm:max-w-[540px] bg-white p-4 sm:p-6 overflow-y-auto flex flex-col justify-between z-50 border-l border-slate-200"
+      >
         <div>
           <SheetHeader className="text-left border-b pb-3 mb-3">
             <div className="flex items-center justify-between mb-1">
@@ -505,25 +518,53 @@ export const ProjectSidePanel: React.FC = () => {
         </div>
 
         <SheetFooter className="border-t pt-4 mt-6 flex-row justify-between items-center space-x-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={handleDelete}
-            disabled={saving}
-            className="text-red-500 hover:text-red-700 hover:bg-red-50"
-            title="Excluir projeto"
-          >
-            {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Trash2 className="w-5 h-5" />}
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                disabled={saving}
+                className="text-red-500 hover:text-red-700 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-500"
+                title="Excluir projeto"
+                aria-label="Excluir projeto municipal"
+              >
+                <Trash2 className="w-5 h-5" aria-hidden="true" />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Excluir Projeto</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Tem certeza que deseja excluir o projeto &quot;{selectedProject.title}&quot;? Esta ação removerá os checklists, documentos vinculados e o histórico de auditoria associado.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDelete}
+                  className="bg-red-600 hover:bg-red-700 text-white"
+                >
+                  Excluir Definitivamente
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
           <div className="flex space-x-2">
-            <Button variant="outline" onClick={() => setIsSidePanelOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsSidePanelOpen(false)}
+              disabled={saving}
+            >
               Fechar
             </Button>
             <Button
               onClick={handleSave}
               disabled={saving}
-              className="bg-[#3b82f6] hover:bg-[#2563eb] text-white gap-1.5"
+              className="bg-[#3b82f6] hover:bg-[#2563eb] text-white gap-1.5 focus-visible:ring-2 focus-visible:ring-[#3b82f6]"
+              aria-label="Salvar alterações do projeto"
             >
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               Salvar

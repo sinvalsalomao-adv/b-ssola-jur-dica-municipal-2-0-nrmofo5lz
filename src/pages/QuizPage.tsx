@@ -63,22 +63,27 @@ export default function QuizPage() {
 
   return (
     <div className="space-y-6 animate-fade-in max-w-3xl mx-auto">
-      <div className="flex items-center gap-4">
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={() => navigate(`/educacao/trilha/${track.id}`)}
-        >
-          <ArrowLeft className="w-4 h-4" />
-        </Button>
-        <div>
-          <h2 className="text-2xl font-bold text-[#1c2a3e]">Quiz: {track.titulo}</h2>
-          <p className="text-sm text-gray-500">
-            Responda às 5 questões. Aprovação a partir de 70%.
-          </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => navigate(`/educacao/trilha/${track.id}`)}
+            className="h-9 w-9 border-slate-300 shrink-0"
+            aria-label="Voltar para detalhes da trilha"
+          >
+            <ArrowLeft className="w-4 h-4" aria-hidden="true" />
+          </Button>
+          <div className="min-w-0">
+            <h1 className="text-xl md:text-2xl font-bold text-[#1c2a3e] tracking-tight truncate">
+              Quiz: {track.titulo}
+            </h1>
+            <p className="text-xs md:text-sm text-gray-500 mt-0.5">
+              Responda às questões para fixar o aprendizado e obter aprovação institucional.
+            </p>
+          </div>
         </div>
       </div>
-
       {!submitted && (
         <div className="space-y-4">
           {track.quiz.map((q, qIndex) => (

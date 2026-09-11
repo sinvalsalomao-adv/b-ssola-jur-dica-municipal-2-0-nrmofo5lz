@@ -79,37 +79,40 @@ export default function Dashboard() {
   }
 
   const header = (
-    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-      <div>
-        <h2 className="text-xl font-bold text-[#1c2a3e]">
+    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+      <div className="space-y-1">
+        <h1 className="text-xl md:text-2xl font-bold text-[#1c2a3e] tracking-tight">
           Gestão Integrada de Projetos Municipais
-        </h2>
-        <p className="text-sm text-gray-500 mt-1">
+        </h1>
+        <p className="text-xs md:text-sm text-gray-500">
           Acompanhe em tempo real as etapas jurídicas, licitatórias e operacionais das prefeituras.
         </p>
       </div>
-      <div className="flex items-center gap-3 shrink-0">
+      <div className="flex items-center gap-2.5 flex-wrap shrink-0">
         {isPrivileged && (
           <Button
             onClick={() => setCustomizeOpen(true)}
             variant="outline"
-            className="border-gray-200 text-[#1c2a3e] hover:bg-slate-50 gap-2"
+            className="border-gray-200 text-[#1c2a3e] hover:bg-slate-50 gap-1.5 text-xs h-9"
+            aria-label="Personalizar painel de widgets"
           >
-            <Settings2 className="w-4 h-4" /> Personalizar
+            <Settings2 className="w-4 h-4" aria-hidden="true" /> Personalizar
           </Button>
         )}
         <Button
           onClick={() => setIsNewModalOpen(true)}
-          className="bg-[#3b82f6] hover:bg-[#2563eb] text-white gap-2 shadow-sm"
+          className="bg-[#3b82f6] hover:bg-[#2563eb] text-white gap-1.5 text-xs h-9 shadow-sm"
+          aria-label="Criar novo projeto municipal"
         >
-          <Plus className="w-4 h-4" /> Novo Projeto
+          <Plus className="w-4 h-4" aria-hidden="true" /> Novo Projeto
         </Button>
         <Button
           onClick={() => navigate('/bussola')}
           variant="outline"
-          className="border-gray-200 text-[#1c2a3e] hover:bg-slate-50 gap-2"
+          className="border-gray-200 text-[#1c2a3e] hover:bg-slate-50 gap-1.5 text-xs h-9"
+          aria-label="Acessar o quadro Kanban da Bússola"
         >
-          Ver Quadro Bússola <ArrowRight className="w-4 h-4" />
+          Ver Quadro Bússola <ArrowRight className="w-4 h-4" aria-hidden="true" />
         </Button>
       </div>
     </div>
@@ -123,18 +126,20 @@ export default function Dashboard() {
 
     return (
       <div className="space-y-6 animate-fade-in">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100 font-semibold text-xs border border-purple-200">
-                <Globe className="w-3 h-3 mr-1" /> Visão Global Superadmin
+                <Globe className="w-3 h-3 mr-1" aria-hidden="true" /> Visão Global Superadmin
               </Badge>
               <Badge variant="outline" className="text-xs text-slate-600">
                 Escopo Multi-Tenant
               </Badge>
             </div>
-            <h2 className="text-xl font-bold text-[#1c2a3e]">Painel de Controle Corporativo</h2>
-            <p className="text-sm text-gray-500 mt-1">
+            <h1 className="text-xl md:text-2xl font-bold text-[#1c2a3e] tracking-tight">
+              Painel de Controle Corporativo
+            </h1>
+            <p className="text-xs md:text-sm text-gray-500 mt-0.5">
               Resumo institucional consolidado das prefeituras cadastradas e acesso aos contextos
               municipais isolados.
             </p>
@@ -143,8 +148,9 @@ export default function Dashboard() {
             <Button
               onClick={() => navigate('/superadmin')}
               className="bg-[#3b82f6] hover:bg-[#2563eb] text-white gap-2 shadow-sm text-xs h-9"
+              aria-label="Ir para a gestão centralizada de prefeituras"
             >
-              <Building2 className="w-4 h-4" /> Gestão de Prefeituras
+              <Building2 className="w-4 h-4" aria-hidden="true" /> Gestão de Prefeituras
             </Button>
           </div>
         </div>

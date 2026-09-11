@@ -11,7 +11,6 @@ import {
 import type { NotificationItem } from '@/types/controle'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import {
   Select,
@@ -30,20 +29,21 @@ import {
   ExternalLink,
   ChevronLeft,
   ChevronRight,
-  Filter,
   RefreshCw,
   Plus,
   MessageSquare,
   ShieldAlert,
-  Info,
   Calendar,
   Building2,
-  CheckCircle2,
+  X,
 } from 'lucide-react'
 import { formatDate } from '@/lib/dateUtils'
 import { toast } from 'sonner'
 import { NewNotificationModal } from '@/components/admin/NewNotificationModal'
 import { TenantRequiredNotice } from '@/components/TenantRequiredNotice'
+import { PageHeader } from '@/components/common/PageHeader'
+import { EmptyState } from '@/components/common/StateDisplay'
+import { FilterBar } from '@/components/common/FilterBar'
 import pb from '@/lib/pocketbase/client'
 
 const PER_PAGE = 15
@@ -268,54 +268,50 @@ export default function NotificacoesPage() {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-12 animate-fade-in">
-      {/* Cabeçalho */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-[#1c2a3e] flex items-center gap-2">
-            <Bell className="w-6 h-6 text-[#3b82f6]" /> Central de Notificações
-          </h1>
-          <p className="text-xs text-gray-500 mt-1">
-            Acompanhe comunicados, prazos, gargalos do Kanban e menções em tempo real.
-          </p>
-        </div>
+      <PageHeader
+        title="Central de Notificações"
+        description="Acompanhe comunicados institucionais, prazos do Kanban, gargalos e menções em tempo real."
+        icon={Bell}
+        actions={
+          <>
+            {unreadCount > 0 && !isSuperadminWithoutTenant && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleMarkAllAsRead}
+                disabled={markingAll || loading}
+                className="text-xs text-gray-700 border-gray-300 hover:bg-gray-100"
+              >
+                <CheckCheck className="w-4 h-4 mr-1.5 text-blue-600" />
+                Marcar todas como lidas
+              </Button>
+            )}
 
-        <div className="flex items-center gap-2">
-          {unreadCount > 0 && !isSuperadminWithoutTenant && (
+            {isAdminOrSuper && !isSuperadminWithoutTenant && (
+              <Button
+                size="sm"
+                onClick={() => setShowNewModal(true)}
+                className="bg-[#3b82f6] hover:bg-[#2563eb] text-white text-xs"
+              >
+                <Plus className="w-4 h-4 mr-1.5" />
+                Novo Comunicado
+              </Button>
+            )}
+
             <Button
-              variant="outline"
-              size="sm"
-              onClick={handleMarkAllAsRead}
-              disabled={markingAll || loading}
-              className="text-xs text-gray-700 border-gray-300 hover:bg-gray-100"
+              variant="ghost"
+              size="icon"
+              onClick={() => loadData()}
+              disabled={loading}
+              className="h-8 w-8 text-gray-500"
+              title="Atualizar notificações"
+              aria-label="Atualizar lista de notificações"
             >
-              <CheckCheck className="w-4 h-4 mr-1.5 text-blue-600" />
-              Marcar todas como lidas
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </Button>
-          )}
-
-          {isAdminOrSuper && !isSuperadminWithoutTenant && (
-            <Button
-              size="sm"
-              onClick={() => setShowNewModal(true)}
-              className="bg-[#3b82f6] hover:bg-[#2563eb] text-white text-xs"
-            >
-              <Plus className="w-4 h-4 mr-1.5" />
-              Novo Comunicado
-            </Button>
-          )}
-
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => loadData()}
-            disabled={loading}
-            className="h-8 w-8 text-gray-500"
-            title="Atualizar lista"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* Bloqueio se superadmin não selecionou tenant */}
       {isSuperadminWithoutTenant ? (
@@ -327,129 +323,111 @@ export default function NotificacoesPage() {
       ) : (
         <>
           {/* Barra de Filtros */}
-          <Card className="bg-white border-0 shadow-subtle">
-            <CardContent className="p-4 space-y-3">
-              <div className="flex flex-col md:flex-row items-center gap-3">
-                <div className="relative flex-1 w-full">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <Input
-                    placeholder="Buscar por assunto, projeto ou mensagem..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="pl-9 text-xs h-9"
-                  />
-                </div>
+          <FilterBar
+            search={search}
+            onSearchChange={(val) => {
+              setSearch(val)
+              setPage(1)
+            }}
+            searchPlaceholder="Buscar por assunto, projeto ou mensagem..."
+            hasActiveFilters={
+              filterTipo !== 'Todos' ||
+              filterLida !== 'Todos' ||
+              filterPeriodo !== 'todos' ||
+              filterEscopo !== 'todos' ||
+              !!search
+            }
+            onClearFilters={() => {
+              setFilterTipo('Todos')
+              setFilterLida('Todos')
+              setFilterPeriodo('todos')
+              setFilterEscopo('todos')
+              setSearch('')
+              setPage(1)
+            }}
+            totalCount={totalItems}
+            filteredCount={filteredList.length}
+            countLabel="notificações"
+          >
+            {/* Filtro de Leitura */}
+            <Select
+              value={filterLida}
+              onValueChange={(val) => {
+                setFilterLida(val)
+                setPage(1)
+              }}
+            >
+              <SelectTrigger className="w-[130px] text-xs h-9">
+                <SelectValue placeholder="Leitura" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Todos">Todas</SelectItem>
+                <SelectItem value="false">Não lidas</SelectItem>
+                <SelectItem value="true">Já lidas</SelectItem>
+              </SelectContent>
+            </Select>
 
-                <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
-                  {/* Filtro de Leitura */}
-                  <Select
-                    value={filterLida}
-                    onValueChange={(val) => {
-                      setFilterLida(val)
-                      setPage(1)
-                    }}
-                  >
-                    <SelectTrigger className="w-[140px] text-xs h-9">
-                      <SelectValue placeholder="Leitura" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Todos">Todas as notas</SelectItem>
-                      <SelectItem value="false">Não lidas</SelectItem>
-                      <SelectItem value="true">Já lidas</SelectItem>
-                    </SelectContent>
-                  </Select>
+            {/* Filtro por Tipo */}
+            <Select
+              value={filterTipo}
+              onValueChange={(val) => {
+                setFilterTipo(val)
+                setPage(1)
+              }}
+            >
+              <SelectTrigger className="w-[140px] text-xs h-9">
+                <SelectValue placeholder="Tipo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Todos">Todos os tipos</SelectItem>
+                <SelectItem value="Informativo">Informativo</SelectItem>
+                <SelectItem value="Aviso">Aviso</SelectItem>
+                <SelectItem value="Alerta">Alerta</SelectItem>
+                <SelectItem value="Urgente">Urgente</SelectItem>
+                <SelectItem value="Prazo Fatal">Prazo Fatal</SelectItem>
+                <SelectItem value="Gargalo">Gargalo</SelectItem>
+                <SelectItem value="Mencao">Menção</SelectItem>
+              </SelectContent>
+            </Select>
 
-                  {/* Filtro por Tipo */}
-                  <Select
-                    value={filterTipo}
-                    onValueChange={(val) => {
-                      setFilterTipo(val)
-                      setPage(1)
-                    }}
-                  >
-                    <SelectTrigger className="w-[150px] text-xs h-9">
-                      <SelectValue placeholder="Tipo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Todos">Todos os tipos</SelectItem>
-                      <SelectItem value="Informativo">Informativo</SelectItem>
-                      <SelectItem value="Aviso">Aviso</SelectItem>
-                      <SelectItem value="Alerta">Alerta</SelectItem>
-                      <SelectItem value="Urgente">Urgente</SelectItem>
-                      <SelectItem value="Prazo Fatal">Prazo Fatal</SelectItem>
-                      <SelectItem value="Gargalo">Gargalo</SelectItem>
-                      <SelectItem value="Mencao">Menção</SelectItem>
-                    </SelectContent>
-                  </Select>
+            {/* Filtro de Período */}
+            <Select
+              value={filterPeriodo}
+              onValueChange={(val: any) => {
+                setFilterPeriodo(val)
+                setPage(1)
+              }}
+            >
+              <SelectTrigger className="w-[130px] text-xs h-9">
+                <SelectValue placeholder="Período" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todo o período</SelectItem>
+                <SelectItem value="hoje">Hoje</SelectItem>
+                <SelectItem value="7dias">Últimos 7 dias</SelectItem>
+                <SelectItem value="30dias">Últimos 30 dias</SelectItem>
+              </SelectContent>
+            </Select>
 
-                  {/* Filtro de Período */}
-                  <Select
-                    value={filterPeriodo}
-                    onValueChange={(val: any) => {
-                      setFilterPeriodo(val)
-                      setPage(1)
-                    }}
-                  >
-                    <SelectTrigger className="w-[140px] text-xs h-9">
-                      <SelectValue placeholder="Período" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="todos">Todo o período</SelectItem>
-                      <SelectItem value="hoje">Hoje</SelectItem>
-                      <SelectItem value="7dias">Últimos 7 dias</SelectItem>
-                      <SelectItem value="30dias">Últimos 30 dias</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  {/* Filtro de Escopo ("Para mim" vs "Visão Municipal") apenas para admin */}
-                  {isAdminOrSuper && (
-                    <Select
-                      value={filterEscopo}
-                      onValueChange={(val: any) => {
-                        setFilterEscopo(val)
-                        setPage(1)
-                      }}
-                    >
-                      <SelectTrigger className="w-[150px] text-xs h-9">
-                        <SelectValue placeholder="Destinatário" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="todos">Visão Municipal</SelectItem>
-                        <SelectItem value="minhas">Dirigidas a mim</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-              </div>
-
-              {/* Linha de status e legenda */}
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-100 text-xs text-gray-500">
-                <div className="flex items-center gap-3">
-                  <span>
-                    Total: <strong className="text-gray-900">{totalItems}</strong> registro(s)
-                  </span>
-                  <span>•</span>
-                  <span>
-                    Não lidas: <strong className="text-blue-600">{unreadCount}</strong>
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 text-[11px]">
-                  <span className="flex items-center gap-1 text-gray-500">
-                    <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
-                    Não lida
-                  </span>
-                  <span className="flex items-center gap-1 text-gray-400">
-                    <span className="w-2 h-2 rounded-full bg-gray-300 inline-block" />
-                    Lida
-                  </span>
-                  <span className="flex items-center gap-1 text-red-600 font-medium">
-                    <AlertTriangle className="w-3 h-3" />
-                    Prazo / Gargalo
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+            {/* Filtro de Escopo ("Para mim" vs "Visão Municipal") apenas para admin */}
+            {isAdminOrSuper && (
+              <Select
+                value={filterEscopo}
+                onValueChange={(val: any) => {
+                  setFilterEscopo(val)
+                  setPage(1)
+                }}
+              >
+                <SelectTrigger className="w-[140px] text-xs h-9">
+                  <SelectValue placeholder="Destinatário" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Visão Municipal</SelectItem>
+                  <SelectItem value="minhas">Dirigidas a mim</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          </FilterBar>
 
           {/* Lista de Notificações */}
           {loading ? (
@@ -462,37 +440,31 @@ export default function NotificacoesPage() {
               ))}
             </div>
           ) : filteredList.length === 0 ? (
-            <Card className="bg-white border-0 shadow-subtle py-12 text-center">
-              <CardContent className="space-y-3">
-                <Bell className="w-12 h-12 text-gray-300 mx-auto" />
-                <h3 className="text-base font-semibold text-[#1c2a3e]">
-                  Nenhuma notificação encontrada
-                </h3>
-                <p className="text-xs text-gray-500 max-w-sm mx-auto">
-                  Não há notificações correspondentes aos critérios de filtro selecionados ou para o
-                  contexto atual.
-                </p>
-                {(filterTipo !== 'Todos' ||
-                  filterLida !== 'Todos' ||
-                  filterPeriodo !== 'todos' ||
-                  search) && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setFilterTipo('Todos')
-                      setFilterLida('Todos')
-                      setFilterPeriodo('todos')
-                      setSearch('')
-                      setPage(1)
-                    }}
-                    className="text-xs"
-                  >
-                    Limpar Filtros
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
+            <EmptyState
+              icon={<Bell className="w-6 h-6 text-slate-400" aria-hidden="true" />}
+              title="Nenhuma notificação encontrada"
+              description="Não há comunicados ou alertas correspondentes aos filtros selecionados para o seu perfil."
+              action={
+                filterTipo !== 'Todos' ||
+                filterLida !== 'Todos' ||
+                filterPeriodo !== 'todos' ||
+                filterEscopo !== 'todos' ||
+                search
+                  ? {
+                      label: 'Limpar Filtros',
+                      onClick: () => {
+                        setFilterTipo('Todos')
+                        setFilterLida('Todos')
+                        setFilterPeriodo('todos')
+                        setFilterEscopo('todos')
+                        setSearch('')
+                        setPage(1)
+                      },
+                      icon: <X className="w-3.5 h-3.5" aria-hidden="true" />,
+                    }
+                  : undefined
+              }
+            />
           ) : (
             <div className="space-y-3">
               {filteredList.map((item) => {

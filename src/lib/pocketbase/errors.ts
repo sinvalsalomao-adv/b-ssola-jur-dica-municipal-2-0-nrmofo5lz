@@ -20,10 +20,42 @@ export function extractFieldErrors(error: unknown): FieldErrors {
   return errors
 }
 
+import { sanitizeHttpError, sanitizeString } from '@/lib/errorSanitizer'
+
 export function getErrorMessage(error: unknown): string {
-  if (!(error instanceof ClientResponseError)) {
-    return error instanceof Error ? error.message : 'An unexpected error occurred.'
+  if (!error) return 'Ocorreu um erro inesperado. Tente novamente ou contate o suporte.'
+
+  // Se for erro do PocketBase ou HTTP, usa o sanitizador de segurança
+  if (error instanceof ClientResponseError) {
+    const sanitized = sanitizeHttpError(error)
+    const msgs = Object.values(extractFieldErrors(error))
+    if (msgs.length > 0) {
+      return sanitizeString(msgs.join(' '))
+    }
+    // Erros 400/403/404 comuns
+    if (error.status === 400) {
+      return sanitized.message || 'Dados inválidos ou incompletos. Verifique os campos informados.'
+    }
+    if (error.status === 403) {
+      return 'Você não possui permissão para executar esta ação.'
+    }
+    if (error.status === 404) {
+      return 'O registro solicitado não foi encontrado.'
+    }
+    if (error.status >= 500) {
+      return 'Falha de comunicação com o servidor. Tente novamente em instantes.'
+    }
+    return sanitized.message || 'Ocorreu um erro ao processar a solicitação.'
   }
-  const msgs = Object.values(extractFieldErrors(error))
-  return msgs.length > 0 ? msgs.join(' ') : error.message || 'An unexpected error occurred.'
+
+  if (error instanceof Error) {
+    // Evita expor stack traces ou URLs internas
+    const sanitizedMsg = sanitizeString(error.message)
+    if (sanitizedMsg.includes('Failed to fetch') || sanitizedMsg.includes('NetworkError')) {
+      return 'Falha de conexão com a rede. Verifique sua conexão e tente novamente.'
+    }
+    return sanitizedMsg || 'Ocorreu um erro inesperado. Tente novamente.'
+  }
+
+  return 'Ocorreu um erro inesperado. Tente novamente.'
 }

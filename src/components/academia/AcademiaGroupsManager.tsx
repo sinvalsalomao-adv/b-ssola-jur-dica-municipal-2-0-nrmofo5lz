@@ -537,19 +537,18 @@ export default function AcademiaGroupsManager() {
   // 2. VISÃO PARA ADMINISTRADOR / SUPERADMIN (GERENCIAMENTO COMPLETO)
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-200 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
-            <GraduationCap className="w-6 h-6" />
+      {/* Top Header Padronizado */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-[#1c2a3e] flex items-center justify-center shrink-0 text-white shadow-xs">
+            <GraduationCap className="w-5 h-5 text-white" aria-hidden="true" />
           </div>
-          <div>
-            <h2 className="text-xl font-bold text-[#1c2a3e]">
-              Bússola Academia — Controle de Acesso e Grupos
-            </h2>
-            <p className="text-xs text-gray-500">
-              Gerencie secretarias municipais, grupos educacionais e distribuição de acesso aos
-              servidores.
+          <div className="min-w-0">
+            <h1 className="text-xl md:text-2xl font-bold text-[#1c2a3e] tracking-tight truncate">
+              Bússola Academia — Acesso e Grupos
+            </h1>
+            <p className="text-xs md:text-sm text-gray-500 mt-0.5">
+              Secretarias municipais, grupos educacionais e distribuição de acessos e trilhas.
             </p>
           </div>
         </div>
@@ -703,25 +702,30 @@ export default function AcademiaGroupsManager() {
                               size="sm"
                               onClick={() => loadGroupMembers(grp)}
                               className="text-xs h-8 text-blue-600 border-blue-200 hover:bg-blue-50 gap-1.5"
+                              aria-label={`Ver e gerenciar membros do grupo ${grp.nome}`}
                             >
-                              <Users className="w-3.5 h-3.5" /> Membros
+                              <Users className="w-3.5 h-3.5" aria-hidden="true" /> Membros
                             </Button>
                             <div className="flex items-center gap-1">
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-8 w-8 text-gray-500 hover:text-gray-900"
+                                className="h-8 w-8 text-gray-500 hover:text-gray-900 focus-visible:ring-2 focus-visible:ring-[#3b82f6]"
                                 onClick={() => handleOpenEditGroup(grp)}
+                                aria-label={`Editar grupo ${grp.nome}`}
+                                title="Editar grupo"
                               >
-                                <Pencil className="w-3.5 h-3.5" />
+                                <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
                               </Button>
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-500"
                                 onClick={() => setGroupToDelete(grp)}
+                                aria-label={`Excluir grupo ${grp.nome}`}
+                                title="Excluir grupo"
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                               </Button>
                             </div>
                           </div>
@@ -798,18 +802,22 @@ export default function AcademiaGroupsManager() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-gray-500 hover:text-gray-900"
+                            className="h-8 w-8 text-gray-500 hover:text-gray-900 focus-visible:ring-2 focus-visible:ring-[#3b82f6]"
                             onClick={() => handleOpenEditSec(sec)}
+                            aria-label={`Editar secretaria ${sec.nome}`}
+                            title="Editar secretaria"
                           >
-                            <Pencil className="w-3.5 h-3.5" />
+                            <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                            className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-500"
                             onClick={() => setSecToDelete(sec)}
+                            aria-label={`Excluir secretaria ${sec.nome}`}
+                            title="Excluir secretaria"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                           </Button>
                         </div>
                       </CardContent>

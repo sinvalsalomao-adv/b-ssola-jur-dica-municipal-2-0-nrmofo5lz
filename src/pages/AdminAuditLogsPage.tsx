@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { History, ChevronLeft, ChevronRight, Search, Lock } from 'lucide-react'
+import { History, ChevronLeft, ChevronRight, Search, Lock, X } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -9,6 +9,9 @@ import { useAuth } from '@/context/AuthContext'
 import { useRealtime } from '@/hooks/use-realtime'
 import { getAuditLogsPaginated } from '@/services/admin-notifications'
 import { TenantRequiredNotice } from '@/components/TenantRequiredNotice'
+import { PageHeader } from '@/components/common/PageHeader'
+import { EmptyState, ErrorState } from '@/components/common/StateDisplay'
+import { FilterBar } from '@/components/common/FilterBar'
 
 const PER_PAGE = 15
 
@@ -122,69 +125,85 @@ export default function AdminAuditLogsPage() {
     )
   }
 
+  const hasActiveFilters = !!search || (isSuperadmin && selectedTenantId !== 'all')
+
+  const handleClearFilters = () => {
+    setSearch('')
+    if (isSuperadmin) setSelectedTenantId('all')
+    setPage(1)
+  }
+
   return (
     <div className="space-y-5 animate-fade-in max-w-4xl mx-auto">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-[#1c2a3e] flex items-center justify-center">
-          <History className="w-5 h-5 text-white" />
-        </div>
-        <div>
-          <h2 className="text-xl font-bold text-[#1c2a3e]">Logs de Auditoria</h2>
-          <p className="text-xs text-gray-500">{totalItems} registro(s) encontrado(s)</p>
-        </div>
-      </div>
+      <PageHeader
+        title="Logs de Auditoria"
+        description="Histórico rastreável e imutável de ações realizadas em projetos, documentos e permissões."
+        icon={History}
+      />
 
-      {/* Seletor de prefeitura para Superadmin */}
-      {isSuperadmin && (
-        <Card className="bg-slate-50 border border-slate-200">
-          <CardContent className="p-3">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-              <span className="text-xs font-semibold text-slate-700 whitespace-nowrap">
-                Filtrar por Prefeitura:
-              </span>
-              <select
-                aria-label="Filtrar por Prefeitura"
-                value={selectedTenantId}
-                onChange={(e) => {
-                  setSelectedTenantId(e.target.value)
-                  setPage(1)
-                }}
-                className="w-full sm:w-80 h-9 rounded-md border border-input bg-white px-3 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-              >
-                <option value="all">Todas as prefeituras</option>
-                {availableTenants.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="relative max-w-sm">
-        <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar por usuário ou ação..."
-          className="pl-9 h-9 text-xs"
-        />
-      </div>
+      <FilterBar
+        search={search}
+        onSearchChange={(val) => {
+          setSearch(val)
+          setPage(1)
+        }}
+        searchPlaceholder="Buscar por usuário, ação ou título de projeto..."
+        hasActiveFilters={hasActiveFilters}
+        onClearFilters={handleClearFilters}
+        totalCount={totalItems}
+        countLabel="registros de auditoria"
+      >
+        {isSuperadmin && (
+          <div className="flex items-center gap-2">
+            <label htmlFor="select-pref-audit" className="text-xs font-semibold text-slate-700 sr-only">
+              Filtrar por prefeitura
+            </label>
+            <select
+              id="select-pref-audit"
+              aria-label="Filtrar por prefeitura"
+              value={selectedTenantId}
+              onChange={(e) => {
+                setSelectedTenantId(e.target.value)
+                setPage(1)
+              }}
+              className="h-9 rounded-md border border-input bg-white px-3 py-1 text-xs shadow-xs focus:outline-hidden focus:ring-1 focus:ring-ring"
+            >
+              <option value="all">Todas as prefeituras</option>
+              {availableTenants.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </FilterBar>
 
       {loading ? (
         <div className="space-y-3">
           {[...Array(5)].map((_, i) => (
-            <Skeleton key={i} className="h-16 w-full" />
+            <Skeleton key={i} className="h-16 w-full rounded-xl" />
           ))}
         </div>
       ) : items.length === 0 ? (
-        <Card className="bg-white border-0 shadow-subtle">
-          <CardContent className="p-12 text-center text-sm text-gray-400">
-            Nenhum registro de auditoria encontrado.
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={<History className="w-6 h-6 text-slate-400" aria-hidden="true" />}
+          title="Nenhum registro de auditoria encontrado"
+          description={
+            hasActiveFilters
+              ? 'Nenhuma alteração corresponde aos filtros informados. Tente limpar os termos de busca.'
+              : 'Não há ações registradas para o período selecionado.'
+          }
+          action={
+            hasActiveFilters
+              ? {
+                  label: 'Limpar filtros',
+                  onClick: handleClearFilters,
+                  icon: <X className="w-3.5 h-3.5" aria-hidden="true" />,
+                }
+              : undefined
+          }
+        />
       ) : (
         <div className="space-y-2">
           {items.map((entry) => {
@@ -231,21 +250,25 @@ export default function AdminAuditLogsPage() {
           <Button
             variant="outline"
             size="icon"
-            disabled={page <= 1}
+            disabled={page <= 1 || loading}
             onClick={() => setPage(page - 1)}
+            aria-label="Ir para página anterior"
+            title="Página anterior"
           >
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-4 h-4" aria-hidden="true" />
           </Button>
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-gray-500 font-medium">
             Página {page} de {totalPages}
           </span>
           <Button
             variant="outline"
             size="icon"
-            disabled={page >= totalPages}
+            disabled={page >= totalPages || loading}
             onClick={() => setPage(page + 1)}
+            aria-label="Ir para próxima página"
+            title="Próxima página"
           >
-            <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="w-4 h-4" aria-hidden="true" />
           </Button>
         </div>
       )}

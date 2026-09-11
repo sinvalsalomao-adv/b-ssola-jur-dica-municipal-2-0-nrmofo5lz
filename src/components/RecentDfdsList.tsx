@@ -75,8 +75,12 @@ export const RecentDfdsList = ({
             ))}
           </div>
         ) : !dfds || dfds.length === 0 ? (
-          <div className="p-8 text-center text-sm text-gray-400">
-            Nenhum DFD encontrado. Crie seu primeiro documento acima.
+          <div className="p-10 text-center space-y-2">
+            <FileText className="w-8 h-8 text-slate-300 mx-auto" aria-hidden="true" />
+            <p className="text-sm font-semibold text-slate-700">Nenhum DFD cadastrado</p>
+            <p className="text-xs text-slate-400">
+              Preencha o formulário para formalizar a primeira demanda do município.
+            </p>
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
@@ -95,9 +99,9 @@ export const RecentDfdsList = ({
                     }`}
                   >
                     {dfd.status === 'Finalizado' ? (
-                      <CheckCircle2 className="w-4 h-4" />
+                      <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
                     ) : (
-                      <Clock className="w-4 h-4" />
+                      <Clock className="w-4 h-4" aria-hidden="true" />
                     )}
                   </div>
                   <div className="min-w-0">
@@ -121,7 +125,7 @@ export const RecentDfdsList = ({
                   >
                     {dfd.status}
                   </Badge>
-                  <Pencil className="w-3.5 h-3.5 text-gray-300 group-hover:text-gray-500 transition-colors" />
+                  <Pencil className="w-3.5 h-3.5 text-gray-300 group-hover:text-gray-500 transition-colors" aria-hidden="true" />
                 </div>
               </div>
             ))}
