@@ -63,7 +63,9 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
   className = '',
 }) => {
   return (
-    <Card className={`bg-white border border-red-100 shadow-sm text-center py-10 px-4 ${className}`}>
+    <Card
+      className={`bg-white border border-red-100 shadow-sm text-center py-10 px-4 ${className}`}
+    >
       <CardContent className="space-y-3 max-w-md mx-auto">
         <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto text-red-500">
           <AlertCircle className="w-6 h-6 text-red-500" aria-hidden="true" />
@@ -88,8 +90,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
   )
 }
 
-export interface SubmitButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+export interface SubmitButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   submitting?: boolean
   submittingText?: string
   icon?: React.ReactNode

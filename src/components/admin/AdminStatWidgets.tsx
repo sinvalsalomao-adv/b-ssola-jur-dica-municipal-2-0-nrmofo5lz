@@ -46,11 +46,11 @@ export function StatsOverviewWidget() {
   const loadUnread = useCallback(async () => {
     if (!user?.tenantId) return
     try {
-      setUnread(await getUnreadNotificationsCount(user.tenantId))
+      setUnread(await getUnreadNotificationsCount(user.tenantId, user?.id))
     } catch {
       /* intentionally ignored */
     }
-  }, [user?.tenantId])
+  }, [user?.tenantId, user?.id])
 
   useEffect(() => {
     loadUnread()

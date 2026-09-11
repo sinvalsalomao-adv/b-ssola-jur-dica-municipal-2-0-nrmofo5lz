@@ -255,9 +255,7 @@ export const ProjectSidePanel: React.FC = () => {
 
   return (
     <Sheet open={isSidePanelOpen} onOpenChange={setIsSidePanelOpen}>
-      <SheetContent
-        className="w-full max-w-full sm:max-w-[540px] bg-white p-4 sm:p-6 overflow-y-auto flex flex-col justify-between z-50 border-l border-slate-200"
-      >
+      <SheetContent className="w-full max-w-full sm:max-w-[540px] bg-white p-4 sm:p-6 overflow-y-auto flex flex-col justify-between z-50 border-l border-slate-200">
         <div>
           <SheetHeader className="text-left border-b pb-3 mb-3">
             <div className="flex items-center justify-between mb-1">
@@ -536,7 +534,9 @@ export const ProjectSidePanel: React.FC = () => {
               <AlertDialogHeader>
                 <AlertDialogTitle>Excluir Projeto</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Tem certeza que deseja excluir o projeto &quot;{selectedProject.title}&quot;? Esta ação removerá os checklists, documentos vinculados e o histórico de auditoria associado.
+                  Tem certeza que deseja excluir o projeto &quot;{selectedProject.title}&quot;? Esta
+                  ação removerá os checklists, documentos vinculados e o histórico de auditoria
+                  associado.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

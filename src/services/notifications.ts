@@ -5,10 +5,13 @@ import type { NotificationItem } from '@/types/controle'
 function enrichNotification(
   r: any,
   userReadsMap?: Map<string, { read_at?: string; confirmed_at?: string }>,
+  hasUserContext = false,
 ): NotificationItem {
   const base = normalizeNotification(r)
   const userRead = userReadsMap?.get(r.id)
-  const isRead = userRead?.read_at ? true : r.lida || false
+  // D-1: Quando houver contexto de usuário, o status de lida é estritamente individual baseado em notification_reads.
+  // Somente se não houver contexto de usuário (ex.: consultas puramente anônimas/globais de sistema) recorre a r.lida.
+  const isRead = hasUserContext ? Boolean(userRead?.read_at) : Boolean(userRead?.read_at || r.lida)
 
   return {
     ...base,
@@ -72,21 +75,39 @@ export const getUnreadNotifications = async (
   // Se tivermos userId, precisamos trazer registros e filtrar os que o usuário não leu
   const userReadsMap = await getUserReadsMap(userId)
 
-  // Para garantir desempenho, buscamos as notificações mais recentes
-  const result = await pb.collection('notifications').getList(1, Math.max(limit * 3, 20), {
-    filter: filterParts.join(' && '),
-    sort: '-created',
-    expand: 'tenant,projeto_id',
-  })
+  // D-1 / D-2: Buscar registros respeitando paginação progressiva para encontrar não lidas
+  const fetchBatchSize = Math.max(limit * 5, 50)
+  let page = 1
+  const unreadItems: NotificationItem[] = []
+  let totalPages = 1
 
-  const enriched = result.items.map((r) => enrichNotification(r, userReadsMap))
-  // Filtra as que não foram lidas
-  const unreadOnly = enriched.filter((n) => !n.lida)
-  return unreadOnly.slice(0, limit)
+  do {
+    const result = await pb.collection('notifications').getList(page, fetchBatchSize, {
+      filter: filterParts.join(' && '),
+      sort: '-created',
+      expand: 'tenant,projeto_id',
+    })
+
+    totalPages = result.totalPages
+    const enriched = result.items.map((r) => enrichNotification(r, userReadsMap, Boolean(userId)))
+    for (const item of enriched) {
+      if (!item.lida) {
+        unreadItems.push(item)
+        if (unreadItems.length >= limit) break
+      }
+    }
+
+    if (unreadItems.length >= limit || page >= totalPages) break
+    page++
+  } while (page <= totalPages && unreadItems.length < limit)
+
+  return unreadItems.slice(0, limit)
 }
 
 /**
- * Contagem consistente de não lidas para o badge do sino e dashboard
+ * Contagem consistente de não lidas para o badge do sino e dashboard (D-2b).
+ * Garante contagem confiável de TODAS as notificações entregues do tenant,
+ * sem subestimar pelo teto de 100 itens.
  */
 export const getUnreadNotificationsCount = async (
   tenantId?: string,
@@ -98,16 +119,21 @@ export const getUnreadNotificationsCount = async (
   }
 
   if (userId) {
-    const userReadsMap = await getUserReadsMap(userId)
-    const result = await pb.collection('notifications').getList(1, 100, {
-      filter: filterParts.join(' && '),
-      sort: '-created',
-    })
-    const unread = result.items.filter((r) => {
+    const [userReadsMap, allNotifs] = await Promise.all([
+      getUserReadsMap(userId),
+      pb.collection('notifications').getFullList({
+        filter: filterParts.join(' && '),
+        fields: 'id',
+      }),
+    ])
+
+    // D-1: lida = existe registro com read_at em notification_reads para o usuário
+    const unreadCount = allNotifs.filter((r) => {
       const uRead = userReadsMap.get(r.id)
-      return !(uRead?.read_at || r.lida)
-    })
-    return unread.length
+      return !uRead?.read_at
+    }).length
+
+    return unreadCount
   }
 
   const unreadFilter = [...filterParts, `lida = false`].join(' && ')
@@ -172,19 +198,46 @@ export const getNotificationsPaginated = async (
 
   // Obter mapa de leitura individual
   const userReadsMap = await getUserReadsMap(currentUserId)
-
-  // Se o filtro de leitura for direto e não usarmos notification_reads por usuário,
-  // ou se aplicarmos na listagem:
+  const hasUser = Boolean(currentUserId)
   const filter = filterParts.join(' && ')
+
+  // D-1 / D-2: Se houver filtro de leitura (lida === 'true' ou 'false') e contexto de usuário,
+  // a definição de leitura é puramente individual (notification_reads).
+  // Para manter a paginação exata e totalItems correspondendo à contagem do sino:
+  if (filters?.lida && filters.lida !== 'Todos' && hasUser) {
+    const wantRead = filters.lida === 'true'
+    const allRecords = await pb.collection('notifications').getFullList({
+      filter: filter || undefined,
+      sort: '-created',
+      expand: 'tenant,projeto_id',
+    })
+
+    const enrichedAll = allRecords
+      .map((r) => enrichNotification(r, userReadsMap, hasUser))
+      .filter((item) => (wantRead ? item.lida : !item.lida))
+
+    const totalItems = enrichedAll.length
+    const totalPages = Math.ceil(totalItems / perPage) || 1
+    const offset = (page - 1) * perPage
+    const items = enrichedAll.slice(offset, offset + perPage)
+
+    return {
+      items,
+      page,
+      perPage,
+      totalItems,
+      totalPages,
+    }
+  }
+
   const result = await pb.collection('notifications').getList(page, perPage, {
     filter: filter || undefined,
     sort: '-created',
     expand: 'tenant,projeto_id',
   })
 
-  let enrichedItems = result.items.map((r) => enrichNotification(r, userReadsMap))
+  let enrichedItems = result.items.map((r) => enrichNotification(r, userReadsMap, hasUser))
 
-  // Filtro em memória para consistência de leitura por usuário
   if (filters?.lida && filters.lida !== 'Todos') {
     const wantRead = filters.lida === 'true'
     enrichedItems = enrichedItems.filter((item) => (wantRead ? item.lida : !item.lida))
@@ -206,85 +259,117 @@ export const getNotificationsPaginated = async (
 export const markNotificationAsRead = async (id: string, userId?: string, tenantId?: string) => {
   const now = new Date().toISOString()
 
-  // 1. Persistência individual em notification_reads
-  if (userId) {
-    try {
-      let effectiveTenant = tenantId
-      if (!effectiveTenant) {
-        const notif = await pb.collection('notifications').getOne(id)
-        effectiveTenant = notif.tenant
-      }
-
-      const existing = await pb
-        .collection('notification_reads')
-        .getFirstListItem(`notification = "${id}" && user = "${userId}"`)
-        .catch(() => null)
-
-      if (existing) {
-        if (!existing.read_at) {
-          await pb.collection('notification_reads').update(existing.id, { read_at: now })
-        }
-      } else if (effectiveTenant) {
-        await pb.collection('notification_reads').create({
-          notification: id,
-          user: userId,
-          tenant: effectiveTenant,
-          read_at: now,
-        })
-      }
-    } catch {
-      /* ignore */
-    }
+  // D-1 & D-3: A leitura deve ser registrada APENAS na coleção individual notification_reads (por usuário),
+  // e NUNCA mutar o campo global `lida` da notificação em `notifications`.
+  // Valida que a notificação referenciada pertence ao mesmo tenant do usuário antes de criar o registro de leitura (D-3).
+  if (!userId) {
+    return null
   }
 
-  // 2. Atualizar campo `lida` do registro principal para manter sincronia
   try {
-    return await pb.collection('notifications').update(id, { lida: true })
+    // 1. Obter a notificação para validar existência e pertencimento ao tenant
+    const notif = await pb.collection('notifications').getOne(id)
+    if (!notif || !notif.tenant) {
+      return null
+    }
+
+    // Se tenantId foi informado pelo chamador (contexto do usuário logado),
+    // validar estritamente que a notificação pertence ao mesmo tenant (D-3)
+    if (tenantId && tenantId !== 'all' && notif.tenant !== tenantId) {
+      // Rejeitar registro cruzado de leitura entre tenants
+      return null
+    }
+
+    const effectiveTenant = notif.tenant
+
+    const existing = await pb
+      .collection('notification_reads')
+      .getFirstListItem(`notification = "${id}" && user = "${userId}"`)
+      .catch(() => null)
+
+    if (existing) {
+      // Validar também que o registro existente coincide com o tenant da notificação
+      if (existing.tenant && existing.tenant !== effectiveTenant) {
+        return null
+      }
+      if (!existing.read_at) {
+        return await pb.collection('notification_reads').update(existing.id, { read_at: now })
+      }
+      return existing
+    }
+
+    return await pb.collection('notification_reads').create({
+      notification: id,
+      user: userId,
+      tenant: effectiveTenant,
+      read_at: now,
+    })
   } catch {
     return null
   }
 }
 
 /**
- * Marca todas as notificações como lidas para o contexto atual
+ * Marca todas as notificações como lidas para o usuário atual (D-2a):
+ * Cria registros individuais em notification_reads para o usuário atual apenas,
+ * sem tocar no campo global `lida` de `notifications`.
  */
 export const markAllNotificationsAsRead = async (tenantId?: string, userId?: string) => {
+  if (!userId) return
+
   const filterParts = [`delivery_status = 'enviada'`]
   if (tenantId && tenantId !== 'all') {
     filterParts.push(`tenant = "${tenantId}"`)
   }
 
+  // Buscar todas as notificações do escopo com id e tenant
   const records = await pb.collection('notifications').getFullList({
     filter: filterParts.join(' && '),
+    fields: 'id,tenant',
   })
 
   const now = new Date().toISOString()
-  await Promise.all(
-    records.map(async (r) => {
-      if (userId && r.tenant) {
+
+  // Carregar leituras já existentes do usuário para evitar chamadas duplicadas
+  const existingReadsMap = await getUserReadsMap(userId)
+
+  // Criar/atualizar leituras individuais em lotes controlados
+  const BATCH_SIZE = 25
+  for (let i = 0; i < records.length; i += BATCH_SIZE) {
+    const chunk = records.slice(i, i + BATCH_SIZE)
+    await Promise.all(
+      chunk.map(async (r) => {
+        // D-3: Garantir que a notificação tem tenant e coincide com tenantId se fornecido
+        if (!r.tenant) return
+        if (tenantId && tenantId !== 'all' && r.tenant !== tenantId) return
+
+        const existing = existingReadsMap.get(r.id)
+        if (existing?.read_at) {
+          // Já marcada como lida pelo usuário
+          return
+        }
+
         try {
-          const existing = await pb
+          // Verificar se já existe registro em notification_reads
+          const rec = await pb
             .collection('notification_reads')
             .getFirstListItem(`notification = "${r.id}" && user = "${userId}"`)
             .catch(() => null)
-          if (!existing) {
+
+          if (!rec) {
             await pb.collection('notification_reads').create({
               notification: r.id,
               user: userId,
               tenant: r.tenant,
               read_at: now,
             })
-          } else if (!existing.read_at) {
-            await pb.collection('notification_reads').update(existing.id, { read_at: now })
+          } else if (!rec.read_at) {
+            await pb.collection('notification_reads').update(rec.id, { read_at: now })
           }
         } catch {
-          // ignore
+          // Silencioso por registro
         }
-      }
-      return pb
-        .collection('notifications')
-        .update(r.id, { lida: true })
-        .catch(() => null)
-    }),
-  )
+      }),
+    )
+  }
 }

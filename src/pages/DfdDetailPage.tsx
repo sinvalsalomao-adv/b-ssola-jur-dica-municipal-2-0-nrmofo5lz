@@ -289,7 +289,8 @@ export default function DfdDetailPage() {
                   className="flex-1 bg-[#2e7d32] hover:bg-[#1b5e20] text-white gap-2"
                   aria-label="Salvar alterações do DFD"
                 >
-                  <Save className="w-4 h-4" aria-hidden="true" /> {saving ? 'Salvando...' : 'Salvar'}
+                  <Save className="w-4 h-4" aria-hidden="true" />{' '}
+                  {saving ? 'Salvando...' : 'Salvar'}
                 </Button>
               </div>
             </>

@@ -252,7 +252,8 @@ export const DocumentTemplatesSection: React.FC = () => {
                         <AlertDialogHeader>
                           <AlertDialogTitle>Excluir Modelo Oficial</AlertDialogTitle>
                           <AlertDialogDescription>
-                            Deseja realmente remover o modelo &quot;{tpl.name}&quot;? Esta ação não pode ser desfeita.
+                            Deseja realmente remover o modelo &quot;{tpl.name}&quot;? Esta ação não
+                            pode ser desfeita.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
@@ -347,7 +348,9 @@ export const DocumentTemplatesSection: React.FC = () => {
                 type="submit"
                 disabled={saving}
                 className="bg-[#3b82f6] hover:bg-[#2563eb] text-white"
-                aria-label={editingTemplate ? 'Salvar alterações do modelo' : 'Confirmar criação do modelo'}
+                aria-label={
+                  editingTemplate ? 'Salvar alterações do modelo' : 'Confirmar criação do modelo'
+                }
               >
                 {saving && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" aria-hidden="true" />}
                 {editingTemplate ? 'Salvar Alterações' : 'Criar Modelo'}

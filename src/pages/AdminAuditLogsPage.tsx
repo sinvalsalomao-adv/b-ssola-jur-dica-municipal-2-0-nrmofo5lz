@@ -155,7 +155,10 @@ export default function AdminAuditLogsPage() {
       >
         {isSuperadmin && (
           <div className="flex items-center gap-2">
-            <label htmlFor="select-pref-audit" className="text-xs font-semibold text-slate-700 sr-only">
+            <label
+              htmlFor="select-pref-audit"
+              className="text-xs font-semibold text-slate-700 sr-only"
+            >
               Filtrar por prefeitura
             </label>
             <select

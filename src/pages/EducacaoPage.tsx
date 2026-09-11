@@ -314,7 +314,9 @@ export default function EducacaoPage() {
               <SubmitButton
                 submitting={submitting}
                 submittingText={editingTrack ? 'Salvando...' : 'Criando...'}
-                aria-label={editingTrack ? 'Salvar alterações da trilha' : 'Confirmar criação de trilha'}
+                aria-label={
+                  editingTrack ? 'Salvar alterações da trilha' : 'Confirmar criação de trilha'
+                }
               >
                 {editingTrack ? 'Salvar Alterações' : 'Criar Trilha'}
               </SubmitButton>

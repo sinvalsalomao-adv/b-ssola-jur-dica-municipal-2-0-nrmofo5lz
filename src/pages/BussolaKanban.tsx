@@ -402,7 +402,11 @@ export default function BussolaKanban() {
             <Button
               variant="outline"
               onClick={() =>
-                exportProjectsToPdf(filteredProjects, 'Relatório de Projetos - Bússola', selectedCity)
+                exportProjectsToPdf(
+                  filteredProjects,
+                  'Relatório de Projetos - Bússola',
+                  selectedCity,
+                )
               }
               className="h-9 px-3 text-xs gap-1.5 border-slate-300 hover:bg-slate-50 text-[#1c2a3e] font-medium"
               aria-label="Exportar projetos filtrados em PDF"
@@ -516,7 +520,10 @@ export default function BussolaKanban() {
           <div className="flex items-center gap-1.5">
             <Filter className="w-3.5 h-3.5 text-gray-500 shrink-0" aria-hidden="true" />
             <Select value={selectedCity} onValueChange={setSelectedCity}>
-              <SelectTrigger className="w-[170px] h-9 text-xs font-medium" aria-label="Filtrar por Prefeitura">
+              <SelectTrigger
+                className="w-[170px] h-9 text-xs font-medium"
+                aria-label="Filtrar por Prefeitura"
+              >
                 <SelectValue placeholder="Prefeitura" />
               </SelectTrigger>
               <SelectContent>
@@ -533,7 +540,10 @@ export default function BussolaKanban() {
           {/* Responsável */}
           <div className="flex items-center gap-1">
             <Select value={responsibleFilter} onValueChange={setResponsibleFilter}>
-              <SelectTrigger className="w-[170px] h-9 text-xs font-medium" aria-label="Filtrar por Responsável">
+              <SelectTrigger
+                className="w-[170px] h-9 text-xs font-medium"
+                aria-label="Filtrar por Responsável"
+              >
                 <SelectValue placeholder="Responsável" />
               </SelectTrigger>
               <SelectContent>
@@ -551,7 +561,10 @@ export default function BussolaKanban() {
           <div className="flex items-center gap-1">
             <ArrowUpDown className="w-3.5 h-3.5 text-gray-500 shrink-0" aria-hidden="true" />
             <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-              <SelectTrigger className="w-[160px] h-9 text-xs font-medium" aria-label="Critério de Ordenação">
+              <SelectTrigger
+                className="w-[160px] h-9 text-xs font-medium"
+                aria-label="Critério de Ordenação"
+              >
                 <SelectValue placeholder="Ordenar por" />
               </SelectTrigger>
               <SelectContent>
@@ -835,13 +848,23 @@ export default function BussolaKanban() {
                             {/* CORREÇÃO 5: badge de prazo vencido com rótulo textual e ícone para acessibilidade */}
                             <div
                               className={`flex items-center gap-1 font-medium ${
-                                overdue ? 'text-red-600' : isUpcoming(project.deadline) ? 'text-amber-700' : 'text-slate-700'
+                                overdue
+                                  ? 'text-red-600'
+                                  : isUpcoming(project.deadline)
+                                    ? 'text-amber-700'
+                                    : 'text-slate-700'
                               }`}
                             >
                               {overdue ? (
-                                <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" aria-hidden="true" />
+                                <AlertTriangle
+                                  className="w-3.5 h-3.5 text-red-500 shrink-0"
+                                  aria-hidden="true"
+                                />
                               ) : (
-                                <Calendar className="w-3.5 h-3.5 text-gray-400 shrink-0" aria-hidden="true" />
+                                <Calendar
+                                  className="w-3.5 h-3.5 text-gray-400 shrink-0"
+                                  aria-hidden="true"
+                                />
                               )}
                               <span>{formattedDate}</span>
                               {overdue && (

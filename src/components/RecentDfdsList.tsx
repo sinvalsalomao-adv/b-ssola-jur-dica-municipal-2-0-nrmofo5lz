@@ -125,7 +125,10 @@ export const RecentDfdsList = ({
                   >
                     {dfd.status}
                   </Badge>
-                  <Pencil className="w-3.5 h-3.5 text-gray-300 group-hover:text-gray-500 transition-colors" aria-hidden="true" />
+                  <Pencil
+                    className="w-3.5 h-3.5 text-gray-300 group-hover:text-gray-500 transition-colors"
+                    aria-hidden="true"
+                  />
                 </div>
               </div>
             ))}

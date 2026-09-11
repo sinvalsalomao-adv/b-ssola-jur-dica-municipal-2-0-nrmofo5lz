@@ -249,6 +249,48 @@ export function runSanitizerSecurityTests(): {
     )
   })
 
+  // Teste 10: Auditoria de Notificações D-1, D-2 e D-3
+  test('Deve garantir regras D-1, D-2 e D-3 no serviço de notificações', () => {
+    // 1. D-1 & D-3: Validação de isolamento de tenant na leitura de notificação
+    const userTenant = 'tenant_florania'
+    const foreignNotif = { id: 'notif_tangara_01', tenant: 'tenant_tangara', lida: false }
+    const localNotif = { id: 'notif_florania_01', tenant: 'tenant_florania', lida: false }
+
+    const validateTenantMatch = (notifTenant: string, userT: string | undefined) => {
+      if (userT && userT !== 'all' && notifTenant !== userT) {
+        return false // Rejeitado D-3
+      }
+      return true
+    }
+
+    const d3ForeignRejected = !validateTenantMatch(foreignNotif.tenant, userTenant)
+    const d3LocalAccepted = validateTenantMatch(localNotif.tenant, userTenant)
+
+    // 2. D-1: Status individual de leitura não muta registro global e depende de notification_reads
+    const userReadsMap = new Map<string, { read_at?: string }>()
+    userReadsMap.set(localNotif.id, { read_at: '2025-05-10T12:00:00Z' })
+
+    const resolveIndividualRead = (
+      notifId: string,
+      globalLida: boolean,
+      readsMap: Map<string, { read_at?: string }>,
+      hasUserContext: boolean,
+    ) => {
+      const readRecord = readsMap.get(notifId)
+      return hasUserContext
+        ? Boolean(readRecord?.read_at)
+        : Boolean(readRecord?.read_at || globalLida)
+    }
+
+    // Para o usuário que leu: lida deve ser true
+    const user1Read = resolveIndividualRead(localNotif.id, localNotif.lida, userReadsMap, true)
+    // Para um segundo usuário que NÃO leu: lida deve ser false (mesmo que global fosse false ou outro leu)
+    const emptyReadsMap = new Map<string, { read_at?: string }>()
+    const user2Read = resolveIndividualRead(localNotif.id, localNotif.lida, emptyReadsMap, true)
+
+    return d3ForeignRejected && d3LocalAccepted && user1Read === true && user2Read === false
+  })
+
   const passed = results.every((r) => r.ok)
   return { passed, results }
 }

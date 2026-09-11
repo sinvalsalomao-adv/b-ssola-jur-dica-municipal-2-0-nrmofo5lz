@@ -34,7 +34,8 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
             <h1 className="text-xl md:text-2xl font-bold text-[#1c2a3e] tracking-tight truncate">
               {title}
             </h1>
-            {badge && (typeof badge === 'string' ? <Badge variant="secondary">{badge}</Badge> : badge)}
+            {badge &&
+              (typeof badge === 'string' ? <Badge variant="secondary">{badge}</Badge> : badge)}
           </div>
           {description && (
             <p className="text-xs md:text-sm text-gray-500 leading-relaxed max-w-2xl">

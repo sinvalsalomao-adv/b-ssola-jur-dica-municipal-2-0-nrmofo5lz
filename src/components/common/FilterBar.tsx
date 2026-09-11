@@ -60,11 +60,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           </div>
         )}
 
-        {children && (
-          <div className="flex items-center gap-2 flex-wrap min-w-0">
-            {children}
-          </div>
-        )}
+        {children && <div className="flex items-center gap-2 flex-wrap min-w-0">{children}</div>}
 
         {hasActiveFilters && onClearFilters && (
           <Button
@@ -86,14 +82,17 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           <div className="flex items-center gap-2">
             <Filter className="w-3.5 h-3.5 text-gray-400" aria-hidden="true" />
             <span>
-              {filteredCount !== undefined && totalCount !== undefined && filteredCount !== totalCount ? (
+              {filteredCount !== undefined &&
+              totalCount !== undefined &&
+              filteredCount !== totalCount ? (
                 <>
                   Exibindo <strong className="text-gray-900">{filteredCount}</strong> de{' '}
                   <strong className="text-gray-900">{totalCount}</strong> {countLabel}
                 </>
               ) : (
                 <>
-                  Total: <strong className="text-gray-900">{totalCount ?? filteredCount}</strong> {countLabel}
+                  Total: <strong className="text-gray-900">{totalCount ?? filteredCount}</strong>{' '}
+                  {countLabel}
                 </>
               )}
             </span>

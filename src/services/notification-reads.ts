@@ -52,20 +52,37 @@ export const markNotificationRead = async (
 ) => {
   const now = new Date().toISOString()
   try {
+    // D-3: Validar que a notificação referenciada pertence ao mesmo tenant informado
+    const notif = await pb.collection('notifications').getOne(notificationId)
+    if (!notif || !notif.tenant || (tenantId && tenantId !== 'all' && notif.tenant !== tenantId)) {
+      return null
+    }
+
+    const effectiveTenant = notif.tenant
+
     const existing = await pb
       .collection('notification_reads')
       .getFirstListItem(`notification = "${notificationId}" && user = "${userId}"`)
-    if (!existing.read_at) {
-      return pb.collection('notification_reads').update(existing.id, { read_at: now })
+      .catch(() => null)
+
+    if (existing) {
+      if (existing.tenant && existing.tenant !== effectiveTenant) {
+        return null
+      }
+      if (!existing.read_at) {
+        return await pb.collection('notification_reads').update(existing.id, { read_at: now })
+      }
+      return existing
     }
-    return existing
-  } catch {
-    return pb.collection('notification_reads').create({
+
+    return await pb.collection('notification_reads').create({
       notification: notificationId,
       user: userId,
-      tenant: tenantId,
+      tenant: effectiveTenant,
       read_at: now,
     })
+  } catch {
+    return null
   }
 }
 
@@ -77,23 +94,40 @@ export const confirmNotification = async (
 ) => {
   const now = new Date().toISOString()
   try {
+    // D-3: Validar que a notificação referenciada pertence ao mesmo tenant
+    const notif = await pb.collection('notifications').getOne(notificationId)
+    if (!notif || !notif.tenant || (tenantId && tenantId !== 'all' && notif.tenant !== tenantId)) {
+      return null
+    }
+
+    const effectiveTenant = notif.tenant
+
     const existing = await pb
       .collection('notification_reads')
       .getFirstListItem(`notification = "${notificationId}" && user = "${userId}"`)
-    return pb.collection('notification_reads').update(existing.id, {
-      confirmed_at: now,
-      ...(watched ? { watched_at: now } : {}),
-      ...(existing.read_at ? {} : { read_at: now }),
-    })
-  } catch {
-    return pb.collection('notification_reads').create({
+      .catch(() => null)
+
+    if (existing) {
+      if (existing.tenant && existing.tenant !== effectiveTenant) {
+        return null
+      }
+      return await pb.collection('notification_reads').update(existing.id, {
+        confirmed_at: now,
+        ...(watched ? { watched_at: now } : {}),
+        ...(existing.read_at ? {} : { read_at: now }),
+      })
+    }
+
+    return await pb.collection('notification_reads').create({
       notification: notificationId,
       user: userId,
-      tenant: tenantId,
+      tenant: effectiveTenant,
       read_at: now,
       confirmed_at: now,
       ...(watched ? { watched_at: now } : {}),
     })
+  } catch {
+    return null
   }
 }
 
