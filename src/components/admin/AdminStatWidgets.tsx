@@ -34,10 +34,14 @@ import { formatDate } from '@/lib/dateUtils'
 export function StatsOverviewWidget() {
   const { projects } = useProjects()
   const { user } = useAuth()
+  const {
+    overdueCount: adminOverdue,
+    upcomingCount: adminUpcoming,
+    activeProjectsCount: adminActive,
+    loading,
+  } = useAdminData()
   const navigate = useNavigate()
   const [unread, setUnread] = useState(0)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
 
   const loadUnread = useCallback(async () => {
     if (!user?.tenantId) return
@@ -47,51 +51,79 @@ export function StatsOverviewWidget() {
       /* intentionally ignored */
     }
   }, [user?.tenantId])
+
   useEffect(() => {
     loadUnread()
   }, [loadUnread])
   useRealtime('notifications', () => loadUnread(), !!user?.tenantId)
 
-  const active = projects.filter((p: any) => p.column !== 'Marketing').length
-  const deadlines = projects.filter((p: any) => {
+  // Fallback nos projetos carregados no context se o adminData estiver inicializando
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const fallbackActive = projects.filter((p: any) => p.column !== 'Marketing').length
+  const fallbackDeadlines = projects.filter((p: any) => {
     if (p.column === 'Marketing' || !p.deadline) return false
-    const d = new Date(p.deadline + 'T23:59:59')
+    const d = new Date(p.deadline.substring(0, 10) + 'T23:59:59')
     const diff = Math.ceil((d.getTime() - today.getTime()) / 86400000)
     return diff >= 0 && diff <= 7
   }).length
+  const fallbackOverdue = projects.filter((p: any) => {
+    if (p.column === 'Marketing' || !p.deadline) return false
+    const d = new Date(p.deadline.substring(0, 10) + 'T23:59:59')
+    const diff = Math.ceil((d.getTime() - today.getTime()) / 86400000)
+    return diff < 0
+  }).length
+
+  const active = adminActive || fallbackActive
+  const overdue = adminOverdue || fallbackOverdue
+  const upcoming = adminUpcoming || fallbackDeadlines
 
   const cards = [
     {
-      label: 'Projetos Ativos',
+      label: 'Trabalhos Atrasados',
+      value: overdue,
+      sub:
+        overdue === 1 ? '1 processo com prazo vencido' : `${overdue} processos com prazo vencido`,
+      icon: AlertTriangle,
+      color: 'text-red-600',
+      bg: 'bg-red-50',
+      path: '/bussola?quick=atrasados',
+      scope: 'Processos não finalizados vencidos',
+    },
+    {
+      label: 'Prazos Próximos',
+      value: upcoming,
+      sub: 'Vencimento nos próximos 7 dias',
+      icon: Clock,
+      color: 'text-amber-600',
+      bg: 'bg-amber-50',
+      path: '/bussola?quick=proximos',
+      scope: 'Processos em andamento com prazo crítico',
+    },
+    {
+      label: 'Projetos em Andamento',
       value: active,
-      sub: 'Não finalizados',
+      sub: 'Das 7 etapas do Kanban',
       icon: FolderKanban,
       color: 'text-[#3b82f6]',
       bg: 'bg-blue-50',
       path: '/bussola',
+      scope: 'Etapas de Ideação até Prestação de Contas',
     },
     {
       label: 'Notificações Pendentes',
       value: unread,
-      sub: 'Aguardando leitura',
+      sub: 'Aguardando leitura do município',
       icon: Bell,
-      color: 'text-amber-600',
-      bg: 'bg-amber-50',
+      color: 'text-purple-600',
+      bg: 'bg-purple-50',
       path: '/notificacoes',
-    },
-    {
-      label: 'Prazos Próximos',
-      value: deadlines,
-      sub: 'Próximos 7 dias',
-      icon: Clock,
-      color: 'text-red-600',
-      bg: 'bg-red-50',
-      path: '/bussola',
+      scope: 'Notificações geradas do tenant',
     },
   ]
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       {cards.map((c) => {
         const Icon = c.icon
         return (
@@ -99,13 +131,16 @@ export function StatsOverviewWidget() {
             key={c.label}
             className="bg-white border-0 shadow-subtle hover:-translate-y-0.5 transition-transform duration-200 cursor-pointer"
             onClick={() => navigate(c.path)}
+            title={`Clique para filtrar: ${c.scope}`}
           >
             <CardContent className="p-5 flex items-center justify-between">
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                   {c.label}
                 </p>
-                <h3 className={`text-3xl font-extrabold mt-2 ${c.color}`}>{c.value}</h3>
+                <h3 className={`text-3xl font-extrabold mt-2 ${c.color}`}>
+                  {loading ? '—' : c.value}
+                </h3>
                 <p className="text-xs text-gray-400 mt-1">{c.sub}</p>
               </div>
               <div
@@ -347,34 +382,52 @@ export function RecentNotificationsWidget() {
 
 export function StalledItemsWidget() {
   const { stalled, loading } = useAdminData()
+  const navigate = useNavigate()
   if (loading) return <Skeleton className="h-[200px] w-full" />
-  if (stalled.length === 0) return null
+
+  const handleOpenStalled = (item: any) => {
+    navigate(`/bussola?project=${item.id}`)
+  }
+
   return (
     <Card className="bg-white border-0 shadow-subtle">
-      <div className="p-4 border-b border-gray-100 flex items-center gap-2">
-        <AlertTriangle className="w-4 h-4 text-amber-500" />
-        <h3 className="text-sm font-bold text-[#1c2a3e]">Itens Estagnados ({stalled.length})</h3>
+      <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-amber-500" />
+          <h3 className="text-sm font-bold text-[#1c2a3e]">
+            Itens Sem Movimentação ({stalled.length})
+          </h3>
+        </div>
+        <span className="text-[10px] text-gray-400">Dias na mesma etapa</span>
       </div>
       <CardContent className="p-3">
-        <div className="space-y-2">
-          {stalled.map((item: any) => (
-            <div
-              key={item.id}
-              className="flex items-center gap-2 py-1.5 border-b border-gray-50 last:border-0"
-            >
-              <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-[#1c2a3e] truncate">{item.projectTitle}</p>
-                <p className="text-[10px] text-gray-400">
-                  {item.column} • {item.responsible}
-                </p>
+        {stalled.length === 0 ? (
+          <p className="text-xs text-gray-400 text-center py-4">
+            Nenhum projeto estagnado além do limite configurado.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {stalled.map((item: any) => (
+              <div
+                key={item.id}
+                onClick={() => handleOpenStalled(item)}
+                className="flex items-center gap-2 py-1.5 border-b border-gray-50 last:border-0 hover:bg-slate-50 cursor-pointer rounded px-1 transition-colors"
+                title="Clique para abrir o projeto no Kanban"
+              >
+                <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-[#1c2a3e] truncate">{item.projectTitle}</p>
+                  <p className="text-[10px] text-gray-400">
+                    {item.column} • {item.responsible}
+                  </p>
+                </div>
+                <Badge className="bg-amber-500 text-white text-[9px] shrink-0">
+                  {item.daysStalled} dias
+                </Badge>
               </div>
-              <Badge className="bg-amber-500 text-white text-[9px] shrink-0">
-                {item.daysStalled} dias
-              </Badge>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   )

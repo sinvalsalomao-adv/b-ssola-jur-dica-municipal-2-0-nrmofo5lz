@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useProjects } from '@/context/ProjectContext'
 import { useAuth } from '@/context/AuthContext'
 import { COLUMNS, ColumnType, Project } from '@/types/project'
@@ -12,6 +13,9 @@ import {
   ArrowUpDown,
   X,
   FileText,
+  AlertTriangle,
+  Clock,
+  Sparkles,
 } from 'lucide-react'
 import { exportProjectsToPdf } from '@/lib/pdfExporter'
 import { formatDate } from '@/lib/dateUtils'
@@ -67,6 +71,7 @@ type SortOption = 'prazo' | 'priority' | 'recentes'
 
 export default function BussolaKanban() {
   const { user } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
   const {
     projects,
     tenants,
@@ -105,9 +110,43 @@ export default function BussolaKanban() {
   const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null)
   const [dragOverColumn, setDragOverColumn] = useState<ColumnType | null>(null)
   const [responsibleFilter, setResponsibleFilter] = useState('Todos')
+  const [statusFilter, setStatusFilter] = useState<'todos' | 'atrasados' | 'proximos' | 'meus'>(
+    'todos',
+  )
   const [sortBy, setSortBy] = useState<SortOption>('prazo')
   const [users, setUsers] = useState<{ id: string; name: string }[]>([])
   const [participantsMap, setParticipantsMap] = useState<Record<string, ProjectParticipant[]>>({})
+  const [highlightProjectId, setHighlightProjectId] = useState<string | null>(null)
+
+  // Sincronizar parâmetros de URL (quick, responsible, project)
+  useEffect(() => {
+    const quickParam = searchParams.get('quick')
+    if (quickParam === 'atrasados' || quickParam === 'proximos' || quickParam === 'meus') {
+      setStatusFilter(quickParam)
+    } else if (!quickParam) {
+      setStatusFilter('todos')
+    }
+
+    const respParam = searchParams.get('responsible')
+    if (respParam) {
+      setResponsibleFilter(respParam)
+    }
+
+    const projParam = searchParams.get('project')
+    if (projParam) {
+      setHighlightProjectId(projParam)
+      const found = projects.find((p) => p.id === projParam)
+      if (found) {
+        setTimeout(() => {
+          openProjectDetails(found)
+          const el = document.getElementById(`project-card-${projParam}`)
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          }
+        }, 200)
+      }
+    }
+  }, [searchParams, projects, openProjectDetails])
 
   // CORREÇÃO 2: carrega apenas usuários do tenant correto e participantes para o Kanban
   useEffect(() => {
@@ -138,19 +177,58 @@ export default function BussolaKanban() {
     return tenants.map((t) => t.name).sort()
   }, [tenants])
 
+  // Detecta prazo vencido
+  const isOverdue = (deadline: string) => {
+    if (!deadline) return false
+    const d = new Date(deadline.substring(0, 10) + 'T23:59:59')
+    return !isNaN(d.getTime()) && d < new Date()
+  }
+
+  // Detecta prazo próximo (próximos 7 dias)
+  const isUpcoming = (deadline: string) => {
+    if (!deadline) return false
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const d = new Date(deadline.substring(0, 10) + 'T23:59:59')
+    if (isNaN(d.getTime())) return false
+    const diffDays = Math.ceil((d.getTime() - today.getTime()) / 86400000)
+    return diffDays >= 0 && diffDays <= 7
+  }
+
   const filteredProjects = useMemo(() => {
     if (!Array.isArray(projects)) return []
     return projects.filter((p) => {
       if (!p) return false
-      // CORREÇÃO 3: comparação exata, sem fuzzy que causava falsos positivos
+      // Comparação exata de prefeitura
       if (selectedCity !== 'Todas as Prefeituras') {
         const pCity = (p.prefeitura || '').trim()
         if (pCity !== selectedCity) return false
       }
-      if (responsibleFilter !== 'Todos' && p.responsibleUserId !== responsibleFilter) return false
+
+      // Filtro por responsável ou participante
+      if (responsibleFilter !== 'Todos') {
+        const isDirectResp = p.responsibleUserId === responsibleFilter
+        const isPart = (participantsMap[p.id] || []).some(
+          (part) => part.userId === responsibleFilter,
+        )
+        if (!isDirectResp && !isPart) return false
+      }
+
+      // Filtro rápido de status operacional (atrasados, próximos, meus)
+      if (statusFilter === 'atrasados') {
+        if (p.column === 'Marketing' || !isOverdue(p.deadline)) return false
+      } else if (statusFilter === 'proximos') {
+        if (p.column === 'Marketing' || !isUpcoming(p.deadline)) return false
+      } else if (statusFilter === 'meus') {
+        if (!user?.id) return false
+        const isDirectResp = p.responsibleUserId === user.id
+        const isPart = (participantsMap[p.id] || []).some((part) => part.userId === user.id)
+        if (!isDirectResp && !isPart) return false
+      }
+
       return true
     })
-  }, [projects, selectedCity, responsibleFilter])
+  }, [projects, selectedCity, responsibleFilter, statusFilter, participantsMap, user?.id])
 
   const sortProjects = (list: Project[]) => {
     return [...list].sort((a, b) => {
@@ -231,13 +309,6 @@ export default function BussolaKanban() {
     }
   }
 
-  // CORREÇÃO 5: detecta prazo vencido
-  const isOverdue = (deadline: string) => {
-    if (!deadline) return false
-    const d = new Date(deadline.substring(0, 10) + 'T23:59:59')
-    return !isNaN(d.getTime()) && d < new Date()
-  }
-
   const isSuperadminWithoutTenant = user?.role === 'superadmin' && !user?.tenantId
 
   if (isSuperadminWithoutTenant) {
@@ -251,7 +322,10 @@ export default function BussolaKanban() {
     )
   }
 
-  const hasActiveFilters = selectedCity !== 'Todas as Prefeituras' || responsibleFilter !== 'Todos'
+  const hasActiveFilters =
+    selectedCity !== 'Todas as Prefeituras' ||
+    responsibleFilter !== 'Todos' ||
+    statusFilter !== 'todos'
 
   if (loading) {
     return (
@@ -288,10 +362,104 @@ export default function BussolaKanban() {
             {hasActiveFilters
               ? `${filteredProjects.length} projeto${filteredProjects.length !== 1 ? 's' : ''} com os filtros atuais`
               : 'Acompanhamento das 7 etapas dos processos jurídico-administrativos.'}
+            {statusFilter !== 'todos' && (
+              <span className="ml-1.5 inline-flex items-center gap-1 font-semibold text-blue-600">
+                • Filtro:{' '}
+                {statusFilter === 'atrasados'
+                  ? 'Apenas Atrasados'
+                  : statusFilter === 'proximos'
+                    ? 'Prazos Próximos (7 dias)'
+                    : 'Meu Trabalho'}
+              </span>
+            )}
           </p>
         </div>
 
+        {/* Filtros Rápidos Operacionais */}
+        <div className="flex flex-wrap items-center gap-1.5 self-start xl:self-center">
+          <Button
+            type="button"
+            variant={statusFilter === 'todos' ? 'secondary' : 'ghost'}
+            size="sm"
+            onClick={() => {
+              setStatusFilter('todos')
+              const next = new URLSearchParams(searchParams)
+              next.delete('quick')
+              setSearchParams(next)
+            }}
+            className="h-8 text-xs font-medium"
+          >
+            Todos
+          </Button>
+          <Button
+            type="button"
+            variant={statusFilter === 'atrasados' ? 'destructive' : 'outline'}
+            size="sm"
+            onClick={() => {
+              const nextVal = statusFilter === 'atrasados' ? 'todos' : 'atrasados'
+              setStatusFilter(nextVal)
+              const next = new URLSearchParams(searchParams)
+              if (nextVal === 'todos') next.delete('quick')
+              else next.set('quick', nextVal)
+              setSearchParams(next)
+            }}
+            className={`h-8 text-xs font-medium gap-1 ${
+              statusFilter === 'atrasados'
+                ? 'bg-red-600 text-white'
+                : 'text-red-600 border-red-200 hover:bg-red-50'
+            }`}
+          >
+            <AlertTriangle className="w-3.5 h-3.5" />
+            Atrasados
+          </Button>
+          <Button
+            type="button"
+            variant={statusFilter === 'proximos' ? 'secondary' : 'outline'}
+            size="sm"
+            onClick={() => {
+              const nextVal = statusFilter === 'proximos' ? 'todos' : 'proximos'
+              setStatusFilter(nextVal)
+              const next = new URLSearchParams(searchParams)
+              if (nextVal === 'todos') next.delete('quick')
+              else next.set('quick', nextVal)
+              setSearchParams(next)
+            }}
+            className={`h-8 text-xs font-medium gap-1 ${
+              statusFilter === 'proximos'
+                ? 'bg-amber-100 text-amber-900 border-amber-300'
+                : 'text-amber-700 border-amber-200 hover:bg-amber-50'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" />
+            Prazos Próximos
+          </Button>
+          {user?.id && (
+            <Button
+              type="button"
+              variant={statusFilter === 'meus' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => {
+                const nextVal = statusFilter === 'meus' ? 'todos' : 'meus'
+                setStatusFilter(nextVal)
+                const next = new URLSearchParams(searchParams)
+                if (nextVal === 'todos') next.delete('quick')
+                else next.set('quick', nextVal)
+                setSearchParams(next)
+              }}
+              className={`h-8 text-xs font-medium gap-1 ${
+                statusFilter === 'meus'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-blue-600 border-blue-200 hover:bg-blue-50'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              Meu Trabalho
+            </Button>
+          )}
+        </div>
+
         <div className="flex flex-wrap items-center gap-3">
+          {' '}
           {/* CORREÇÃO 1: prefeituras dinâmicas */}
           <div className="flex items-center gap-2">
             <Filter className="w-4 h-4 text-gray-500 shrink-0" />
@@ -309,7 +477,6 @@ export default function BussolaKanban() {
               </SelectContent>
             </Select>
           </div>
-
           {/* Filtro por Responsável */}
           <div className="flex items-center gap-1.5">
             <Select value={responsibleFilter} onValueChange={setResponsibleFilter}>
@@ -337,7 +504,6 @@ export default function BussolaKanban() {
               </Button>
             )}
           </div>
-
           {/* Ordenação */}
           <div className="flex items-center gap-2">
             <ArrowUpDown className="w-3.5 h-3.5 text-gray-500 shrink-0" />
@@ -352,7 +518,6 @@ export default function BussolaKanban() {
               </SelectContent>
             </Select>
           </div>
-
           <Button
             variant="outline"
             onClick={() =>
@@ -363,7 +528,6 @@ export default function BussolaKanban() {
             <FileText className="w-4 h-4 text-red-600" />
             Exportar PDF
           </Button>
-
           <Button
             onClick={() => setIsNewModalOpen(true)}
             className="bg-[#3b82f6] hover:bg-[#2563eb] text-white h-9 px-3 text-xs gap-1.5 shadow-sm"
@@ -408,9 +572,11 @@ export default function BussolaKanban() {
                     const overdue = isOverdue(project.deadline)
                     const isDragging = draggedProjectId === project.id
 
+                    const isHighlighted = highlightProjectId === project.id
                     return (
                       <Card
                         key={project.id}
+                        id={`project-card-${project.id}`}
                         draggable
                         onDragStart={(e) => handleDragStart(e, project.id)}
                         onDragEnd={handleDragEnd}
@@ -418,9 +584,11 @@ export default function BussolaKanban() {
                         className={`bg-white hover:shadow-md transition-all duration-150 cursor-grab active:cursor-grabbing border group relative ${
                           isDragging
                             ? 'opacity-40 border-blue-300'
-                            : overdue
-                              ? 'border-red-200'
-                              : 'border-gray-100'
+                            : isHighlighted
+                              ? 'ring-2 ring-blue-500 border-blue-500 bg-blue-50/20'
+                              : overdue
+                                ? 'border-red-200'
+                                : 'border-gray-100'
                         }`}
                       >
                         <CardContent className="p-3.5 space-y-2">

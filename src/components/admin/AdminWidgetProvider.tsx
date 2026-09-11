@@ -14,6 +14,10 @@ interface AdminData {
   recentNotifs: any[]
   auditLogs: any[]
   loading: boolean
+  error: string | null
+  overdueCount: number
+  upcomingCount: number
+  activeProjectsCount: number
 }
 
 const Ctx = createContext<AdminData | null>(null)
@@ -34,25 +38,66 @@ export function AdminWidgetProvider({ children }: { children: ReactNode }) {
     recentNotifs: [],
     auditLogs: [],
     loading: true,
+    error: null,
+    overdueCount: 0,
+    upcomingCount: 0,
+    activeProjectsCount: 0,
   })
 
   const load = useCallback(async () => {
-    if (!user?.tenantId) return
+    if (!user?.tenantId) {
+      setData((prev) => ({ ...prev, loading: false }))
+      return
+    }
+    setData((prev) => ({ ...prev, loading: true, error: null }))
     try {
-      const [u, ur, pbc, s, n, a] = await Promise.all([
-        getUsersByTenant(user.tenantId),
-        getUsersByRole(user.tenantId),
-        getProjectsByColumnForTenant(user.tenantId),
-        getStalledItems(user.tenantId),
-        pb.collection('notifications').getList(1, 5, {
-          filter: `tenant = "${user.tenantId}"`,
-          sort: '-created',
-        }),
-        pb.collection('audit_logs').getList(1, 5, {
-          filter: `tenant = "${user.tenantId}"`,
-          sort: '-created',
-        }),
+      const [u, ur, pbc, s, n, a, projList] = await Promise.all([
+        getUsersByTenant(user.tenantId).catch(() => []),
+        getUsersByRole(user.tenantId).catch(() => ({})),
+        getProjectsByColumnForTenant(user.tenantId).catch(() => ({})),
+        getStalledItems(user.tenantId).catch(() => []),
+        pb
+          .collection('notifications')
+          .getList(1, 6, {
+            filter: `tenant = "${user.tenantId}"`,
+            sort: '-created',
+          })
+          .catch(() => ({ items: [] })),
+        pb
+          .collection('audit_logs')
+          .getList(1, 6, {
+            filter: `tenant = "${user.tenantId}"`,
+            sort: '-created',
+          })
+          .catch(() => ({ items: [] })),
+        pb
+          .collection('projects')
+          .getFullList({
+            filter: `tenant = "${user.tenantId}"`,
+          })
+          .catch(() => []),
       ])
+
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      let overdue = 0
+      let upcoming = 0
+      let active = 0
+
+      projList.forEach((p: any) => {
+        if (p.column !== 'Marketing') {
+          active += 1
+        }
+        if (p.column !== 'Marketing' && p.deadline) {
+          const d = new Date(p.deadline.substring(0, 10) + 'T23:59:59')
+          if (!isNaN(d.getTime())) {
+            const diffDays = Math.ceil((d.getTime() - today.getTime()) / 86400000)
+            if (diffDays < 0) overdue += 1
+            else if (diffDays <= 7) upcoming += 1
+          }
+        }
+      })
+
       setData({
         users: u,
         usersByRole: ur,
@@ -61,9 +106,17 @@ export function AdminWidgetProvider({ children }: { children: ReactNode }) {
         recentNotifs: n.items,
         auditLogs: a.items,
         loading: false,
+        error: null,
+        overdueCount: overdue,
+        upcomingCount: upcoming,
+        activeProjectsCount: active,
       })
     } catch {
-      setData((prev) => ({ ...prev, loading: false }))
+      setData((prev) => ({
+        ...prev,
+        loading: false,
+        error: 'Não foi possível carregar os dados administrativos no momento.',
+      }))
     }
   }, [user?.tenantId])
 
