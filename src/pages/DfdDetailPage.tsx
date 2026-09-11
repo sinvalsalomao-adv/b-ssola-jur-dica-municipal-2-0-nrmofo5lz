@@ -37,6 +37,7 @@ import { GenerateDocumentModal } from '@/components/GenerateDocumentModal'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { toast } from 'sonner'
 import type { DfdRecord } from '@/types/dfd'
+import { TenantRequiredNotice } from '@/components/TenantRequiredNotice'
 
 export default function DfdDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -158,6 +159,17 @@ export default function DfdDetailPage() {
       <div className="max-w-3xl mx-auto space-y-4">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-96 w-full" />
+      </div>
+    )
+  }
+
+  if (user?.role === 'superadmin' && !user?.tenantId && !dfd?.tenantId) {
+    return (
+      <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
+        <TenantRequiredNotice
+          title="Selecione uma prefeitura para visualizar este DFD"
+          description="A consulta a este documento requer o contexto municipal ativo."
+        />
       </div>
     )
   }

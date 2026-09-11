@@ -1,11 +1,18 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { useRealtime } from '@/hooks/use-realtime'
+import {
+  getNotificationsPaginated,
+  getUnreadNotificationsCount,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
+} from '@/services/notifications'
+import type { NotificationItem } from '@/types/controle'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
 import {
   Select,
   SelectContent,
@@ -15,365 +22,644 @@ import {
 } from '@/components/ui/select'
 import {
   Bell,
+  Search,
+  Check,
   CheckCheck,
-  Clock,
   AlertTriangle,
+  Clock,
+  ExternalLink,
   ChevronLeft,
   ChevronRight,
+  Filter,
+  RefreshCw,
   Plus,
-  ExternalLink,
+  MessageSquare,
+  ShieldAlert,
+  Info,
+  Calendar,
+  Building2,
+  CheckCircle2,
 } from 'lucide-react'
-import {
-  getNotificationsPaginated,
-  markNotificationAsRead,
-  markAllNotificationsAsRead,
-} from '@/services/notifications'
-import { getTenants } from '@/services/tenants'
+import { formatDate } from '@/lib/dateUtils'
 import { toast } from 'sonner'
 import { NewNotificationModal } from '@/components/admin/NewNotificationModal'
-import type { NotificationItem } from '@/types/controle'
-import type { Prefeitura } from '@/types/superadmin'
+import { TenantRequiredNotice } from '@/components/TenantRequiredNotice'
+import pb from '@/lib/pocketbase/client'
 
-const PER_PAGE = 10
+const PER_PAGE = 15
 
 export default function NotificacoesPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const isSuperadmin = user?.role === 'superadmin'
 
-  const [availableTenants, setAvailableTenants] = useState<Prefeitura[]>([])
-  const [selectedTenantId, setSelectedTenantId] = useState<string>(
-    user?.tenantId || (isSuperadmin ? 'all' : ''),
-  )
-
-  const [items, setItems] = useState<NotificationItem[]>([])
+  const [notifications, setNotifications] = useState<NotificationItem[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [markingAll, setMarkingAll] = useState(false)
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalItems, setTotalItems] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [filterTipo, setFilterTipo] = useState('Todos')
-  const [filterLida, setFilterLida] = useState('Todos')
-  const [filterDestinatario, setFilterDestinatario] = useState<'todas' | 'para_mim'>('todas')
-  const [createOpen, setCreateOpen] = useState(false)
 
-  // Carregar prefeituras para o superadmin
-  useEffect(() => {
-    if (isSuperadmin) {
-      getTenants()
-        .then((list) => setAvailableTenants(list))
-        .catch(() => {})
+  // Filtros
+  const [filterTipo, setFilterTipo] = useState<string>('Todos')
+  const [filterLida, setFilterLida] = useState<string>('Todos') // 'Todos', 'false' (não lidas), 'true' (lidas)
+  const [filterPeriodo, setFilterPeriodo] = useState<'todos' | 'hoje' | '7dias' | '30dias'>('todos')
+  const [filterEscopo, setFilterEscopo] = useState<'todos' | 'minhas'>('todos')
+  const [search, setSearch] = useState('')
+  const [showNewModal, setShowNewModal] = useState(false)
+
+  const isAdminOrSuper = user?.role === 'admin' || user?.role === 'superadmin'
+  const isSuperadminWithoutTenant = user?.role === 'superadmin' && !user?.tenantId
+  const effectiveTenantId = isSuperadminWithoutTenant ? undefined : user?.tenantId || undefined
+
+  // Carregar dados de notificações
+  const loadData = useCallback(async () => {
+    if (isSuperadminWithoutTenant) {
+      setNotifications([])
+      setTotalItems(0)
+      setTotalPages(1)
+      setUnreadCount(0)
+      setLoading(false)
+      return
     }
-  }, [isSuperadmin])
 
-  const effectiveTenantId = isSuperadmin ? selectedTenantId : user?.tenantId || ''
-
-  const load = useCallback(async () => {
-    if (!effectiveTenantId && !isSuperadmin) return
     setLoading(true)
     try {
-      const result = await getNotificationsPaginated(effectiveTenantId, page, PER_PAGE, {
-        tipo: filterTipo,
-        lida: filterLida,
-        targetUser: filterDestinatario === 'para_mim' ? user?.id : undefined,
-      })
-      setItems(result.items)
-      setTotalPages(result.totalPages)
-      setTotalItems(result.totalItems)
+      const filters = {
+        tipo: filterTipo !== 'Todos' ? filterTipo : undefined,
+        lida: filterLida !== 'Todos' ? filterLida : undefined,
+        periodo: filterPeriodo,
+        targetUser: filterEscopo === 'minhas' ? user?.id : undefined,
+      }
+
+      const [res, unread] = await Promise.all([
+        getNotificationsPaginated(effectiveTenantId, page, PER_PAGE, filters, user?.id),
+        getUnreadNotificationsCount(effectiveTenantId, user?.id),
+      ])
+
+      setNotifications(res.items)
+      setTotalPages(res.totalPages || 1)
+      setTotalItems(res.totalItems)
+      setUnreadCount(unread)
     } catch {
-      /* ignore */
+      toast.error('Erro ao carregar notificações.')
     } finally {
       setLoading(false)
     }
-  }, [effectiveTenantId, isSuperadmin, page, filterTipo, filterLida, filterDestinatario, user?.id])
+  }, [
+    effectiveTenantId,
+    isSuperadminWithoutTenant,
+    page,
+    filterTipo,
+    filterLida,
+    filterPeriodo,
+    filterEscopo,
+    user?.id,
+  ])
 
   useEffect(() => {
-    load()
-  }, [load])
+    loadData()
+  }, [loadData])
+
+  // Realtime updates
+  useRealtime('notifications', () => loadData(), !!effectiveTenantId)
+  useRealtime('notification_reads', () => loadData(), !!user?.id)
+
+  // Escuta evento customizado de atualização do sino
   useEffect(() => {
-    setPage(1)
-  }, [filterTipo, filterLida, filterDestinatario, selectedTenantId])
+    const handleSync = () => loadData()
+    window.addEventListener('notificationsUpdated', handleSync)
+    return () => window.removeEventListener('notificationsUpdated', handleSync)
+  }, [loadData])
 
-  useRealtime(
-    'notifications',
-    () => {
-      load()
-    },
-    !!effectiveTenantId || isSuperadmin,
-  )
-
-  const handleMarkRead = async (id: string) => {
+  const handleMarkAsRead = async (item: NotificationItem, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation()
     try {
-      await markNotificationAsRead(
-        id,
-        user?.id,
-        effectiveTenantId !== 'all' ? effectiveTenantId : undefined,
-      )
-      load()
+      await markNotificationAsRead(item.id, user?.id, effectiveTenantId)
+      // Atualiza estado local de forma otimista
+      setNotifications((prev) => prev.map((n) => (n.id === item.id ? { ...n, lida: true } : n)))
+      setUnreadCount((c) => Math.max(0, c - 1))
+      window.dispatchEvent(new CustomEvent('notificationsUpdated'))
+      toast.success('Notificação marcada como lida.')
     } catch {
-      /* ignore */
+      toast.error('Não foi possível marcar a notificação.')
     }
   }
 
-  const handleMarkAllRead = async () => {
+  const handleMarkAllAsRead = async () => {
+    setMarkingAll(true)
     try {
-      await markAllNotificationsAsRead(effectiveTenantId !== 'all' ? effectiveTenantId : undefined)
-      toast.success('Todas as notificações marcadas como lidas!')
-      load()
+      await markAllNotificationsAsRead(effectiveTenantId, user?.id)
+      setNotifications((prev) => prev.map((n) => ({ ...n, lida: true })))
+      setUnreadCount(0)
+      window.dispatchEvent(new CustomEvent('notificationsUpdated'))
+      toast.success('Todas as notificações foram marcadas como lidas.')
     } catch {
-      toast.error('Erro ao marcar notificações.')
+      toast.error('Erro ao marcar notificações como lidas.')
+    } finally {
+      setMarkingAll(false)
     }
   }
 
-  const handleOpenNotificationProject = (projectId?: string) => {
-    if (!projectId) {
-      navigate('/bussola')
-      return
+  const handleOpenDestination = async (item: NotificationItem) => {
+    // 1. Marca como lida se ainda não foi (sem alterar pendência do projeto)
+    if (!item.lida) {
+      await markNotificationAsRead(item.id, user?.id, effectiveTenantId)
+      setNotifications((prev) => prev.map((n) => (n.id === item.id ? { ...n, lida: true } : n)))
+      setUnreadCount((c) => Math.max(0, c - 1))
+      window.dispatchEvent(new CustomEvent('notificationsUpdated'))
     }
-    navigate('/bussola')
-    setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('openProjectById', { detail: { projectId } }))
-    }, 150)
+
+    const projId = item.projetoId || item.projectId
+    if (projId) {
+      try {
+        const projectRecord = await pb
+          .collection('projects')
+          .getOne(projId)
+          .catch(() => null)
+        if (!projectRecord) {
+          toast.info(
+            'O projeto ou tarefa vinculada a este aviso não está mais disponível no sistema.',
+          )
+          return
+        }
+
+        navigate('/bussola')
+        const targetTab = item.alertType === 'Mencao' ? 'comments' : 'details'
+        setTimeout(() => {
+          window.dispatchEvent(
+            new CustomEvent('openProjectById', {
+              detail: { projectId: projId, tab: targetTab },
+            }),
+          )
+        }, 150)
+      } catch {
+        toast.info('Não foi possível abrir o registro correspondente.')
+      }
+    } else {
+      toast.info('Esta é uma notificação informativa geral sem projeto vinculado.')
+    }
+  }
+
+  // Filtro de busca textual em memória sobre o título, prefeitura e mensagem
+  const filteredList = useMemo(() => {
+    if (!search.trim()) return notifications
+    const q = search.toLowerCase()
+    return notifications.filter(
+      (n) =>
+        (n.projectTitle && n.projectTitle.toLowerCase().includes(q)) ||
+        (n.mensagem && n.mensagem.toLowerCase().includes(q)) ||
+        (n.prefeitura && n.prefeitura.toLowerCase().includes(q)) ||
+        (n.alertType && n.alertType.toLowerCase().includes(q)),
+    )
+  }, [notifications, search])
+
+  const getAlertBadge = (type: string) => {
+    switch (type) {
+      case 'Prazo Fatal':
+        return (
+          <Badge className="bg-red-600 hover:bg-red-700 text-white font-medium">Prazo Fatal</Badge>
+        )
+      case 'Atraso':
+      case 'Gargalo':
+        return (
+          <Badge className="bg-amber-600 hover:bg-amber-700 text-white font-medium">
+            Gargalo / Atraso
+          </Badge>
+        )
+      case 'Mencao':
+        return (
+          <Badge className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium">Menção</Badge>
+        )
+      case 'Superadmin':
+      case 'Seguranca':
+        return (
+          <Badge className="bg-purple-600 hover:bg-purple-700 text-white font-medium">
+            Sistema
+          </Badge>
+        )
+      case 'Informativo':
+        return (
+          <Badge className="bg-blue-600 hover:bg-blue-700 text-white font-medium">
+            Informativo
+          </Badge>
+        )
+      default:
+        return <Badge variant="outline">{type}</Badge>
+    }
+  }
+
+  const getAlertIcon = (type: string) => {
+    switch (type) {
+      case 'Prazo Fatal':
+        return <AlertTriangle className="w-4 h-4 text-red-600" />
+      case 'Atraso':
+      case 'Gargalo':
+        return <Clock className="w-4 h-4 text-amber-600" />
+      case 'Mencao':
+        return <MessageSquare className="w-4 h-4 text-indigo-600" />
+      case 'Superadmin':
+      case 'Seguranca':
+        return <ShieldAlert className="w-4 h-4 text-purple-600" />
+      default:
+        return <Bell className="w-4 h-4 text-blue-600" />
+    }
   }
 
   return (
-    <div className="space-y-5 animate-fade-in max-w-4xl mx-auto">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-[#1c2a3e] flex items-center justify-center">
-            <Bell className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-[#1c2a3e]">Notificações do Sistema</h2>
-            <p className="text-xs text-gray-500">
-              Avisos internos, gargalos e prazos vinculados a projetos e demandas municipais (
-              {totalItems} registros)
-            </p>
-          </div>
+    <div className="space-y-6 max-w-6xl mx-auto pb-12 animate-fade-in">
+      {/* Cabeçalho */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-[#1c2a3e] flex items-center gap-2">
+            <Bell className="w-6 h-6 text-[#3b82f6]" /> Central de Notificações
+          </h1>
+          <p className="text-xs text-gray-500 mt-1">
+            Acompanhe comunicados, prazos, gargalos do Kanban e menções em tempo real.
+          </p>
         </div>
+
         <div className="flex items-center gap-2">
-          {(user?.role === 'admin' || user?.role === 'superadmin') && (
+          {unreadCount > 0 && !isSuperadminWithoutTenant && (
             <Button
-              onClick={() => setCreateOpen(true)}
-              className="gap-2 text-xs bg-[#3b82f6] hover:bg-[#2563eb] text-white"
+              variant="outline"
+              size="sm"
+              onClick={handleMarkAllAsRead}
+              disabled={markingAll || loading}
+              className="text-xs text-gray-700 border-gray-300 hover:bg-gray-100"
             >
-              <Plus className="w-4 h-4" /> Nova Notificação
+              <CheckCheck className="w-4 h-4 mr-1.5 text-blue-600" />
+              Marcar todas como lidas
             </Button>
           )}
-          <Button variant="outline" onClick={handleMarkAllRead} className="gap-2 text-xs">
-            <CheckCheck className="w-4 h-4" /> Marcar todas como lidas
+
+          {isAdminOrSuper && !isSuperadminWithoutTenant && (
+            <Button
+              size="sm"
+              onClick={() => setShowNewModal(true)}
+              className="bg-[#3b82f6] hover:bg-[#2563eb] text-white text-xs"
+            >
+              <Plus className="w-4 h-4 mr-1.5" />
+              Novo Comunicado
+            </Button>
+          )}
+
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => loadData()}
+            disabled={loading}
+            className="h-8 w-8 text-gray-500"
+            title="Atualizar lista"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
       </div>
 
-      {/* Seletor de prefeitura para Superadmin */}
-      {isSuperadmin && (
-        <Card className="bg-slate-50 border border-slate-200">
-          <CardContent className="p-3">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-              <span className="text-xs font-semibold text-slate-700 whitespace-nowrap">
-                Filtrar por Prefeitura:
-              </span>
-              <Select
-                value={selectedTenantId}
-                onValueChange={(val) => {
-                  setSelectedTenantId(val)
-                  setPage(1)
-                }}
-              >
-                <SelectTrigger className="w-full sm:w-80 h-9 bg-white text-xs">
-                  <SelectValue placeholder="Todas as prefeituras" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas as prefeituras</SelectItem>
-                  {availableTenants.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Filtros da Central de Notificações */}
-      <div className="flex flex-wrap items-center gap-3">
-        <Select
-          value={filterDestinatario}
-          onValueChange={(val: 'todas' | 'para_mim') => {
-            setFilterDestinatario(val)
-            setPage(1)
-          }}
-        >
-          <SelectTrigger className="w-[190px] h-9 text-xs">
-            <SelectValue placeholder="Destinatário" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todas">Todas da prefeitura</SelectItem>
-            <SelectItem value="para_mim">Para mim (menções / diretas)</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Select
-          value={filterTipo}
-          onValueChange={(val) => {
-            setFilterTipo(val)
-            setPage(1)
-          }}
-        >
-          <SelectTrigger className="w-[160px] h-9 text-xs">
-            <SelectValue placeholder="Tipo" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="Todos">Todos os tipos</SelectItem>
-            <SelectItem value="Gargalo">Gargalo</SelectItem>
-            <SelectItem value="Prazo Fatal">Prazo Fatal</SelectItem>
-            <SelectItem value="Aviso Interno">Aviso Interno</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Select
-          value={filterLida}
-          onValueChange={(val) => {
-            setFilterLida(val)
-            setPage(1)
-          }}
-        >
-          <SelectTrigger className="w-[160px] h-9 text-xs">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="Todos">Todos</SelectItem>
-            <SelectItem value="false">Não lidas</SelectItem>
-            <SelectItem value="true">Lidas</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {loading ? (
-        <div className="space-y-3">
-          {[...Array(3)].map((_, i) => (
-            <Skeleton key={i} className="h-20 w-full" />
-          ))}
-        </div>
-      ) : items.length === 0 ? (
-        <Card className="bg-white border-0 shadow-subtle">
-          <CardContent className="p-12 text-center text-sm text-gray-400">
-            Nenhuma notificação encontrada com os filtros selecionados.
-          </CardContent>
-        </Card>
+      {/* Bloqueio se superadmin não selecionou tenant */}
+      {isSuperadminWithoutTenant ? (
+        <TenantRequiredNotice
+          title="Selecione uma prefeitura para consultar as notificações"
+          description="Os alertas, prazos de projetos e comunicados institucionais pertencem ao escopo municipal específico. Como superadministrador na visão global, selecione um município no cabeçalho para gerenciar suas notificações."
+          onSelected={() => loadData()}
+        />
       ) : (
-        <div className="space-y-3">
-          {items.map((n) => {
-            const isFatal = n.alertType === 'Prazo Fatal'
-            return (
-              <Card
-                key={n.id}
-                className={`border-l-4 ${isFatal ? 'border-l-red-500' : 'border-l-amber-500'} shadow-sm bg-white ${n.lida ? 'opacity-60' : ''}`}
-              >
-                <CardContent className="p-4 flex items-start gap-3">
-                  <div
-                    className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${isFatal ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}
+        <>
+          {/* Barra de Filtros */}
+          <Card className="bg-white border-0 shadow-subtle">
+            <CardContent className="p-4 space-y-3">
+              <div className="flex flex-col md:flex-row items-center gap-3">
+                <div className="relative flex-1 w-full">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <Input
+                    placeholder="Buscar por assunto, projeto ou mensagem..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-9 text-xs h-9"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
+                  {/* Filtro de Leitura */}
+                  <Select
+                    value={filterLida}
+                    onValueChange={(val) => {
+                      setFilterLida(val)
+                      setPage(1)
+                    }}
                   >
-                    {isFatal ? (
-                      <AlertTriangle className="w-4 h-4" />
-                    ) : (
-                      <Clock className="w-4 h-4" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h4
-                        className="font-bold text-sm text-[#1c2a3e] hover:underline cursor-pointer flex items-center gap-1"
-                        onClick={() => handleOpenNotificationProject(n.projectId)}
+                    <SelectTrigger className="w-[140px] text-xs h-9">
+                      <SelectValue placeholder="Leitura" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Todos">Todas as notas</SelectItem>
+                      <SelectItem value="false">Não lidas</SelectItem>
+                      <SelectItem value="true">Já lidas</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {/* Filtro por Tipo */}
+                  <Select
+                    value={filterTipo}
+                    onValueChange={(val) => {
+                      setFilterTipo(val)
+                      setPage(1)
+                    }}
+                  >
+                    <SelectTrigger className="w-[150px] text-xs h-9">
+                      <SelectValue placeholder="Tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Todos">Todos os tipos</SelectItem>
+                      <SelectItem value="Informativo">Informativo</SelectItem>
+                      <SelectItem value="Aviso">Aviso</SelectItem>
+                      <SelectItem value="Alerta">Alerta</SelectItem>
+                      <SelectItem value="Urgente">Urgente</SelectItem>
+                      <SelectItem value="Prazo Fatal">Prazo Fatal</SelectItem>
+                      <SelectItem value="Gargalo">Gargalo</SelectItem>
+                      <SelectItem value="Mencao">Menção</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {/* Filtro de Período */}
+                  <Select
+                    value={filterPeriodo}
+                    onValueChange={(val: any) => {
+                      setFilterPeriodo(val)
+                      setPage(1)
+                    }}
+                  >
+                    <SelectTrigger className="w-[140px] text-xs h-9">
+                      <SelectValue placeholder="Período" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todo o período</SelectItem>
+                      <SelectItem value="hoje">Hoje</SelectItem>
+                      <SelectItem value="7dias">Últimos 7 dias</SelectItem>
+                      <SelectItem value="30dias">Últimos 30 dias</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {/* Filtro de Escopo ("Para mim" vs "Visão Municipal") apenas para admin */}
+                  {isAdminOrSuper && (
+                    <Select
+                      value={filterEscopo}
+                      onValueChange={(val: any) => {
+                        setFilterEscopo(val)
+                        setPage(1)
+                      }}
+                    >
+                      <SelectTrigger className="w-[150px] text-xs h-9">
+                        <SelectValue placeholder="Destinatário" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todos">Visão Municipal</SelectItem>
+                        <SelectItem value="minhas">Dirigidas a mim</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              </div>
+
+              {/* Linha de status e legenda */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-100 text-xs text-gray-500">
+                <div className="flex items-center gap-3">
+                  <span>
+                    Total: <strong className="text-gray-900">{totalItems}</strong> registro(s)
+                  </span>
+                  <span>•</span>
+                  <span>
+                    Não lidas: <strong className="text-blue-600">{unreadCount}</strong>
+                  </span>
+                </div>
+                <div className="flex items-center gap-3 text-[11px]">
+                  <span className="flex items-center gap-1 text-gray-500">
+                    <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+                    Não lida
+                  </span>
+                  <span className="flex items-center gap-1 text-gray-400">
+                    <span className="w-2 h-2 rounded-full bg-gray-300 inline-block" />
+                    Lida
+                  </span>
+                  <span className="flex items-center gap-1 text-red-600 font-medium">
+                    <AlertTriangle className="w-3 h-3" />
+                    Prazo / Gargalo
+                  </span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Lista de Notificações */}
+          {loading ? (
+            <div className="space-y-3">
+              {[1, 2, 3, 4].map((i) => (
+                <div
+                  key={i}
+                  className="h-24 bg-white rounded-lg border border-gray-100 animate-pulse"
+                />
+              ))}
+            </div>
+          ) : filteredList.length === 0 ? (
+            <Card className="bg-white border-0 shadow-subtle py-12 text-center">
+              <CardContent className="space-y-3">
+                <Bell className="w-12 h-12 text-gray-300 mx-auto" />
+                <h3 className="text-base font-semibold text-[#1c2a3e]">
+                  Nenhuma notificação encontrada
+                </h3>
+                <p className="text-xs text-gray-500 max-w-sm mx-auto">
+                  Não há notificações correspondentes aos critérios de filtro selecionados ou para o
+                  contexto atual.
+                </p>
+                {(filterTipo !== 'Todos' ||
+                  filterLida !== 'Todos' ||
+                  filterPeriodo !== 'todos' ||
+                  search) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setFilterTipo('Todos')
+                      setFilterLida('Todos')
+                      setFilterPeriodo('todos')
+                      setSearch('')
+                      setPage(1)
+                    }}
+                    className="text-xs"
+                  >
+                    Limpar Filtros
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {filteredList.map((item) => {
+                const isFatal = item.alertType === 'Prazo Fatal'
+                const isWarning = item.alertType === 'Atraso' || item.alertType === 'Gargalo'
+                const isRead = item.lida
+
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => handleOpenDestination(item)}
+                    className={`rounded-xl border p-4 transition-all duration-150 cursor-pointer flex flex-col sm:flex-row sm:items-start justify-between gap-4 ${
+                      !isRead
+                        ? 'bg-white border-blue-200 shadow-sm hover:border-blue-300 hover:shadow-md'
+                        : 'bg-gray-50/60 border-gray-200/80 opacity-90 hover:bg-gray-50 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3.5 flex-1 min-w-0">
+                      {/* Ícone de Tipo */}
+                      <div
+                        className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                          isFatal
+                            ? 'bg-red-100 text-red-700'
+                            : isWarning
+                              ? 'bg-amber-100 text-amber-700'
+                              : !isRead
+                                ? 'bg-blue-100 text-blue-700'
+                                : 'bg-gray-200 text-gray-600'
+                        }`}
                       >
-                        {n.projectTitle}
-                        {n.projectId && <ExternalLink className="w-3 h-3 text-gray-400" />}
-                      </h4>
-                      <Badge
-                        variant="outline"
-                        className={`text-[9px] ${isFatal ? 'bg-red-50 text-red-700 border-red-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}
-                      >
-                        {n.alertType}
-                      </Badge>
-                      {!n.lida && <Badge className="text-[9px] bg-blue-500 text-white">Nova</Badge>}
-                      {n.targetUserId && n.targetUserId === user?.id && (
-                        <Badge
-                          variant="secondary"
-                          className="text-[9px] bg-blue-50 text-blue-700 border border-blue-200"
+                        {getAlertIcon(item.alertType)}
+                      </div>
+
+                      {/* Conteúdo textual */}
+                      <div className="space-y-1.5 flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3
+                            className={`text-sm font-semibold truncate ${
+                              !isRead ? 'text-[#1c2a3e] font-bold' : 'text-gray-700 font-medium'
+                            }`}
+                          >
+                            {item.projectTitle || 'Comunicado Geral'}
+                          </h3>
+                          {getAlertBadge(item.alertType)}
+                          {!isRead && (
+                            <span
+                              className="w-2 h-2 rounded-full bg-blue-600 inline-block"
+                              title="Não lida"
+                            />
+                          )}
+                          {isRead && (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] text-gray-400 border-gray-300 py-0"
+                            >
+                              Lida
+                            </Badge>
+                          )}
+                        </div>
+
+                        {item.mensagem && (
+                          <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-line">
+                            {item.mensagem}
+                          </p>
+                        )}
+
+                        {/* Metadados: Município, Data e Projeto Relacionado */}
+                        <div className="flex flex-wrap items-center gap-3 pt-1 text-[11px] text-gray-400">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3.5 h-3.5" />
+                            {formatDate(item.createdAt, 'Data desconhecida')}
+                          </span>
+
+                          {item.prefeitura && (
+                            <span className="flex items-center gap-1">
+                              <Building2 className="w-3.5 h-3.5" />
+                              {item.prefeitura}
+                            </span>
+                          )}
+
+                          {item.projetoId && (
+                            <span className="text-[#3b82f6] hover:underline flex items-center gap-1">
+                              Ver no Kanban <ExternalLink className="w-3 h-3" />
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Ações à direita */}
+                    <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 shrink-0 border-t sm:border-t-0 pt-2 sm:pt-0">
+                      {!isRead ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => handleMarkAsRead(item, e)}
+                          className="h-8 px-2.5 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                          title="Marcar como lida"
                         >
-                          Para mim
-                        </Badge>
+                          <Check className="w-3.5 h-3.5 mr-1" />
+                          Marcar como lida
+                        </Button>
+                      ) : (
+                        <span className="text-[11px] text-gray-400 flex items-center gap-1 px-2 py-1">
+                          <CheckCheck className="w-3.5 h-3.5 text-gray-400" />
+                          Lida
+                        </span>
                       )}
-                    </div>
-                    {n.mensagem && <p className="text-xs text-gray-600 mt-1">{n.mensagem}</p>}
-                    <div className="flex items-center gap-3 mt-1 text-xs text-gray-400 flex-wrap">
-                      {n.daysIdle > 0 && <span>{n.daysIdle} dias parado</span>}
-                      <span>Coluna: {n.column}</span>
-                      {n.responsible && <span>Resp: {n.responsible}</span>}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    {n.projectId && (
+
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleOpenNotificationProject(n.projectId)}
-                        className="text-xs text-slate-600 hover:bg-slate-100"
-                        title="Abrir no Kanban"
+                        onClick={() => handleOpenDestination(item)}
+                        className="h-8 px-2.5 text-xs text-gray-600 hover:text-gray-900"
                       >
-                        Abrir
+                        Abrir destino <ExternalLink className="w-3 h-3 ml-1" />
                       </Button>
-                    )}
-                    {!n.lida && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleMarkRead(n.id)}
-                        className="text-xs text-blue-600 hover:bg-blue-50"
-                      >
-                        Marcar lida
-                      </Button>
-                    )}
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Paginação */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between pt-4">
+              <p className="text-xs text-gray-500">
+                Página {page} de {totalPages} ({totalItems} itens no total)
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1 || loading}
+                  className="text-xs h-8"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5 mr-1" /> Anterior
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages || loading}
+                  className="text-xs h-8"
+                >
+                  Próxima <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            disabled={page <= 1}
-            onClick={() => setPage(page - 1)}
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </Button>
-          <span className="text-xs text-gray-500">
-            Página {page} de {totalPages}
-          </span>
-          <Button
-            variant="outline"
-            size="icon"
-            disabled={page >= totalPages}
-            onClick={() => setPage(page + 1)}
-          >
-            <ChevronRight className="w-4 h-4" />
-          </Button>
-        </div>
+      {/* Modal de Criação de Notificação Interna */}
+      {showNewModal && (
+        <NewNotificationModal
+          open={showNewModal}
+          onClose={() => setShowNewModal(false)}
+          onSuccess={() => {
+            setShowNewModal(false)
+            loadData()
+          }}
+          tenantId={effectiveTenantId || ''}
+        />
       )}
-
-      <NewNotificationModal
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        onCreated={load}
-        tenantId={user?.tenantId || ''}
-      />
     </div>
   )
 }

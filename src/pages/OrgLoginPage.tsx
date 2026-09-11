@@ -37,6 +37,7 @@ export default function OrgLoginPage() {
         slug: 'global',
         cidade: 'Gestão Central',
         estado: 'BR',
+        brasao: '',
       })
       setLoading(false)
       return

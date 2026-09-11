@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { TenantUsersManager } from '@/components/superadmin/TenantUsersManager'
+import { TenantRequiredNotice } from '@/components/TenantRequiredNotice'
 
 export default function UsuariosPage() {
   const { user } = useAuth()
@@ -10,6 +11,16 @@ export default function UsuariosPage() {
   const isAuthorized = user?.role === 'superadmin' || user?.role === 'admin'
 
   if (isAuthorized) {
+    if (user?.role === 'superadmin' && !user?.tenantId) {
+      return (
+        <div className="space-y-4 animate-fade-in">
+          <TenantRequiredNotice
+            title="Selecione uma prefeitura para gerenciar usuários municipais"
+            description="A gestão de servidores, cargos, convites e aprovações de acesso ocorre no escopo de cada município. Como superadministrador na visão global, selecione uma prefeitura para continuar."
+          />
+        </div>
+      )
+    }
     return <TenantUsersManager />
   }
 

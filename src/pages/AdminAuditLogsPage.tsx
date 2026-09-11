@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { useAuth } from '@/context/AuthContext'
 import { useRealtime } from '@/hooks/use-realtime'
 import { getAuditLogsPaginated } from '@/services/admin-notifications'
+import { TenantRequiredNotice } from '@/components/TenantRequiredNotice'
 
 const PER_PAGE = 15
 
@@ -106,6 +107,17 @@ export default function AdminAuditLogsPage() {
         <p className="text-sm text-gray-500 text-center max-w-md">
           Apenas administradores podem acessar os logs de auditoria.
         </p>
+      </div>
+    )
+  }
+
+  if (user?.role === 'superadmin' && !user?.tenantId) {
+    return (
+      <div className="space-y-4 animate-fade-in max-w-4xl mx-auto">
+        <TenantRequiredNotice
+          title="Selecione uma prefeitura para consultar logs de auditoria"
+          description="Os registros de alterações em projetos, documentos e permissões são isolados por prefeitura. Como superadministrador na visão global, selecione um município para inspecionar a trilha de auditoria."
+        />
       </div>
     )
   }

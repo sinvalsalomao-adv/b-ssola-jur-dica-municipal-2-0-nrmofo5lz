@@ -9,8 +9,6 @@ import { useAuth } from '@/context/AuthContext'
 import { getRecentDfds, getDfd } from '@/services/dfds'
 import { useRealtime } from '@/hooks/use-realtime'
 import { Skeleton } from '@/components/ui/skeleton'
-
-import { useAuth } from '@/context/AuthContext'
 import { TenantRequiredNotice } from '@/components/TenantRequiredNotice'
 
 export default function NovoDfdPage() {
@@ -71,6 +69,7 @@ export default function NovoDfdPage() {
         <TenantRequiredNotice
           title="Selecione uma prefeitura para elaborar um DFD"
           description="A elaboração e consulta de DFDs pertencem a uma prefeitura específica. Como superadministrador na visão global, selecione um município para continuar."
+          onSelected={() => loadDfds()}
         />
       </div>
     )

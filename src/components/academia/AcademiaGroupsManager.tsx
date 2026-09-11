@@ -65,6 +65,7 @@ import {
 import { getUsersByTenant } from '@/services/users'
 import { sanitizeError } from '@/lib/errorSanitizer'
 import { toast } from 'sonner'
+import { TenantRequiredNotice } from '@/components/TenantRequiredNotice'
 import type {
   SecretariaRecord,
   EducationGroupRecord,
@@ -584,18 +585,11 @@ export default function AcademiaGroupsManager() {
 
       {/* Bloqueio se superadmin não selecionou tenant */}
       {isSuperadmin && !selectedTenantId ? (
-        <Card className="bg-amber-50/50 border-amber-200">
-          <CardContent className="py-12 text-center space-y-3">
-            <ShieldAlert className="w-10 h-10 text-amber-600 mx-auto" />
-            <h3 className="text-base font-bold text-[#1c2a3e]">
-              Seleção Explícita de Município Obrigatória
-            </h3>
-            <p className="text-xs text-gray-600 max-w-md mx-auto">
-              Como Superadministrador, selecione uma Prefeitura específica no seletor acima para
-              atuar no escopo isolado daquele município.
-            </p>
-          </CardContent>
-        </Card>
+        <TenantRequiredNotice
+          title="Selecione uma prefeitura para gerenciar a Academia"
+          description="As secretarias, grupos educacionais e matrículas de capacitação pertencem a uma prefeitura específica. Como superadministrador na visão global, selecione um município para continuar."
+          onSelected={(tid) => setSelectedTenantId(tid)}
+        />
       ) : (
         <>
           {/* Barra de Filtros e Ações */}

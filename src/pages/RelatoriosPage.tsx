@@ -32,6 +32,7 @@ import { KanbanColumnsChart } from '@/components/reports/KanbanColumnsChart'
 import { PriorityChart } from '@/components/reports/PriorityChart'
 import { DfdStatusChart } from '@/components/reports/DfdStatusChart'
 import { OverdueTable } from '@/components/reports/OverdueTable'
+import { TenantRequiredNotice } from '@/components/TenantRequiredNotice'
 import { UsersByRoleCard } from '@/components/reports/UsersByRoleCard'
 import { StalledItemsCard } from '@/components/reports/StalledItemsCard'
 import { NotificationsSummaryCard } from '@/components/reports/NotificationsSummaryCard'
@@ -155,6 +156,17 @@ export default function RelatoriosPage() {
         <p className="text-sm text-gray-500 text-center max-w-md">
           Apenas administradores podem acessar o dashboard de relatórios.
         </p>
+      </div>
+    )
+  }
+
+  if (user?.role === 'superadmin' && !user?.tenantId) {
+    return (
+      <div className="space-y-4 animate-fade-in max-w-4xl mx-auto">
+        <TenantRequiredNotice
+          title="Selecione uma prefeitura para visualizar relatórios detalhados"
+          description="Os indicadores de projetos, gargalos e prazos municipais exigem o contexto de uma prefeitura específica. Como superadministrador na visão global, selecione um município para analisar seus dados."
+        />
       </div>
     )
   }

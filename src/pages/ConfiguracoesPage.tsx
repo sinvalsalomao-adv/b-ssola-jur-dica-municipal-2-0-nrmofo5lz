@@ -17,6 +17,7 @@ import {
 } from '@/services/settings'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { toast } from 'sonner'
+import { TenantRequiredNotice } from '@/components/TenantRequiredNotice'
 
 export default function ConfiguracoesPage() {
   const { user } = useAuth()
@@ -128,6 +129,17 @@ export default function ConfiguracoesPage() {
       <div className="flex flex-col items-center justify-center min-h-[50vh] gap-2 animate-fade-in">
         <Settings className="w-10 h-10 text-gray-300" />
         <p className="text-sm text-gray-500">Você não tem permissão para acessar esta página.</p>
+      </div>
+    )
+  }
+
+  if (user?.role === 'superadmin' && !user?.tenantId) {
+    return (
+      <div className="space-y-4 animate-fade-in max-w-2xl mx-auto">
+        <TenantRequiredNotice
+          title="Selecione uma prefeitura para configurar os parâmetros municipais"
+          description="Os limites de gargalo do Kanban e as configurações de remetente de e-mail (SMTP) são específicos de cada prefeitura. Selecione um município para continuar."
+        />
       </div>
     )
   }

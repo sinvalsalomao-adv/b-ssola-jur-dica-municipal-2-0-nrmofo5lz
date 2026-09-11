@@ -23,6 +23,7 @@ import {
   ChartUsersRoleWidget,
   ChartProjectsColumnWidget,
 } from '@/components/admin/AdminChartWidgets'
+import { UserPersonalDashboard } from '@/components/dashboard/UserPersonalDashboard'
 
 const WIDGET_COMPONENTS: Record<string, React.FC> = {
   'stats-overview': StatsOverviewWidget,
@@ -99,8 +100,7 @@ export default function Dashboard() {
     return (
       <div className="space-y-6 animate-fade-in">
         {header}
-        <StatsOverviewWidget />
-        <RecentProjectsWidget />
+        <UserPersonalDashboard />
       </div>
     )
   }

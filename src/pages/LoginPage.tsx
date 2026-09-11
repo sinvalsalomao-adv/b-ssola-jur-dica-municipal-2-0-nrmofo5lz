@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Compass, Loader2, Search, Building2, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useAuth } from '@/context/AuthContext'
 import { getOrganizacoes, type Organizacao } from '@/services/organizacoes'
 
 export default function LoginPage() {
