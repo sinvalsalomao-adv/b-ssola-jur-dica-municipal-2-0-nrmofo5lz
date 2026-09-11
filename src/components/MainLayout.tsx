@@ -49,7 +49,6 @@ import { NewProjectModal } from '@/components/NewProjectModal'
 import { NotificationBell } from '@/components/NotificationBell'
 import { ProfileSwitcherDialog } from '@/components/ProfileSwitcherDialog'
 import { MandatoryNotificationModal } from '@/components/MandatoryNotificationModal'
-import { useMandatoryNotifications } from '@/hooks/use-mandatory-notifications'
 import { useUnsavedChanges } from '@/context/UnsavedChangesContext'
 import { Building2, Globe, Undo2 } from 'lucide-react'
 
@@ -65,12 +64,6 @@ export const MainLayout: React.FC = () => {
   const { user, originalUser, logout, clearTenantContext } = useAuth()
   const isSuperadmin = user?.role === 'superadmin'
   const canSwitchProfile = originalUser?.role === 'superadmin'
-
-  const {
-    currentNotification: mandatoryNotification,
-    hasPending: hasPendingMandatory,
-    confirmCurrent: confirmMandatoryNotification,
-  } = useMandatoryNotifications()
 
   const handleReturnToGlobal = () => {
     confirmTenantSwitch(async () => {
@@ -420,11 +413,7 @@ export const MainLayout: React.FC = () => {
         <ProfileSwitcherDialog open={profileSwitcherOpen} onOpenChange={setProfileSwitcherOpen} />
 
         {/* Modal de Notificações Obrigatórias / Comunicados que Exigem Ciência */}
-        <MandatoryNotificationModal
-          notification={mandatoryNotification}
-          open={hasPendingMandatory}
-          onConfirm={confirmMandatoryNotification}
-        />
+        <MandatoryNotificationModal />
 
         {/* Logout Confirmation Dialog */}
         <AlertDialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>

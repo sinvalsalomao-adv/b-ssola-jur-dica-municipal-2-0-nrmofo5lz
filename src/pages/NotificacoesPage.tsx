@@ -652,8 +652,8 @@ export default function NotificacoesPage() {
       {showNewModal && (
         <NewNotificationModal
           open={showNewModal}
-          onClose={() => setShowNewModal(false)}
-          onSuccess={() => {
+          onOpenChange={(isOpen) => setShowNewModal(isOpen)}
+          onCreated={() => {
             setShowNewModal(false)
             loadData()
           }}

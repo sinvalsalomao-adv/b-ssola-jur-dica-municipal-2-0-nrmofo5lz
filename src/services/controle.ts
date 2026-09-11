@@ -21,6 +21,7 @@ export function normalizeNotification(r: any): NotificationItem {
     mensagem: r.mensagem || '',
     lida: r.lida || false,
     projetoId: r.projeto_id || '',
+    createdAt: r.created || r.alert_date || '',
   }
 }
 

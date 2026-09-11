@@ -1,6 +1,17 @@
 import { ColumnType } from '@/types/project'
 
-export type AlertType = 'Gargalo' | 'Prazo Fatal' | 'Aviso Interno' | 'Mencao'
+export type AlertType =
+  | 'Gargalo'
+  | 'Prazo Fatal'
+  | 'Aviso Interno'
+  | 'Mencao'
+  | 'Aviso'
+  | 'Alerta'
+  | 'Urgente'
+  | 'Superadmin'
+  | 'Seguranca'
+  | 'Informativo'
+  | 'Atraso'
 export type DeliveryStatus = 'enviada' | 'agendada' | 'cancelada'
 
 export interface NotificationItem {
@@ -28,6 +39,7 @@ export interface NotificationItem {
   parentNotification?: string
   recorrenciaAtiva?: boolean
   targetUserId?: string
+  createdAt?: string
 }
 
 export interface CalendarEvent {
