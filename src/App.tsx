@@ -6,6 +6,7 @@ import { AuthProvider } from '@/context/AuthContext'
 import { ProjectProvider } from '@/context/ProjectContext'
 import { EducationProvider } from '@/context/EducationContext'
 import { UnsavedChangesProvider } from '@/context/UnsavedChangesContext'
+import { SuperadminProvider } from '@/context/SuperadminContext'
 import TrackDetailPage from '@/pages/TrackDetailPage'
 import QuizPage from '@/pages/QuizPage'
 import SuperadminPage from '@/pages/SuperadminPage'
@@ -61,7 +62,9 @@ const App = () => (
                   <Route
                     element={
                       <ProtectedRoute>
-                        <MainLayout />
+                        <SuperadminProvider>
+                          <MainLayout />
+                        </SuperadminProvider>
                       </ProtectedRoute>
                     }
                   >
@@ -119,7 +122,7 @@ const App = () => (
                         </ProtectedRoute>
                       }
                     />
-                  </Route>
+                  </Route>{' '}
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </TooltipProvider>

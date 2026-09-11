@@ -31,12 +31,6 @@ interface SuperadminContextType {
 
 const SuperadminContext = createContext<SuperadminContextType | undefined>(undefined)
 
-export const useSuperadmin = () => {
-  const ctx = useContext(SuperadminContext)
-  if (!ctx) throw new Error('useSuperadmin must be used within SuperadminProvider')
-  return ctx
-}
-
 function normalizeGlobalUser(r: any): GlobalUser {
   const tenant = r.expand?.tenant
   return {
@@ -51,7 +45,7 @@ function normalizeGlobalUser(r: any): GlobalUser {
   }
 }
 
-const DEFAULT_PLATFORM_CONFIG: PlatformConfig = {
+export const DEFAULT_PLATFORM_CONFIG: PlatformConfig = {
   stallLimits: { ...DEFAULT_STALL_LIMITS },
   smtpServer: '',
   smtpPort: '587',
@@ -59,6 +53,30 @@ const DEFAULT_PLATFORM_CONFIG: PlatformConfig = {
   smtpPassword: '',
   senderEmail: '',
   aiApiKey: '',
+}
+
+const SAFE_FALLBACK_SUPERADMIN_CONTEXT: SuperadminContextType = {
+  prefeituras: [],
+  globalUsers: [],
+  platformConfig: DEFAULT_PLATFORM_CONFIG,
+  loading: false,
+  addPrefeitura: async () => {},
+  updatePrefeitura: () => {},
+  togglePrefeituraStatus: () => {},
+  refreshTenant: async () => {},
+  addGlobalUser: async () => {},
+  fetchUsers: async () => {},
+  updateUser: () => {},
+  toggleUserStatus: () => {},
+  updatePlatformConfig: () => {},
+}
+
+export const useSuperadmin = () => {
+  const ctx = useContext(SuperadminContext)
+  if (!ctx) {
+    return SAFE_FALLBACK_SUPERADMIN_CONTEXT
+  }
+  return ctx
 }
 
 export const SuperadminProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
