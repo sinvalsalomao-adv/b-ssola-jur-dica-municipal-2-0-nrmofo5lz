@@ -45,7 +45,6 @@ async function resolveAuthUser(
 ): Promise<AuthUser | null> {
   if (!userRecord) return null
 
-  // Se o usuário é superadmin global
   const isSuperadminDirect = userRecord.role === 'superadmin'
 
   // Buscar memberships do usuário
@@ -60,54 +59,84 @@ async function resolveAuthUser(
     console.warn('Erro ao carregar memberships do usuário:', err)
   }
 
-  if (isSuperadminDirect) {
-    // Se contextTenantId for null explícito ou sessionStorage vazio, fica sem contexto (Visão Global)
-    let activeTenant: any = null
-    const targetTenantId =
-      contextTenantId !== undefined ? contextTenantId : sessionStorage.getItem('activeTenantId')
-    if (targetTenantId) {
-      try {
-        activeTenant = await pb.collection('tenants').getOne(targetTenantId)
-      } catch {
-        sessionStorage.removeItem('activeTenantId')
-      }
-    }
+  // Determinar o tenant do contexto:
+  // Se contextTenantId for fornecido (inclusive null explícito para visão global), usá-lo.
+  // Caso contrário, verificar no sessionStorage.
+  const targetTenantId =
+    contextTenantId !== undefined ? contextTenantId : sessionStorage.getItem('activeTenantId')
 
-    return {
-      id: userRecord.id,
-      name: userRecord.name || userRecord.email || '',
-      email: userRecord.email || '',
-      role: 'superadmin',
-      prefeitura: activeTenant ? activeTenant.name : null,
-      tenantId: activeTenant ? activeTenant.id : null,
-      tenantSlug: activeTenant ? activeTenant.slug : null,
-      membershipId: null,
-    }
-  }
-
-  // Usuário comum: buscar vínculo ativo
-  // 1. Se tem contexto municipal especificado
-  let selectedMembership = null
-  const targetTenantId = contextTenantId || sessionStorage.getItem('activeTenantId')
-
+  // Se houver um contexto municipal ativo especificado
   if (targetTenantId) {
-    selectedMembership = memberships.find(
+    const selectedMembership = memberships.find(
       (m) =>
         (m.tenant === targetTenantId ||
           m.expand?.tenant?.id === targetTenantId ||
           m.expand?.tenant?.slug === targetTenantId) &&
         m.status === 'ativo',
     )
+
+    if (selectedMembership) {
+      const tenant = selectedMembership.expand?.tenant
+      if (tenant?.id) {
+        sessionStorage.setItem('activeTenantId', tenant.id)
+      }
+      return {
+        id: userRecord.id,
+        name: userRecord.name || userRecord.email || '',
+        email: userRecord.email || '',
+        role: (selectedMembership.role || 'servidor') as UserRole,
+        prefeitura: tenant?.name || null,
+        tenantId: selectedMembership.tenant || tenant?.id || null,
+        tenantSlug: tenant?.slug || null,
+        membershipId: selectedMembership.id,
+      }
+    }
+
+    // Se a conta for superadmin direto e tiver sido selecionado um tenant (mas sem membership específica encontrada),
+    // ou se o tenant existir:
+    // ATENÇÃO: se for superadmin tentando operar num tenant onde NÃO tem membership ativa,
+    // a tentativa de contexto cai no fallback abaixo ou visão global.
+    // Se for superadmin e o tenantId foi explicitamente setado via switch de tenant global (fora do login municipal),
+    // ainda podemos resolver os dados do tenant mantendo role superadmin SOMENTE se não houver membership.
+    // Mas se o usuário logou pela porta municipal, login() já validou a membership.
+    if (isSuperadminDirect) {
+      try {
+        const activeTenant = await pb.collection('tenants').getOne(targetTenantId)
+        return {
+          id: userRecord.id,
+          name: userRecord.name || userRecord.email || '',
+          email: userRecord.email || '',
+          role: 'superadmin',
+          prefeitura: activeTenant ? activeTenant.name : null,
+          tenantId: activeTenant ? activeTenant.id : null,
+          tenantSlug: activeTenant ? activeTenant.slug : null,
+          membershipId: null,
+        }
+      } catch {
+        sessionStorage.removeItem('activeTenantId')
+      }
+    }
   }
 
-  // 2. Se não encontrou pelo contexto ou sem contexto, pegar a primeira ativa
-  if (!selectedMembership) {
-    selectedMembership = memberships.find((m) => m.status === 'ativo')
+  // Se não há contexto municipal e é superadmin direto -> Visão Global pura (role: superadmin)
+  if (isSuperadminDirect) {
+    return {
+      id: userRecord.id,
+      name: userRecord.name || userRecord.email || '',
+      email: userRecord.email || '',
+      role: 'superadmin',
+      prefeitura: null,
+      tenantId: null,
+      tenantSlug: null,
+      membershipId: null,
+    }
   }
 
-  // 3. Se tiver membership ativa selecionada
-  if (selectedMembership) {
-    const tenant = selectedMembership.expand?.tenant
+  // Usuário comum sem contexto especificado: pegar a primeira membership ativa
+  const firstActiveMembership = memberships.find((m) => m.status === 'ativo')
+
+  if (firstActiveMembership) {
+    const tenant = firstActiveMembership.expand?.tenant
     if (tenant?.id) {
       sessionStorage.setItem('activeTenantId', tenant.id)
     }
@@ -115,15 +144,15 @@ async function resolveAuthUser(
       id: userRecord.id,
       name: userRecord.name || userRecord.email || '',
       email: userRecord.email || '',
-      role: (selectedMembership.role || 'servidor') as UserRole,
+      role: (firstActiveMembership.role || 'servidor') as UserRole,
       prefeitura: tenant?.name || null,
-      tenantId: selectedMembership.tenant || tenant?.id || null,
+      tenantId: firstActiveMembership.tenant || tenant?.id || null,
       tenantSlug: tenant?.slug || null,
-      membershipId: selectedMembership.id,
+      membershipId: firstActiveMembership.id,
     }
   }
 
-  // 4. Fallback para campos legados diretos caso não tenha membership ainda
+  // Fallback para campos legados diretos caso não tenha membership ainda
   if (userRecord.role && userRecord.tenant) {
     return {
       id: userRecord.id,
@@ -162,11 +191,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         .authRefresh()
         .then(() => pb.collection('users').getOne(pb.authStore.record.id, { expand: 'tenant' }))
         .then(async (record) => {
-          const authenticatedUser = await resolveAuthUser(record)
+          const storedTenantId = sessionStorage.getItem('activeTenantId')
+          const authenticatedUser = await resolveAuthUser(record, storedTenantId)
           setOriginalUser(authenticatedUser)
           const impersonatedUserId = sessionStorage.getItem('impersonatedUserId')
 
-          if (authenticatedUser?.role === 'superadmin' && impersonatedUserId) {
+          if (record.role === 'superadmin' && impersonatedUserId) {
             try {
               const impersonatedRecord = await pb
                 .collection('users')
@@ -247,8 +277,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
       }
 
-      // Se não for superadmin e login foi feito em um tenant específico, validar vínculo ativo
-      if (!isSuperadmin && targetTenant) {
+      // Se o login foi feito em uma porta municipal (tenantSlugOrId !== 'global'),
+      // validar vínculo ativo para TODOS os usuários (inclusive superadmin)
+      if (targetTenant) {
         // Verificar se o usuário tem vínculo ativo nessa prefeitura
         const memberships = await pb.collection('user_memberships').getFullList({
           filter: `user = "${userRecord.id}" && tenant = "${targetTenant.id}"`,
@@ -257,10 +288,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         const activeMembership = memberships.find((m) => m.status === 'ativo')
         const pendingMembership = memberships.find((m) => m.status === 'pendente')
+        const rejectedMembership = memberships.find((m) => m.status === 'rejeitado')
 
         if (!activeMembership) {
-          // Limpar sessão
+          // Limpar sessão PocketBase e sessionStorage
           pb.authStore.clear()
+          sessionStorage.removeItem('activeTenantId')
+
           if (pendingMembership) {
             return {
               error: new Error(
@@ -268,23 +302,35 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               ),
             }
           }
-          if (memberships.length > 0 && memberships[0].status === 'rejeitado') {
+          if (
+            rejectedMembership ||
+            (memberships.length > 0 && memberships[0].status === 'rejeitado')
+          ) {
             return {
               error: new Error('Seu cadastro nesta prefeitura foi recusado pelo Administrador.'),
             }
           }
-          if (userRecord.tenant === targetTenant.id && userRecord.status === 'ativo') {
+          if (
+            !isSuperadmin &&
+            userRecord.tenant === targetTenant.id &&
+            userRecord.status === 'ativo'
+          ) {
             // Permite compatibilidade caso ainda não haja o registro em user_memberships
           } else {
             return {
-              error: new Error('Você não possui um vínculo ativo com esta prefeitura.'),
+              error: new Error('Esta conta não possui vínculo com esta prefeitura.'),
             }
           }
         }
 
         sessionStorage.setItem('activeTenantId', targetTenant.id)
-      } else if (targetTenant) {
-        sessionStorage.setItem('activeTenantId', targetTenant.id)
+      } else if (tenantSlugOrId && tenantSlugOrId !== 'global') {
+        // Se foi passado um slug municipal mas a organização não foi encontrada no banco
+        pb.authStore.clear()
+        sessionStorage.removeItem('activeTenantId')
+        return {
+          error: new Error('Esta conta não possui vínculo com esta prefeitura.'),
+        }
       }
 
       const authenticatedUser = await resolveAuthUser(userRecord, targetTenant?.id)
@@ -292,12 +338,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setOriginalUser(authenticatedUser)
       setUser(authenticatedUser)
       setIsAuthenticated(true)
-      // Se for superadmin, garantir que após login comece na visão global se nenhum tenant foi passado explicitamente
-      if (isSuperadmin && !tenantSlugOrId) {
+      // Se for login global (ou sem tenant municipal especificado), garantir que comece na visão global
+      if (isSuperadmin && (!tenantSlugOrId || tenantSlugOrId === 'global')) {
         sessionStorage.removeItem('activeTenantId')
-        authenticatedUser.tenantId = null
-        authenticatedUser.prefeitura = null
-        authenticatedUser.tenantSlug = null
+        if (authenticatedUser) {
+          authenticatedUser.tenantId = null
+          authenticatedUser.prefeitura = null
+          authenticatedUser.tenantSlug = null
+          authenticatedUser.membershipId = null
+          authenticatedUser.role = 'superadmin'
+        }
       }
 
       return { error: null, user: authenticatedUser }

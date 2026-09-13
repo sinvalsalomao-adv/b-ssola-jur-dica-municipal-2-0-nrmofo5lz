@@ -76,20 +76,25 @@ export default function OrgLoginPage() {
       }
       setSubmitting(false)
     } else {
-      const role = loggedInUser?.role || (pb.authStore.record as any)?.role || 'servidor'
-      if (slug === 'global' && role !== 'superadmin') {
-        pb.authStore.clear()
-        setError('Esta entrada é exclusiva para superadministradores.')
-        setSubmitting(false)
+      // Validar entrada global
+      if (slug === 'global') {
+        const globalRole = (pb.authStore.record as any)?.role
+        if (globalRole !== 'superadmin') {
+          pb.authStore.clear()
+          setError('Esta entrada é exclusiva para superadministradores.')
+          setSubmitting(false)
+          return
+        }
+
+        setFailedAttempts(0)
+        navigate('/superadmin', { replace: true })
         return
       }
 
+      // Login municipal (/login/:slug):
+      // Sempre redireciona para a visão municipal (/dashboard), usando o papel resolvido da membership
       setFailedAttempts(0)
-      if (role === 'superadmin') {
-        navigate('/superadmin', { replace: true })
-      } else {
-        navigate('/dashboard', { replace: true })
-      }
+      navigate('/dashboard', { replace: true })
     }
   }
 

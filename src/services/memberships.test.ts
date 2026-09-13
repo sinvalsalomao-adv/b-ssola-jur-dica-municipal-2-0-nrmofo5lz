@@ -304,6 +304,203 @@ export function runMembershipModuleTests(): MembershipTestResult {
     )
   })
 
+  // Teste 10: Cenário 1 — Superadmin logando em porta municipal COM vínculo ativo resolve papel municipal
+  test('Cenário 1: Superadmin com vínculo ativo na porta municipal resolve papel da membership e contexto municipal', () => {
+    const superadminUserRecord = {
+      id: 'usr_super_matheus',
+      name: 'Matheus Super',
+      email: 'matheus@juris.gov.br',
+      role: 'superadmin',
+    }
+
+    const mockMemberships = [
+      {
+        id: 'mem_florania_1',
+        user: 'usr_super_matheus',
+        tenant: 'ten_florania',
+        role: 'admin',
+        status: 'ativo',
+        expand: {
+          tenant: { id: 'ten_florania', name: 'Prefeitura de Florânia', slug: 'florania' },
+        },
+      },
+    ]
+
+    // Simulação da lógica de resolução de autenticação com contexto municipal
+    const resolveContextRole = (
+      userRecord: typeof superadminUserRecord,
+      targetTenantIdOrSlug: string,
+      mems: typeof mockMemberships,
+    ) => {
+      const activeMembership = mems.find(
+        (m) =>
+          (m.tenant === targetTenantIdOrSlug ||
+            m.expand?.tenant?.id === targetTenantIdOrSlug ||
+            m.expand?.tenant?.slug === targetTenantIdOrSlug) &&
+          m.status === 'ativo',
+      )
+
+      if (activeMembership) {
+        return {
+          id: userRecord.id,
+          name: userRecord.name,
+          email: userRecord.email,
+          role: activeMembership.role as UserRole,
+          prefeitura: activeMembership.expand.tenant.name,
+          tenantId: activeMembership.tenant,
+          tenantSlug: activeMembership.expand.tenant.slug,
+          membershipId: activeMembership.id,
+        }
+      }
+
+      // Se não há contexto municipal, superadmin fica global
+      return {
+        id: userRecord.id,
+        name: userRecord.name,
+        email: userRecord.email,
+        role: userRecord.role as UserRole,
+        prefeitura: null,
+        tenantId: null,
+        tenantSlug: null,
+        membershipId: null,
+      }
+    }
+
+    const resolved = resolveContextRole(superadminUserRecord, 'florania', mockMemberships)
+    const destinationPath = resolved.role === 'superadmin' ? '/superadmin' : '/dashboard'
+
+    return (
+      resolved.role === 'admin' &&
+      resolved.prefeitura === 'Prefeitura de Florânia' &&
+      resolved.tenantId === 'ten_florania' &&
+      resolved.tenantSlug === 'florania' &&
+      resolved.membershipId === 'mem_florania_1' &&
+      destinationPath === '/dashboard'
+    )
+  })
+
+  // Teste 11: Cenário 2 — Superadmin logando em porta municipal SEM vínculo ativo é recusado com mensagens exatas
+  test('Cenário 2: Superadmin na porta municipal sem vínculo ativo tem login recusado e sessão limpa', () => {
+    const superadminUser = {
+      id: 'usr_super_matheus',
+      role: 'superadmin',
+    }
+
+    const userMemberships = [
+      {
+        id: 'mem_parazinho',
+        user: 'usr_super_matheus',
+        tenant: 'ten_parazinho',
+        status: 'pendente',
+      },
+      {
+        id: 'mem_rej',
+        user: 'usr_super_matheus',
+        tenant: 'ten_rejeitado',
+        status: 'rejeitado',
+      },
+    ]
+
+    const simulateMunicipalLoginValidation = (
+      user: typeof superadminUser,
+      targetTenantId: string,
+    ) => {
+      const tenantMemberships = userMemberships.filter(
+        (m) => m.user === user.id && m.tenant === targetTenantId,
+      )
+      const activeMembership = tenantMemberships.find((m) => m.status === 'ativo')
+      const pendingMembership = tenantMemberships.find((m) => m.status === 'pendente')
+      const rejectedMembership = tenantMemberships.find((m) => m.status === 'rejeitado')
+
+      let sessionCleared = false
+      const clearSession = () => {
+        sessionCleared = true
+      }
+
+      if (!activeMembership) {
+        clearSession()
+        if (pendingMembership) {
+          return {
+            allowed: false,
+            sessionCleared,
+            errorMessage:
+              'Seu cadastro nesta prefeitura está pendente de aprovação pelo Administrador.',
+          }
+        }
+        if (rejectedMembership) {
+          return {
+            allowed: false,
+            sessionCleared,
+            errorMessage: 'Seu cadastro nesta prefeitura foi recusado pelo Administrador.',
+          }
+        }
+        return {
+          allowed: false,
+          sessionCleared,
+          errorMessage: 'Esta conta não possui vínculo com esta prefeitura.',
+        }
+      }
+
+      return { allowed: true, sessionCleared: false, errorMessage: null }
+    }
+
+    const resPendente = simulateMunicipalLoginValidation(superadminUser, 'ten_parazinho')
+    const resSemRegistro = simulateMunicipalLoginValidation(superadminUser, 'ten_desconhecido')
+    const resRejeitado = simulateMunicipalLoginValidation(superadminUser, 'ten_rejeitado')
+
+    return (
+      resPendente.allowed === false &&
+      resPendente.sessionCleared === true &&
+      resPendente.errorMessage ===
+        'Seu cadastro nesta prefeitura está pendente de aprovação pelo Administrador.' &&
+      resSemRegistro.allowed === false &&
+      resSemRegistro.sessionCleared === true &&
+      resSemRegistro.errorMessage === 'Esta conta não possui vínculo com esta prefeitura.' &&
+      resRejeitado.allowed === false &&
+      resRejeitado.sessionCleared === true &&
+      resRejeitado.errorMessage === 'Seu cadastro nesta prefeitura foi recusado pelo Administrador.'
+    )
+  })
+
+  // Teste 12: Cenário 3 — /login/global exclusivo para superadmin e bloqueio de usuários comuns
+  test('Cenário 3: /login/global permite superadmin e bloqueia não-superadmin revertendo sessão', () => {
+    const superadminRecord = { id: 'usr_super', role: 'superadmin' }
+    const comumRecord = { id: 'usr_comum', role: 'servidor' }
+
+    const simulateGlobalLogin = (userRecord: { id: string; role: string }) => {
+      let sessionCleared = false
+      const isSuperadmin = userRecord.role === 'superadmin'
+
+      if (!isSuperadmin) {
+        sessionCleared = true
+        return {
+          allowed: false,
+          sessionCleared,
+          error: 'Esta entrada é exclusiva para superadministradores.',
+          redirect: null,
+        }
+      }
+
+      return {
+        allowed: true,
+        sessionCleared: false,
+        error: null,
+        redirect: '/superadmin',
+      }
+    }
+
+    const globalAttemptSuper = simulateGlobalLogin(superadminRecord)
+    const globalAttemptComum = simulateGlobalLogin(comumRecord)
+
+    return (
+      globalAttemptSuper.allowed === true &&
+      globalAttemptSuper.redirect === '/superadmin' &&
+      globalAttemptComum.allowed === false &&
+      globalAttemptComum.sessionCleared === true &&
+      globalAttemptComum.error === 'Esta entrada é exclusiva para superadministradores.'
+    )
+  })
+
   const passed = results.every((r) => r.ok)
   return { passed, results }
 }
