@@ -2,11 +2,15 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import pb from '@/lib/pocketbase/client'
 import { UserRole } from '@/types/superadmin'
 
+export type HierarchyRole = 'superadmin' | 'admin' | 'servidor'
+
 export interface AuthUser {
   id: string
   name: string
   email: string
   role: UserRole
+  accountRole: UserRole
+  baseRole: UserRole
   prefeitura: string | null
   tenantId: string | null
   tenantSlug?: string | null
@@ -19,6 +23,8 @@ interface AuthContextType {
   isAuthenticated: boolean
   isImpersonating: boolean
   loading: boolean
+  availableHierarchyRoles: HierarchyRole[]
+  canSwitchRole: boolean
   login: (
     email: string,
     password: string,
@@ -26,6 +32,7 @@ interface AuthContextType {
   ) => Promise<{ error: any; user?: AuthUser }>
   setTenantContext: (tenantId: string | null) => Promise<void>
   clearTenantContext: () => Promise<void>
+  switchRole: (targetRole: HierarchyRole) => Promise<void>
   switchProfile: (userId: string) => Promise<void>
   restoreProfile: () => void
   logout: () => void
@@ -39,6 +46,34 @@ export const useAuth = () => {
   return context
 }
 
+export function getAvailableHierarchyRoles(
+  accountRole: UserRole,
+  baseRole: UserRole,
+  hasActiveTenant: boolean,
+): HierarchyRole[] {
+  // Superadmin global
+  if (accountRole === 'superadmin') {
+    // Se estiver em um contexto municipal e tiver vínculo de admin
+    if (hasActiveTenant) {
+      if (baseRole === 'admin') {
+        return ['superadmin', 'admin', 'servidor']
+      }
+      // Se a membership no município for servidor/gestor/procurador etc.
+      return ['superadmin', 'servidor']
+    }
+    // Visão global pura: pode alternar para superadmin
+    return ['superadmin']
+  }
+
+  // Admin municipal
+  if (baseRole === 'admin' || accountRole === 'admin') {
+    return ['admin', 'servidor']
+  }
+
+  // Servidor comum / outros papéis municipais: sem alternância
+  return []
+}
+
 async function resolveAuthUser(
   userRecord: any,
   contextTenantId?: string | null,
@@ -46,6 +81,7 @@ async function resolveAuthUser(
   if (!userRecord) return null
 
   const isSuperadminDirect = userRecord.role === 'superadmin'
+  const accountRole: UserRole = (userRecord.role || 'servidor') as UserRole
 
   // Buscar memberships do usuário
   let memberships: any[] = []
@@ -65,6 +101,8 @@ async function resolveAuthUser(
   const targetTenantId =
     contextTenantId !== undefined ? contextTenantId : sessionStorage.getItem('activeTenantId')
 
+  let baseAuthUser: AuthUser
+
   // Se houver um contexto municipal ativo especificado
   if (targetTenantId) {
     const selectedMembership = memberships.find(
@@ -80,33 +118,29 @@ async function resolveAuthUser(
       if (tenant?.id) {
         sessionStorage.setItem('activeTenantId', tenant.id)
       }
-      return {
+      const membershipBaseRole = (selectedMembership.role || 'servidor') as UserRole
+      baseAuthUser = {
         id: userRecord.id,
         name: userRecord.name || userRecord.email || '',
         email: userRecord.email || '',
-        role: (selectedMembership.role || 'servidor') as UserRole,
+        role: membershipBaseRole,
+        accountRole,
+        baseRole: membershipBaseRole,
         prefeitura: tenant?.name || null,
         tenantId: selectedMembership.tenant || tenant?.id || null,
         tenantSlug: tenant?.slug || null,
         membershipId: selectedMembership.id,
       }
-    }
-
-    // Se a conta for superadmin direto e tiver sido selecionado um tenant (mas sem membership específica encontrada),
-    // ou se o tenant existir:
-    // ATENÇÃO: se for superadmin tentando operar num tenant onde NÃO tem membership ativa,
-    // a tentativa de contexto cai no fallback abaixo ou visão global.
-    // Se for superadmin e o tenantId foi explicitamente setado via switch de tenant global (fora do login municipal),
-    // ainda podemos resolver os dados do tenant mantendo role superadmin SOMENTE se não houver membership.
-    // Mas se o usuário logou pela porta municipal, login() já validou a membership.
-    if (isSuperadminDirect) {
+    } else if (isSuperadminDirect) {
       try {
         const activeTenant = await pb.collection('tenants').getOne(targetTenantId)
-        return {
+        baseAuthUser = {
           id: userRecord.id,
           name: userRecord.name || userRecord.email || '',
           email: userRecord.email || '',
           role: 'superadmin',
+          accountRole,
+          baseRole: 'superadmin',
           prefeitura: activeTenant ? activeTenant.name : null,
           tenantId: activeTenant ? activeTenant.id : null,
           tenantSlug: activeTenant ? activeTenant.slug : null,
@@ -114,69 +148,119 @@ async function resolveAuthUser(
         }
       } catch {
         sessionStorage.removeItem('activeTenantId')
+        baseAuthUser = {
+          id: userRecord.id,
+          name: userRecord.name || userRecord.email || '',
+          email: userRecord.email || '',
+          role: 'superadmin',
+          accountRole,
+          baseRole: 'superadmin',
+          prefeitura: null,
+          tenantId: null,
+          tenantSlug: null,
+          membershipId: null,
+        }
+      }
+    } else {
+      // Usuário comum sem membership encontrada para o tenant alvo
+      baseAuthUser = {
+        id: userRecord.id,
+        name: userRecord.name || userRecord.email || '',
+        email: userRecord.email || '',
+        role: (userRecord.role || 'servidor') as UserRole,
+        accountRole,
+        baseRole: (userRecord.role || 'servidor') as UserRole,
+        prefeitura: null,
+        tenantId: null,
+        tenantSlug: null,
+        membershipId: null,
       }
     }
-  }
-
-  // Se não há contexto municipal e é superadmin direto -> Visão Global pura (role: superadmin)
-  if (isSuperadminDirect) {
-    return {
+  } else if (isSuperadminDirect) {
+    // Se não há contexto municipal e é superadmin direto -> Visão Global pura (role: superadmin)
+    baseAuthUser = {
       id: userRecord.id,
       name: userRecord.name || userRecord.email || '',
       email: userRecord.email || '',
       role: 'superadmin',
+      accountRole,
+      baseRole: 'superadmin',
       prefeitura: null,
       tenantId: null,
       tenantSlug: null,
       membershipId: null,
     }
-  }
+  } else {
+    // Usuário comum sem contexto especificado: pegar a primeira membership ativa
+    const firstActiveMembership = memberships.find((m) => m.status === 'ativo')
 
-  // Usuário comum sem contexto especificado: pegar a primeira membership ativa
-  const firstActiveMembership = memberships.find((m) => m.status === 'ativo')
-
-  if (firstActiveMembership) {
-    const tenant = firstActiveMembership.expand?.tenant
-    if (tenant?.id) {
-      sessionStorage.setItem('activeTenantId', tenant.id)
+    if (firstActiveMembership) {
+      const tenant = firstActiveMembership.expand?.tenant
+      if (tenant?.id) {
+        sessionStorage.setItem('activeTenantId', tenant.id)
+      }
+      const membershipBaseRole = (firstActiveMembership.role || 'servidor') as UserRole
+      baseAuthUser = {
+        id: userRecord.id,
+        name: userRecord.name || userRecord.email || '',
+        email: userRecord.email || '',
+        role: membershipBaseRole,
+        accountRole,
+        baseRole: membershipBaseRole,
+        prefeitura: tenant?.name || null,
+        tenantId: firstActiveMembership.tenant || tenant?.id || null,
+        tenantSlug: tenant?.slug || null,
+        membershipId: firstActiveMembership.id,
+      }
+    } else if (userRecord.role && userRecord.tenant) {
+      // Fallback para campos legados diretos caso não tenha membership ainda
+      const legRole = userRecord.role as UserRole
+      baseAuthUser = {
+        id: userRecord.id,
+        name: userRecord.name || userRecord.email || '',
+        email: userRecord.email || '',
+        role: legRole,
+        accountRole,
+        baseRole: legRole,
+        prefeitura: userRecord.expand?.tenant?.name || null,
+        tenantId: userRecord.tenant || null,
+        tenantSlug: userRecord.expand?.tenant?.slug || null,
+        membershipId: null,
+      }
+    } else {
+      // Usuário cadastrado sem vínculo ativo aprovado
+      const defaultRole = (userRecord.role || 'servidor') as UserRole
+      baseAuthUser = {
+        id: userRecord.id,
+        name: userRecord.name || userRecord.email || '',
+        email: userRecord.email || '',
+        role: defaultRole,
+        accountRole,
+        baseRole: defaultRole,
+        prefeitura: null,
+        tenantId: null,
+        tenantSlug: null,
+        membershipId: null,
+      }
     }
-    return {
-      id: userRecord.id,
-      name: userRecord.name || userRecord.email || '',
-      email: userRecord.email || '',
-      role: (firstActiveMembership.role || 'servidor') as UserRole,
-      prefeitura: tenant?.name || null,
-      tenantId: firstActiveMembership.tenant || tenant?.id || null,
-      tenantSlug: tenant?.slug || null,
-      membershipId: firstActiveMembership.id,
+  }
+
+  // Aplicar papel efetivo se houver 'effectiveRole' salvo na sessão
+  const storedEffectiveRole = sessionStorage.getItem('effectiveRole') as HierarchyRole | null
+  if (storedEffectiveRole) {
+    const available = getAvailableHierarchyRoles(
+      baseAuthUser.accountRole,
+      baseAuthUser.baseRole,
+      Boolean(baseAuthUser.tenantId),
+    )
+    if (available.includes(storedEffectiveRole)) {
+      baseAuthUser.role = storedEffectiveRole as UserRole
+    } else {
+      sessionStorage.removeItem('effectiveRole')
     }
   }
 
-  // Fallback para campos legados diretos caso não tenha membership ainda
-  if (userRecord.role && userRecord.tenant) {
-    return {
-      id: userRecord.id,
-      name: userRecord.name || userRecord.email || '',
-      email: userRecord.email || '',
-      role: userRecord.role as UserRole,
-      prefeitura: userRecord.expand?.tenant?.name || null,
-      tenantId: userRecord.tenant || null,
-      tenantSlug: userRecord.expand?.tenant?.slug || null,
-      membershipId: null,
-    }
-  }
-
-  // Usuário cadastrado sem vínculo ativo aprovado
-  return {
-    id: userRecord.id,
-    name: userRecord.name || userRecord.email || '',
-    email: userRecord.email || '',
-    role: (userRecord.role || 'servidor') as UserRole,
-    prefeitura: null,
-    tenantId: null,
-    tenantSlug: null,
-    membershipId: null,
-  }
+  return baseAuthUser
 }
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -233,6 +317,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } else {
       sessionStorage.removeItem('activeTenantId')
     }
+    // Ao trocar de prefeitura ou limpar contexto municipal, limpar o papel efetivo rebaixado
+    sessionStorage.removeItem('effectiveRole')
     if (pb.authStore.isValid && pb.authStore.record) {
       const record = await pb
         .collection('users')
@@ -247,6 +333,54 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const clearTenantContext = async () => {
     await setTenantContext(null)
+  }
+
+  const switchRole = async (targetRole: HierarchyRole) => {
+    if (!user) {
+      throw new Error('Nenhum usuário autenticado.')
+    }
+
+    const available = getAvailableHierarchyRoles(
+      user.accountRole,
+      user.baseRole,
+      Boolean(user.tenantId),
+    )
+
+    if (!available.includes(targetRole)) {
+      throw new Error(`O papel "${targetRole}" não está disponível para o seu nível hierárquico.`)
+    }
+
+    // Se alternou para superadmin: requer voltar à visão global
+    if (targetRole === 'superadmin') {
+      sessionStorage.removeItem('effectiveRole')
+      sessionStorage.removeItem('activeTenantId')
+      if (pb.authStore.isValid && pb.authStore.record) {
+        const record = await pb
+          .collection('users')
+          .getOne(pb.authStore.record.id, { expand: 'tenant' })
+        const updatedUser = await resolveAuthUser(record, null)
+        setUser(updatedUser)
+        if (!isImpersonating) {
+          setOriginalUser(updatedUser)
+        }
+      }
+      return
+    }
+
+    // Se alternou para o papel base (ex.: admin)
+    if (targetRole === user.baseRole) {
+      sessionStorage.removeItem('effectiveRole')
+    } else {
+      sessionStorage.setItem('effectiveRole', targetRole)
+    }
+
+    setUser((prev) => {
+      if (!prev) return null
+      return {
+        ...prev,
+        role: targetRole as UserRole,
+      }
+    })
   }
 
   const login = async (email: string, password: string, tenantSlugOrId?: string) => {
@@ -397,12 +531,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     sessionStorage.removeItem('impersonatedUserId')
     sessionStorage.removeItem('activeTenantId')
+    sessionStorage.removeItem('effectiveRole')
     setUser(null)
     setOriginalUser(null)
     setIsAuthenticated(false)
   }
 
   const isImpersonating = Boolean(originalUser && user && originalUser.id !== user.id)
+
+  const availableHierarchyRoles = user
+    ? getAvailableHierarchyRoles(user.accountRole, user.baseRole, Boolean(user.tenantId))
+    : []
+
+  const canSwitchRole = availableHierarchyRoles.length > 1
 
   return (
     <AuthContext.Provider
@@ -412,9 +553,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         isAuthenticated,
         isImpersonating,
         loading,
+        availableHierarchyRoles,
+        canSwitchRole,
         login,
         setTenantContext,
         clearTenantContext,
+        switchRole,
         switchProfile,
         restoreProfile,
         logout,

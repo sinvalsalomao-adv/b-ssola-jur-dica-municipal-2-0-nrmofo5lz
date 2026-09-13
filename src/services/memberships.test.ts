@@ -11,6 +11,7 @@
 
 import { normalizeMembership, type UserMembership, type MembershipStatus } from './memberships'
 import type { UserRole, GlobalUser } from '@/types/superadmin'
+import { getAvailableHierarchyRoles } from '@/context/AuthContext'
 
 export interface MembershipTestResult {
   passed: boolean
@@ -499,6 +500,84 @@ export function runMembershipModuleTests(): MembershipTestResult {
       globalAttemptComum.sessionCleared === true &&
       globalAttemptComum.error === 'Esta entrada é exclusiva para superadministradores.'
     )
+  })
+
+  // Teste 13: Alternância de Hierarquia Pós-Login — Superadmin com vínculo admin municipal
+  test('Cenário 4: Superadmin com vínculo admin municipal pode alternar entre superadmin, admin e servidor (comum)', () => {
+    // Caso de Matheus: conta global superadmin, operando em Florânia com baseRole admin
+    const accountRole: UserRole = 'superadmin'
+    const baseRole: UserRole = 'admin'
+    const hasActiveTenant = true
+
+    const available = getAvailableHierarchyRoles(accountRole, baseRole, hasActiveTenant)
+
+    const allowsSuperadmin = available.includes('superadmin')
+    const allowsAdmin = available.includes('admin')
+    const allowsServidor = available.includes('servidor')
+
+    return available.length === 3 && allowsSuperadmin && allowsAdmin && allowsServidor
+  })
+
+  // Teste 14: Alternância de Hierarquia Pós-Login — Admin municipal comum
+  test('Cenário 5: Administrador Municipal pode alternar entre admin e servidor (comum), mas nunca para superadmin', () => {
+    const accountRole: UserRole = 'servidor'
+    const baseRole: UserRole = 'admin'
+    const hasActiveTenant = true
+
+    const available = getAvailableHierarchyRoles(accountRole, baseRole, hasActiveTenant)
+
+    const allowsAdmin = available.includes('admin')
+    const allowsServidor = available.includes('servidor')
+    const blocksSuperadmin = !available.includes('superadmin')
+
+    return available.length === 2 && allowsAdmin && allowsServidor && blocksSuperadmin
+  })
+
+  // Teste 15: Alternância de Hierarquia Pós-Login — Servidor comum não tem opção de alternar
+  test('Cenário 6: Servidor Comum tem lista vazia de alternância e não pode degradar nem se promover', () => {
+    const accountRole: UserRole = 'servidor'
+    const baseRole: UserRole = 'servidor'
+    const hasActiveTenant = true
+
+    const available = getAvailableHierarchyRoles(accountRole, baseRole, hasActiveTenant)
+
+    return available.length === 0
+  })
+
+  // Teste 16: Sessão e degradação de permissões — F5 preserva papel efetivo rebaixado e volta ao baseRole
+  test('Cenário 7: Simulação de sessão — sessionStorage preserva effectiveRole no F5 e restringe rotas protegidas', () => {
+    const mockSessionStore: Record<string, string> = {
+      activeTenantId: 'ten_florania',
+      effectiveRole: 'servidor', // Admin rebaixou voluntariamente para servidor
+    }
+
+    const baseUser = {
+      id: 'usr_matheus',
+      accountRole: 'superadmin' as UserRole,
+      baseRole: 'admin' as UserRole,
+      role: 'admin' as UserRole,
+      tenantId: 'ten_florania',
+    }
+
+    // Ao carregar a sessão com effectiveRole salvo:
+    const available = getAvailableHierarchyRoles(
+      baseUser.accountRole,
+      baseUser.baseRole,
+      Boolean(baseUser.tenantId),
+    )
+    const storedRole = mockSessionStore['effectiveRole'] as any
+    if (storedRole && available.includes(storedRole)) {
+      baseUser.role = storedRole
+    }
+
+    // Validar se o papel em uso virou 'servidor'
+    const isDegradedToServidor = baseUser.role === 'servidor'
+
+    // Validar checagem de ProtectedRoute para rotas administrativas (ex: /usuarios exige admin/superadmin)
+    const allowedRoles = ['admin', 'superadmin']
+    const isRoutePermitted = allowedRoles.includes(baseUser.role) // Deve ser FALSE pois está no modo comum
+
+    return isDegradedToServidor && !isRoutePermitted
   })
 
   const passed = results.every((r) => r.ok)

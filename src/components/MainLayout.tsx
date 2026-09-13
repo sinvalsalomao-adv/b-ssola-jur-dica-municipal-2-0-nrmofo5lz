@@ -50,7 +50,7 @@ import { NotificationBell } from '@/components/NotificationBell'
 import { ProfileSwitcherDialog } from '@/components/ProfileSwitcherDialog'
 import { MandatoryNotificationModal } from '@/components/MandatoryNotificationModal'
 import { useUnsavedChanges } from '@/context/UnsavedChangesContext'
-import { Building2, Globe, Undo2 } from 'lucide-react'
+import { Building2, Globe, Undo2, SlidersHorizontal, Check } from 'lucide-react'
 
 export const MainLayout: React.FC = () => {
   const location = useLocation()
@@ -61,16 +61,40 @@ export const MainLayout: React.FC = () => {
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false)
   const [profileSwitcherOpen, setProfileSwitcherOpen] = useState(false)
   const [logoutError, setLogoutError] = useState('')
-  const { user, originalUser, logout, clearTenantContext } = useAuth()
+  const {
+    user,
+    originalUser,
+    logout,
+    clearTenantContext,
+    availableHierarchyRoles,
+    canSwitchRole,
+    switchRole,
+  } = useAuth()
   const isSuperadmin = user?.role === 'superadmin'
   // Usuário é superadmin na conta original (mesmo quando operando com papel municipal ativo)
-  const isAccountSuperadmin = originalUser?.role === 'superadmin' || user?.role === 'superadmin'
+  const isAccountSuperadmin =
+    originalUser?.accountRole === 'superadmin' ||
+    user?.accountRole === 'superadmin' ||
+    originalUser?.role === 'superadmin' ||
+    user?.role === 'superadmin'
   const canSwitchProfile = isAccountSuperadmin
 
   const handleReturnToGlobal = () => {
     confirmTenantSwitch(async () => {
       await clearTenantContext()
       navigate('/superadmin')
+    })
+  }
+
+  const handleRoleSwitchFromHeader = (targetRole: 'superadmin' | 'admin' | 'servidor') => {
+    if (!user || user.role === targetRole) return
+    confirmTenantSwitch(async () => {
+      await switchRole(targetRole)
+      if (targetRole === 'superadmin') {
+        navigate('/superadmin')
+      } else {
+        navigate('/dashboard')
+      }
     })
   }
 
@@ -345,6 +369,68 @@ export const MainLayout: React.FC = () => {
                     </span>
                   </div>
                 )}
+
+                {/* Atalho discreto de alternância de papel no cabeçalho (quando disponível) */}
+                {canSwitchRole && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        className="flex items-center gap-1.5 text-xs font-medium bg-slate-100 hover:bg-slate-200/80 text-slate-700 px-2 py-1 rounded-md border border-slate-300 transition-colors cursor-pointer"
+                        title="Alternar papel/hierarquia em uso"
+                      >
+                        <SlidersHorizontal className="w-3 h-3 text-[#3b82f6]" />
+                        <span className="capitalize">{user?.role}</span>
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-52">
+                      <DropdownMenuLabel className="text-xs text-gray-500 font-normal">
+                        Papel em uso (Sessão)
+                      </DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {availableHierarchyRoles.includes('superadmin') && (
+                        <DropdownMenuItem
+                          className="cursor-pointer flex items-center justify-between"
+                          onClick={() => handleRoleSwitchFromHeader('superadmin')}
+                        >
+                          <span>Superadmin (Global)</span>
+                          {user?.role === 'superadmin' && (
+                            <Check className="w-3.5 h-3.5 text-blue-600" />
+                          )}
+                        </DropdownMenuItem>
+                      )}
+                      {availableHierarchyRoles.includes('admin') && (
+                        <DropdownMenuItem
+                          className="cursor-pointer flex items-center justify-between"
+                          onClick={() => handleRoleSwitchFromHeader('admin')}
+                        >
+                          <span>Admin Municipal</span>
+                          {user?.role === 'admin' && (
+                            <Check className="w-3.5 h-3.5 text-blue-600" />
+                          )}
+                        </DropdownMenuItem>
+                      )}
+                      {availableHierarchyRoles.includes('servidor') && (
+                        <DropdownMenuItem
+                          className="cursor-pointer flex items-center justify-between"
+                          onClick={() => handleRoleSwitchFromHeader('servidor')}
+                        >
+                          <span>Usuário Comum</span>
+                          {user?.role === 'servidor' && (
+                            <Check className="w-3.5 h-3.5 text-blue-600" />
+                          )}
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        className="cursor-pointer text-xs text-blue-600"
+                        onClick={() => navigate('/perfil')}
+                      >
+                        Ver detalhes no Meu Perfil
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </div>
             </div>
 
@@ -386,6 +472,15 @@ export const MainLayout: React.FC = () => {
                       <p className="text-xs leading-none text-gray-500">{user?.email}</p>
                     </div>
                   </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="cursor-pointer"
+                    onClick={() => navigate('/perfil')}
+                    aria-label="Meu Perfil"
+                  >
+                    <UserIcon className="w-4 h-4 mr-2" />
+                    Meu Perfil
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"

@@ -1,11 +1,26 @@
 import { useState, useEffect, useRef } from 'react'
-import { User, Mail, Shield, Camera, KeyRound, Save, Lock } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import {
+  User,
+  Mail,
+  Shield,
+  Camera,
+  KeyRound,
+  Save,
+  SlidersHorizontal,
+  Check,
+  Building2,
+  Globe,
+  Info,
+} from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { useAuth } from '@/context/AuthContext'
+import { useAuth, type HierarchyRole } from '@/context/AuthContext'
+import { useUnsavedChanges } from '@/context/UnsavedChangesContext'
 import { updateProfileName, uploadAvatar, changePassword, getAvatarUrl } from '@/services/profile'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 import pb from '@/lib/pocketbase/client'
@@ -21,14 +36,44 @@ import { SubmitButton } from '@/components/common/StateDisplay'
 const ROLE_LABELS: Record<string, string> = {
   superadmin: 'Superadmin',
   admin: 'Admin',
-  servidor: 'Servidor',
+  servidor: 'Comum (Servidor)',
   gestor: 'Gestor',
   secretario: 'Secretário',
   procurador: 'Procurador',
 }
 
+const HIERARCHY_DETAILS: Record<
+  HierarchyRole,
+  { label: string; tag: string; description: string; badgeClass: string }
+> = {
+  superadmin: {
+    label: 'Superadministrador',
+    tag: 'Visão Global',
+    description:
+      'Acesso irrestrito a todas as prefeituras, configurações de plataforma e auditoria.',
+    badgeClass: 'bg-purple-100 text-purple-800 border-purple-200',
+  },
+  admin: {
+    label: 'Administrador Local',
+    tag: 'Gestão Municipal',
+    description:
+      'Gestão de usuários locais, relatórios municipais, configurações e auditoria do município.',
+    badgeClass: 'bg-blue-100 text-blue-800 border-blue-200',
+  },
+  servidor: {
+    label: 'Usuário Comum',
+    tag: 'Operação Municipal',
+    description:
+      'Acesso focado na operação diária: kanban, DFDs, cursos, sem acesso a cadastros e relatórios gerenciais.',
+    badgeClass: 'bg-slate-100 text-slate-800 border-slate-200',
+  },
+}
+
 export default function PerfilPage() {
-  const { user } = useAuth()
+  const navigate = useNavigate()
+  const { user, availableHierarchyRoles, canSwitchRole, switchRole } = useAuth()
+  const { confirmTenantSwitch } = useUnsavedChanges()
+  const [switchingRole, setSwitchingRole] = useState(false)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
@@ -120,11 +165,35 @@ export default function PerfilPage() {
     .map((n) => n[0]?.toUpperCase())
     .join('')
 
+  const handleRoleSelection = (targetRole: HierarchyRole) => {
+    if (!user || user.role === targetRole || switchingRole) return
+
+    confirmTenantSwitch(async () => {
+      setSwitchingRole(true)
+      try {
+        await switchRole(targetRole)
+        toast.success(`Papel alterado para ${HIERARCHY_DETAILS[targetRole].label}!`)
+        if (targetRole === 'superadmin') {
+          navigate('/superadmin')
+        } else {
+          navigate('/dashboard')
+        }
+      } catch (err: any) {
+        toast.error(err?.message || 'Não foi possível alterar a hierarquia.')
+      } finally {
+        setSwitchingRole(false)
+      }
+    })
+  }
+
+  // Seletor de papéis ordenados hierarquicamente: superadmin -> admin -> servidor
+  const allHierarchyOrder: HierarchyRole[] = ['superadmin', 'admin', 'servidor']
+
   return (
-    <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+    <div className="max-w-2xl mx-auto space-y-6 animate-fade-in pb-10">
       <PageHeader
         title="Meu Perfil"
-        description="Gerencie seus dados pessoais, foto e credenciais de segurança de forma rápida."
+        description="Gerencie seus dados pessoais, hierarquia de acesso em uso e credenciais de segurança."
         icon={User}
       />
 
@@ -166,9 +235,131 @@ export default function PerfilPage() {
                 <Mail className="w-3 h-3" /> {email}
               </p>
               <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
-                <Shield className="w-3 h-3" /> {ROLE_LABELS[user?.role || 'servidor'] || user?.role}
+                <Shield className="w-3 h-3" /> Papel em uso:{' '}
+                <span className="font-semibold text-gray-700">
+                  {ROLE_LABELS[user?.role || 'servidor'] || user?.role}
+                </span>
               </p>
+              {user?.tenantId && user?.prefeitura ? (
+                <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
+                  <Building2 className="w-3 h-3 text-blue-500" /> {user.prefeitura}
+                </p>
+              ) : (
+                <p className="text-xs text-emerald-600 flex items-center gap-1 mt-0.5">
+                  <Globe className="w-3 h-3" /> Visão Global (sem prefeitura vinculada)
+                </p>
+              )}
             </div>
+          </div>
+
+          {/* Card / Seção de Alternância de Hierarquia (Visível se tiver direito a alternar) */}
+          <div className="border-t pt-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <SlidersHorizontal className="w-4 h-4 text-[#3b82f6]" />
+                <h3 className="text-sm font-bold text-[#1c2a3e]">Alternância de Hierarquia</h3>
+              </div>
+              <Badge variant="outline" className="text-[11px] font-normal">
+                Conta: {ROLE_LABELS[user?.accountRole || 'servidor'] || user?.accountRole}
+              </Badge>
+            </div>
+
+            {canSwitchRole ? (
+              <div className="space-y-3 mt-3">
+                <p className="text-xs text-gray-600 leading-relaxed">
+                  Alterne entre as hierarquias disponíveis para sua conta e vínculo ativo. O papel
+                  selecionado define as permissões e o menu visualizados nesta sessão.
+                </p>
+
+                <div className="grid grid-cols-1 gap-2.5">
+                  {allHierarchyOrder.map((roleKey) => {
+                    const isAvailable = availableHierarchyRoles.includes(roleKey)
+                    const isActive = user?.role === roleKey
+                    const details = HIERARCHY_DETAILS[roleKey]
+
+                    return (
+                      <div
+                        key={roleKey}
+                        className={`flex items-start justify-between p-3 rounded-lg border transition-all ${
+                          isActive
+                            ? 'border-blue-500 bg-blue-50/60 shadow-xs'
+                            : isAvailable
+                              ? 'border-gray-200 bg-white hover:border-blue-200 hover:bg-gray-50/50'
+                              : 'border-gray-100 bg-gray-50/60 opacity-55'
+                        }`}
+                      >
+                        <div className="min-w-0 pr-3">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="font-semibold text-sm text-[#1c2a3e]">
+                              {details.label}
+                            </span>
+                            <span
+                              className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${details.badgeClass}`}
+                            >
+                              {details.tag}
+                            </span>
+                            {isActive && (
+                              <span className="flex items-center gap-1 text-[11px] font-semibold text-blue-600 bg-blue-100/70 px-2 py-0.5 rounded-full">
+                                <Check className="w-3 h-3" /> Em uso
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-500 leading-snug">
+                            {details.description}
+                          </p>
+                        </div>
+
+                        <div className="shrink-0 pt-0.5">
+                          {isActive ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled
+                              className="h-8 text-xs font-semibold border-blue-200 text-blue-700 bg-white"
+                            >
+                              Ativo
+                            </Button>
+                          ) : isAvailable ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => handleRoleSelection(roleKey)}
+                              disabled={switchingRole}
+                              className="h-8 text-xs bg-[#1c2a3e] hover:bg-[#2a3f5f] text-white transition-colors"
+                            >
+                              Alternar
+                            </Button>
+                          ) : (
+                            <span className="text-[11px] text-gray-400 font-medium px-2 py-1">
+                              Indisponível
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div className="flex items-start gap-2 bg-amber-50/80 border border-amber-200/80 rounded-lg p-2.5 text-xs text-amber-900 mt-2">
+                  <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <p className="leading-snug">
+                    A alternância de papel altera as telas, menus e experiência operacional na
+                    sessão atual. Ela não altera o cadastro da sua conta no banco de dados e não
+                    exige nova senha.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 mt-3">
+                <p className="text-xs text-gray-600 leading-relaxed">
+                  Sua conta possui acesso exclusivo como{' '}
+                  <strong>{ROLE_LABELS[user?.role || 'servidor']}</strong>. Apenas contas com perfil
+                  de Superadministrador ou Administrador Municipal podem alternar entre níveis
+                  hierárquicos.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="border-t pt-4">
