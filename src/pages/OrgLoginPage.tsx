@@ -76,8 +76,15 @@ export default function OrgLoginPage() {
       }
       setSubmitting(false)
     } else {
-      setFailedAttempts(0)
       const role = loggedInUser?.role || (pb.authStore.record as any)?.role || 'servidor'
+      if (slug === 'global' && role !== 'superadmin') {
+        pb.authStore.clear()
+        setError('Esta entrada é exclusiva para superadministradores.')
+        setSubmitting(false)
+        return
+      }
+
+      setFailedAttempts(0)
       if (role === 'superadmin') {
         navigate('/superadmin', { replace: true })
       } else {

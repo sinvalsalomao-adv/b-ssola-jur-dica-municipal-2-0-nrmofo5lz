@@ -20,12 +20,20 @@ migrate(
       throw new Error('Usuário Matheus (' + targetEmail + ') não foi localizado no banco.')
     }
 
-    // 2. Alterar o papel da conta de Matheus para superadmin
-    // Importante: superadmin é papel da conta, sem vínculo municipal
-    user.set('role', 'superadmin')
-    // Conforme padrão do sistema para superadmin (ex: Dr. Silval), superadmin tem tenant nulo
-    user.set('tenant', '')
-    app.save(user)
+    // 2. Promover o papel da conta para 'superadmin' caso ainda não seja
+    // Usuários superadmin globais mantêm tenant nulo
+    let userModified = false
+    if (user.getString('role') !== 'superadmin') {
+      user.set('role', 'superadmin')
+      userModified = true
+    }
+    if (user.getString('tenant') !== '') {
+      user.set('tenant', '')
+      userModified = true
+    }
+    if (userModified) {
+      app.save(user)
+    }
 
     // 3. Localizar o tenant Florânia
     let florania = null
@@ -37,44 +45,50 @@ migrate(
       throw new Error('Tenant Florânia (' + floraniaSlug + ') não foi localizado no banco.')
     }
 
+    // 4. Criar ou atualizar o vínculo com Florânia em user_memberships
+    // A coleção user_memberships possui restrição de unicidade idx_user_membership_unique (user, tenant).
+    // O usuário Matheus deve possuir APENAS UM vínculo ativo com Florânia no papel "admin".
+    // Papel "admin" cobre as capacidades de "servidor".
     const membershipsCol = app.findCollectionByNameOrId('user_memberships')
 
-    // 4. Criar vínculos ativos com Florânia nos papéis 'admin' e 'servidor'
-    // Verificar se já existe vínculo ativo ou pendente para cada papel em Florânia
-    const rolesToCreate = ['admin', 'servidor']
-
-    for (var i = 0; i < rolesToCreate.length; i++) {
-      const roleName = rolesToCreate[i]
-      let existingRecord = null
-
-      try {
-        const found = app.findRecordsByFilter(
-          'user_memberships',
-          "user = '" + user.id + "' && tenant = '" + florania.id + "' && role = '" + roleName + "'",
-          '',
-          1,
-          0,
-        )
-        if (found && found.length > 0) {
-          existingRecord = found[0]
-        }
-      } catch (_) {}
-
-      if (existingRecord) {
-        existingRecord.set('status', 'ativo')
-        app.save(existingRecord)
-      } else {
-        const memRecord = new Record(membershipsCol)
-        memRecord.set('user', user.id)
-        memRecord.set('tenant', florania.id)
-        memRecord.set('role', roleName)
-        memRecord.set('status', 'ativo')
-        app.save(memRecord)
+    let existingMembership = null
+    try {
+      const records = app.findRecordsByFilter(
+        'user_memberships',
+        "user = '" + user.id + "' && tenant = '" + florania.id + "'",
+        '',
+        1,
+        0,
+      )
+      if (records && records.length > 0) {
+        existingMembership = records[0]
       }
+    } catch (_) {}
+
+    if (existingMembership) {
+      let needsSave = false
+      if (existingMembership.getString('role') !== 'admin') {
+        existingMembership.set('role', 'admin')
+        needsSave = true
+      }
+      if (existingMembership.getString('status') !== 'ativo') {
+        existingMembership.set('status', 'ativo')
+        needsSave = true
+      }
+      if (needsSave) {
+        app.save(existingMembership)
+      }
+    } else {
+      const memRecord = new Record(membershipsCol)
+      memRecord.set('user', user.id)
+      memRecord.set('tenant', florania.id)
+      memRecord.set('role', 'admin')
+      memRecord.set('status', 'ativo')
+      app.save(memRecord)
     }
   },
   (app) => {
-    // Reversão segura se necessário
+    // Reversão segura
     const targetEmail = 'matheusflotencio137482@gmail.com'
     try {
       const user = app.findAuthRecordByEmail('_pb_users_auth_', targetEmail)

@@ -228,8 +228,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       const isSuperadmin = userRecord.role === 'superadmin'
 
+      // Se o login foi solicitado pelo canal 'global', restringir exclusivamente a superadmin
+      if (tenantSlugOrId === 'global' && !isSuperadmin) {
+        pb.authStore.clear()
+        return {
+          error: new Error('Esta entrada é exclusiva para superadministradores.'),
+        }
+      }
+
       let targetTenant: any = null
-      if (tenantSlugOrId) {
+      if (tenantSlugOrId && tenantSlugOrId !== 'global') {
         try {
           targetTenant = await pb
             .collection('tenants')
