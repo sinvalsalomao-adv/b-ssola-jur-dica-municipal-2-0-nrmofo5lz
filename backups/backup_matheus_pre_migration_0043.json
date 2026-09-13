@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-09-13T04:25:00.000Z",
+  "reason": "Backup prévio antes da execução de alterações de dados solicitadas pelo usuário",
+  "targetUser": {
+    "collectionId": "_pb_users_auth_",
+    "collectionName": "users",
+    "id": "52o9enaexq1pxev",
+    "email": "matheusflotencio137482@gmail.com",
+    "name": "Matheus",
+    "role": "servidor",
+    "status": "ativo",
+    "tenant": "wzio6lp1dq4y6xd",
+    "emailVisibility": false,
+    "verified": false,
+    "created": "2026-09-13 04:21:24.130Z",
+    "updated": "2026-09-13 04:21:24.130Z"
+  },
+  "existingMemberships": [
+    {
+      "collectionId": "pbc_825110630",
+      "collectionName": "user_memberships",
+      "id": "euixfngzxd2xw7t",
+      "user": "52o9enaexq1pxev",
+      "tenant": "wzio6lp1dq4y6xd",
+      "tenantSlug": "parazinho",
+      "tenantName": "Parazinho",
+      "role": "servidor",
+      "status": "pendente",
+      "created": "2026-09-13 04:21:24.136Z",
+      "updated": "2026-09-13 04:21:24.136Z"
+    }
+  ],
+  "targetTenant": {
+    "id": "1e6lxk1tvyt27ok",
+    "name": "Florânia",
+    "slug": "florania",
+    "cnpj": "12.345.678/0001-90",
+    "admin_name": "Ana Silva",
+    "status": "ativa"
+  }
+}
