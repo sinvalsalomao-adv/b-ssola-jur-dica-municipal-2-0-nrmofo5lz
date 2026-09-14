@@ -1,12 +1,16 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { FileText, Clock, CheckCircle2, Pencil, Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { FileText, Clock, CheckCircle2, Pencil, Eye } from 'lucide-react'
 import { DfdRecord } from '@/types/dfd'
 import { getRecentDfds } from '@/services/dfds'
 import { useAuth } from '@/context/AuthContext'
 import { useRealtime } from '@/hooks/use-realtime'
 import { Skeleton } from '@/components/ui/skeleton'
+import { toast } from 'sonner'
 
 interface RecentDfdsListProps {
   dfds?: DfdRecord[]
@@ -19,9 +23,12 @@ export const RecentDfdsList = ({
   onEdit,
   loading: propLoading,
 }: RecentDfdsListProps) => {
+  const navigate = useNavigate()
   const { user } = useAuth()
   const tenantId = user?.tenantId || ''
   const isControlled = propDfds !== undefined
+
+  const isSuperadminWithoutTenant = user?.role === 'superadmin' && !user?.tenantId
 
   const [internalDfds, setInternalDfds] = useState<DfdRecord[]>([])
   const [internalLoading, setInternalLoading] = useState(!isControlled)
@@ -51,6 +58,41 @@ export const RecentDfdsList = ({
 
   const dfds = isControlled ? (propDfds ?? []) : internalDfds
   const loading = isControlled ? (propLoading ?? false) : internalLoading
+
+  const handleRowClick = (dfd: DfdRecord) => {
+    if (isSuperadminWithoutTenant) {
+      toast.warning('Selecione uma prefeitura para alterar ou visualizar o DFD.')
+      return
+    }
+
+    if (onEdit) {
+      onEdit(dfd)
+    } else {
+      navigate(`/novo-dfd?id=${dfd.id}`)
+    }
+  }
+
+  const handleView = (e: React.MouseEvent, dfd: DfdRecord) => {
+    e.stopPropagation()
+    if (isSuperadminWithoutTenant) {
+      toast.warning('Selecione uma prefeitura para alterar ou visualizar o DFD.')
+      return
+    }
+    navigate(`/dfds/${dfd.id}`)
+  }
+
+  const handleEdit = (e: React.MouseEvent, dfd: DfdRecord) => {
+    e.stopPropagation()
+    if (isSuperadminWithoutTenant) {
+      toast.warning('Selecione uma prefeitura para alterar ou visualizar o DFD.')
+      return
+    }
+    if (onEdit) {
+      onEdit(dfd)
+    } else {
+      navigate(`/novo-dfd?id=${dfd.id}`)
+    }
+  }
 
   return (
     <Card className="bg-white border-0 shadow-subtle">
@@ -87,7 +129,7 @@ export const RecentDfdsList = ({
             {dfds.map((dfd) => (
               <div
                 key={dfd.id}
-                onClick={() => onEdit?.(dfd)}
+                onClick={() => handleRowClick(dfd)}
                 className="flex items-center justify-between p-4 hover:bg-slate-50 transition-colors cursor-pointer group"
               >
                 <div className="flex items-center gap-3 min-w-0">
@@ -115,7 +157,7 @@ export const RecentDfdsList = ({
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   <Badge
                     className={`text-xs font-medium ${
                       dfd.status === 'Finalizado'
@@ -125,10 +167,39 @@ export const RecentDfdsList = ({
                   >
                     {dfd.status}
                   </Badge>
-                  <Pencil
-                    className="w-3.5 h-3.5 text-gray-300 group-hover:text-gray-500 transition-colors"
-                    aria-hidden="true"
-                  />
+                  <div className="flex items-center gap-1">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => handleView(e, dfd)}
+                          className="h-8 w-8 text-gray-400 hover:text-[#3b82f6] hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-blue-500"
+                          aria-label={`Visualizar DFD: ${dfd.title || dfd.objeto || 'Sem título'}`}
+                        >
+                          <Eye className="w-4 h-4" aria-hidden="true" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">Visualizar DFD</TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => handleEdit(e, dfd)}
+                          className="h-8 w-8 text-gray-400 hover:text-[#3b82f6] hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-blue-500"
+                          aria-label={`Alterar DFD: ${dfd.title || dfd.objeto || 'Sem título'}`}
+                        >
+                          <Pencil className="w-4 h-4" aria-hidden="true" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">Alterar DFD</TooltipContent>
+                    </Tooltip>
+                  </div>
                 </div>
               </div>
             ))}
