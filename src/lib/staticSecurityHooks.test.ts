@@ -41,6 +41,8 @@ export interface SecurityAnalysisResult {
 export const ACTIVE_HOOK_NAMES = [
   'activate_invitation',
   'audit_log_create',
+  'bot_keys_management',
+  'bot_read_api',
   'check_bottlenecks',
   'create_tenant',
   'deliver_scheduled_notifications',

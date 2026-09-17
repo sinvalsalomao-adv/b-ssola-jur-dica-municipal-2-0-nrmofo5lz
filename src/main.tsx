@@ -7,6 +7,7 @@ import { runSanitizerSecurityTests } from '@/lib/sanitizerSecurityTests'
 import { runDocumentModuleTests } from '@/services/documents.test'
 import { runCommentsAndParticipantsTests } from '@/services/comments.test'
 import { runMembershipModuleTests } from '@/services/memberships.test'
+import { runBotIntegrationTests } from '@/services/botIntegration.test'
 
 // Ativa proteção central de sanitização de erros e logs de runtime
 initGlobalErrorSanitizer()
@@ -31,6 +32,10 @@ if (import.meta.env.DEV) {
   const membershipTests = runMembershipModuleTests()
   if (!membershipTests.passed) {
     console.warn('[Memberships] Membership tests reported issues:', membershipTests.results)
+  }
+  const botTests = runBotIntegrationTests()
+  if (!botTests.passed) {
+    console.warn('[Bot/Hermes] Bot integration tests reported issues:', botTests.results)
   }
 }
 

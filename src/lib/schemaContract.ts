@@ -1335,6 +1335,69 @@ export const CANONICAL_SCHEMA_CONTRACT: SchemaContractDefinition = {
         'CREATE INDEX idx_edu_grp_mem_tenant ON education_group_members (tenant)',
       ],
     },
+    {
+      name: 'bot_api_keys',
+      type: 'base',
+      apiRules: {
+        list: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+        view: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+        create:
+          "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+        update:
+          "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+        delete:
+          "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+      },
+      fields: [
+        {
+          name: 'tenant',
+          type: 'relation',
+          required: true,
+          collectionRef: 'tenants',
+          cascadeDelete: true,
+          maxSelect: 1,
+        },
+        {
+          name: 'name',
+          type: 'text',
+          required: true,
+        },
+        {
+          name: 'key_hash',
+          type: 'text',
+          required: true,
+        },
+        {
+          name: 'key_prefix',
+          type: 'text',
+          required: true,
+        },
+        {
+          name: 'status',
+          type: 'select',
+          required: true,
+          selectValues: ['ativa', 'revogada'],
+          maxSelect: 1,
+        },
+        {
+          name: 'created_by',
+          type: 'relation',
+          required: false,
+          collectionRef: 'users',
+          maxSelect: 1,
+        },
+        {
+          name: 'last_used_at',
+          type: 'date',
+          required: false,
+        },
+      ],
+      indexes: [
+        'CREATE INDEX idx_bot_api_keys_tenant ON bot_api_keys (tenant)',
+        'CREATE UNIQUE INDEX idx_bot_api_keys_hash ON bot_api_keys (key_hash)',
+        'CREATE INDEX idx_bot_api_keys_status ON bot_api_keys (status)',
+      ],
+    },
   ],
 }
 
@@ -2206,6 +2269,32 @@ migrate((app) => {
       "CREATE INDEX idx_edu_grp_mem_group ON education_group_members (group)",
       "CREATE INDEX idx_edu_grp_mem_user ON education_group_members (user)",
       "CREATE INDEX idx_edu_grp_mem_tenant ON education_group_members (tenant)"
+    ]
+  }));
+
+  app.save(new Collection({
+    name: "bot_api_keys",
+    type: "base",
+    listRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+    viewRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+    createRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+    updateRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+    deleteRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+    fields: [
+      { name: "tenant", type: "relation", required: true, collectionId: tenantsId, cascadeDelete: true, maxSelect: 1 },
+      { name: "name", type: "text", required: true },
+      { name: "key_hash", type: "text", required: true },
+      { name: "key_prefix", type: "text", required: true },
+      { name: "status", type: "select", required: true, values: ["ativa", "revogada"], maxSelect: 1 },
+      { name: "created_by", type: "relation", collectionId: "_pb_users_auth_", maxSelect: 1 },
+      { name: "last_used_at", type: "date" },
+      { name: "created", type: "autodate", onCreate: true, onUpdate: false },
+      { name: "updated", type: "autodate", onCreate: true, onUpdate: true }
+    ],
+    indexes: [
+      "CREATE INDEX idx_bot_api_keys_tenant ON bot_api_keys (tenant)",
+      "CREATE UNIQUE INDEX idx_bot_api_keys_hash ON bot_api_keys (key_hash)",
+      "CREATE INDEX idx_bot_api_keys_status ON bot_api_keys (status)"
     ]
   }));
 }, (app) => {});

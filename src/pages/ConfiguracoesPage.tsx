@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Settings, Mail, Zap, Save, Loader2 } from 'lucide-react'
+import { Settings, Mail, Zap, Save, Loader2, Bot } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { COLUMNS } from '@/types/project'
 import { StallLimits, DEFAULT_STALL_LIMITS, DEFAULT_PROXIMITY_DAYS } from '@/types/controle'
 import { useAuth } from '@/context/AuthContext'
@@ -20,6 +21,7 @@ import { toast } from 'sonner'
 import { TenantRequiredNotice } from '@/components/TenantRequiredNotice'
 import { PageHeader } from '@/components/common/PageHeader'
 import { SubmitButton } from '@/components/common/StateDisplay'
+import { BotIntegrationSection } from '@/components/BotIntegrationSection'
 
 export default function ConfiguracoesPage() {
   const { user } = useAuth()
@@ -155,141 +157,167 @@ export default function ConfiguracoesPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+    <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
       <PageHeader
         title="Configurações do Município"
-        description="Ajuste os limites de alerta de gargalo do Kanban e parâmetros de envio de e-mails institucionais."
+        description="Ajuste os parâmetros locais, limites do Kanban, notificações e integrações de API com bots."
         icon={Settings}
       />
 
-      <Card className="bg-white border-0 shadow-subtle">
-        <CardContent className="p-5 space-y-4">
-          <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
-            <Zap className="w-4 h-4 text-[#3b82f6]" />
-            <h3 className="text-sm font-bold text-[#1c2a3e]">Limites de Gargalo (Kanban)</h3>
-          </div>
-          <p className="text-xs text-gray-500">
-            Dias máximos que um card pode ficar parado em cada coluna antes de gerar alerta.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {COLUMNS.map((col) => (
-              <div key={col} className="flex items-center justify-between gap-3">
-                <Label className="text-xs text-gray-700 flex-1">{col}</Label>
+      <Tabs defaultValue="geral" className="w-full">
+        <TabsList className="grid grid-cols-2 max-w-sm mb-4">
+          <TabsTrigger value="geral" className="text-xs gap-1.5">
+            <Settings className="w-3.5 h-3.5" />
+            Parâmetros & SMTP
+          </TabsTrigger>
+          <TabsTrigger value="bot" className="text-xs gap-1.5">
+            <Bot className="w-3.5 h-3.5" />
+            Integração Bot / Hermes
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="geral" className="space-y-6">
+          <Card className="bg-white border-0 shadow-subtle">
+            <CardContent className="p-5 space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
+                <Zap className="w-4 h-4 text-[#3b82f6]" />
+                <h3 className="text-sm font-bold text-[#1c2a3e]">Limites de Gargalo (Kanban)</h3>
+              </div>
+              <p className="text-xs text-gray-500">
+                Dias máximos que um card pode ficar parado em cada coluna antes de gerar alerta.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {COLUMNS.map((col) => (
+                  <div key={col} className="flex items-center justify-between gap-3">
+                    <Label className="text-xs text-gray-700 flex-1">{col}</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={limits[col]}
+                      onChange={(e) =>
+                        setLimits({ ...limits, [col]: Math.max(1, Number(e.target.value)) })
+                      }
+                      className="w-20 h-8 text-center"
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-between gap-3 pt-2 border-t border-gray-100">
+                <Label className="text-xs text-gray-700 flex-1 font-semibold">
+                  Proximidade de Prazo (dias)
+                </Label>
                 <Input
                   type="number"
                   min={1}
-                  value={limits[col]}
-                  onChange={(e) =>
-                    setLimits({ ...limits, [col]: Math.max(1, Number(e.target.value)) })
-                  }
+                  value={proximityDays}
+                  onChange={(e) => setProximityDays(Math.max(1, Number(e.target.value)))}
                   className="w-20 h-8 text-center"
                 />
               </div>
-            ))}
-          </div>
-          <div className="flex items-center justify-between gap-3 pt-2 border-t border-gray-100">
-            <Label className="text-xs text-gray-700 flex-1 font-semibold">
-              Proximidade de Prazo (dias)
-            </Label>
-            <Input
-              type="number"
-              min={1}
-              value={proximityDays}
-              onChange={(e) => setProximityDays(Math.max(1, Number(e.target.value)))}
-              className="w-20 h-8 text-center"
-            />
-          </div>
-          <SubmitButton
-            type="button"
-            onClick={handleSaveLimits}
-            submitting={savingLimits}
-            submittingText="Salvando limites..."
-            icon={<Save className="w-4 h-4" aria-hidden="true" />}
-            aria-label="Salvar limites de gargalo do Kanban"
-          >
-            Salvar Limites
-          </SubmitButton>
-        </CardContent>
-      </Card>
+              <SubmitButton
+                type="button"
+                onClick={handleSaveLimits}
+                submitting={savingLimits}
+                submittingText="Salvando limites..."
+                icon={<Save className="w-4 h-4" aria-hidden="true" />}
+                aria-label="Salvar limites de gargalo do Kanban"
+              >
+                Salvar Limites
+              </SubmitButton>
+            </CardContent>
+          </Card>
 
-      <Card className="bg-white border-0 shadow-subtle">
-        <CardContent className="p-5 space-y-4">
-          <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
-            <Mail className="w-4 h-4 text-[#3b82f6]" />
-            <h3 className="text-sm font-bold text-[#1c2a3e]">Configuração de E-mail (SMTP)</h3>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs font-semibold text-gray-700">Servidor SMTP</Label>
-              <Input
-                value={smtp.server}
-                onChange={(e) => setSmtp({ ...smtp, server: e.target.value })}
-                className="mt-1"
-                placeholder="smtp.exemplo.com"
-              />
-            </div>
-            <div>
-              <Label className="text-xs font-semibold text-gray-700">Porta</Label>
-              <Input
-                value={smtp.port}
-                onChange={(e) => setSmtp({ ...smtp, port: e.target.value })}
-                className="mt-1"
-                placeholder="587"
-              />
-            </div>
-            <div>
-              <Label className="text-xs font-semibold text-gray-700">Usuário</Label>
-              <Input
-                value={smtp.username}
-                onChange={(e) => setSmtp({ ...smtp, username: e.target.value })}
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label className="text-xs font-semibold text-gray-700">
-                Senha {isSmtpConfigured && '(Configurada)'}
-              </Label>
-              <Input
-                type="password"
-                value={newSmtpPassword}
-                onChange={(e) => setNewSmtpPassword(e.target.value)}
-                placeholder={
-                  isSmtpConfigured ? '•••••••• (Preencha para alterar)' : 'Senha do servidor SMTP'
-                }
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label className="text-xs font-semibold text-gray-700">Nome do Remetente</Label>
-              <Input
-                value={smtp.senderName}
-                onChange={(e) => setSmtp({ ...smtp, senderName: e.target.value })}
-                className="mt-1"
-                placeholder="Bússola Jurídica"
-              />
-            </div>
-            <div>
-              <Label className="text-xs font-semibold text-gray-700">E-mail Remetente</Label>
-              <Input
-                value={smtp.senderEmail}
-                onChange={(e) => setSmtp({ ...smtp, senderEmail: e.target.value })}
-                className="mt-1"
-                placeholder="noreply@exemplo.com"
-              />
-            </div>
-          </div>
-          <SubmitButton
-            type="button"
-            onClick={handleSaveSmtp}
-            submitting={savingSmtp}
-            submittingText="Salvando configurações..."
-            icon={<Save className="w-4 h-4" aria-hidden="true" />}
-            aria-label="Salvar configurações de e-mail SMTP"
-          >
-            Salvar Configurações
-          </SubmitButton>
-        </CardContent>
-      </Card>
+          <Card className="bg-white border-0 shadow-subtle">
+            <CardContent className="p-5 space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
+                <Mail className="w-4 h-4 text-[#3b82f6]" />
+                <h3 className="text-sm font-bold text-[#1c2a3e]">Configuração de E-mail (SMTP)</h3>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs font-semibold text-gray-700">Servidor SMTP</Label>
+                  <Input
+                    value={smtp.server}
+                    onChange={(e) => setSmtp({ ...smtp, server: e.target.value })}
+                    className="mt-1"
+                    placeholder="smtp.exemplo.com"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-semibold text-gray-700">Porta</Label>
+                  <Input
+                    value={smtp.port}
+                    onChange={(e) => setSmtp({ ...smtp, port: e.target.value })}
+                    className="mt-1"
+                    placeholder="587"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-semibold text-gray-700">Usuário</Label>
+                  <Input
+                    value={smtp.username}
+                    onChange={(e) => setSmtp({ ...smtp, username: e.target.value })}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-semibold text-gray-700">
+                    Senha {isSmtpConfigured && '(Configurada)'}
+                  </Label>
+                  <Input
+                    type="password"
+                    value={newSmtpPassword}
+                    onChange={(e) => setNewSmtpPassword(e.target.value)}
+                    placeholder={
+                      isSmtpConfigured
+                        ? '•••••••• (Preencha para alterar)'
+                        : 'Senha do servidor SMTP'
+                    }
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-semibold text-gray-700">Nome do Remetente</Label>
+                  <Input
+                    value={smtp.senderName}
+                    onChange={(e) => setSmtp({ ...smtp, senderName: e.target.value })}
+                    className="mt-1"
+                    placeholder="Bússola Jurídica"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-semibold text-gray-700">E-mail Remetente</Label>
+                  <Input
+                    value={smtp.senderEmail}
+                    onChange={(e) => setSmtp({ ...smtp, senderEmail: e.target.value })}
+                    className="mt-1"
+                    placeholder="noreply@exemplo.com"
+                  />
+                </div>
+              </div>
+              <SubmitButton
+                type="button"
+                onClick={handleSaveSmtp}
+                submitting={savingSmtp}
+                submittingText="Salvando configurações..."
+                icon={<Save className="w-4 h-4" aria-hidden="true" />}
+                aria-label="Salvar configurações de e-mail SMTP"
+              >
+                Salvar Configurações
+              </SubmitButton>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="bot">
+          {user?.tenantId && (
+            <BotIntegrationSection
+              tenantId={user.tenantId}
+              tenantName={user.prefeitura || undefined}
+            />
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
