@@ -6,6 +6,15 @@
 // --- 1. BOT INFO & CONTEXT ---
 console.log('[BOT_READ_API] Loading bot_read_api.js file into JSVM...')
 
+// --- 0. PING / HEALTH TEST ---
+routerAdd('GET', '/backend/v1/bot/ping', (e) => {
+  return e.json(200, {
+    status: 'ok',
+    message: 'Bot Read API is active and healthy',
+    timestamp: new Date().toISOString(),
+  })
+})
+
 routerAdd('GET', '/backend/v1/bot/info', (e) => {
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
@@ -101,7 +110,7 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
   return e.json(200, {
     status: 'ok',
     sistema: 'Bússola Jurídica Municipal 2.0',
-    versao: '0.0.103',
+    versao: '0.0.104',
     municipio: {
       id: tenantRec.id,
       nome: tenantRec.getString('name'),

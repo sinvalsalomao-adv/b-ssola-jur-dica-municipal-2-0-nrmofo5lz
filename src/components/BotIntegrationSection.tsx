@@ -60,8 +60,10 @@ export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSe
   // Copiar curl de exemplo
   const [copiedSnippet, setCopiedSnippet] = useState<string | null>(null)
 
-  const baseUrl =
-    typeof window !== 'undefined' ? window.location.origin : 'https://bussola.municipio.gov.br'
+  const baseUrl = (
+    import.meta.env.VITE_POCKETBASE_URL ||
+    (typeof window !== 'undefined' ? window.location.origin : 'https://bussola.municipio.gov.br')
+  ).replace(/\/+$/, '')
   const activeKey = keys.find((k) => k.status === 'ativa')
 
   const loadKeys = async () => {
