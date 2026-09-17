@@ -361,6 +361,16 @@ export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSe
                 )}
                 Copiar
               </Button>
+              <a
+                href={`${baseUrl}/backend/v1/bot`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 px-2 py-1.5 rounded hover:bg-blue-50 transition-colors"
+                title="Abrir endpoint base de teste no navegador"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Testar no navegador</span>
+              </a>
             </div>
             <p className="text-[11px] text-gray-500">
               Autenticação aceita via Header <code>Authorization: Bearer &lt;chave&gt;</code> ou{' '}

@@ -6,7 +6,28 @@
 // --- 1. BOT INFO & CONTEXT ---
 console.log('[BOT_READ_API] Loading bot_read_api.js file into JSVM...')
 
-// --- 0. PING / HEALTH TEST ---
+// --- 0. PING / HEALTH TEST & BASE INFO ---
+routerAdd('GET', '/backend/v1/bot', (e) => {
+  return e.json(200, {
+    status: 'ok',
+    message: 'Bússola Jurídica Municipal 2.0 - Bot Read API (Hermes)',
+    version: '0.0.105',
+    ping: '/backend/v1/bot/ping',
+    endpoints: [
+      '/backend/v1/bot/ping',
+      '/backend/v1/bot/info',
+      '/backend/v1/bot/projects',
+      '/backend/v1/bot/projects/summary',
+      '/backend/v1/bot/dfds',
+      '/backend/v1/bot/dfds/{id}',
+      '/backend/v1/bot/deadlines',
+      '/backend/v1/bot/users',
+      '/backend/v1/bot/notifications',
+    ],
+    timestamp: new Date().toISOString(),
+  })
+})
+
 routerAdd('GET', '/backend/v1/bot/ping', (e) => {
   return e.json(200, {
     status: 'ok',
@@ -110,7 +131,7 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
   return e.json(200, {
     status: 'ok',
     sistema: 'Bússola Jurídica Municipal 2.0',
-    versao: '0.0.104',
+    versao: '0.0.105',
     municipio: {
       id: tenantRec.id,
       nome: tenantRec.getString('name'),

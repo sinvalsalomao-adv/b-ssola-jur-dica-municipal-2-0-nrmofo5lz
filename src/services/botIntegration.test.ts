@@ -175,6 +175,27 @@ export function runBotIntegrationTests(): BotIntegrationTestResult {
     // Tenant derivado EXCLUSIVAMENTE da chave
     const derivedTenant = keyRec.tenant
 
+    // Rota /backend/v1/bot (base info)
+    if (route === '/backend/v1/bot') {
+      return {
+        status: 200,
+        body: {
+          status: 'ok',
+          message: 'Bússola Jurídica Municipal 2.0 - Bot Read API (Hermes)',
+          version: '0.0.105',
+          ping: '/backend/v1/bot/ping',
+        },
+      }
+    }
+
+    // Rota /backend/v1/bot/ping
+    if (route === '/backend/v1/bot/ping') {
+      return {
+        status: 200,
+        body: { status: 'ok', message: 'Bot Read API is active and healthy' },
+      }
+    }
+
     // Rota /backend/v1/bot/projects
     if (route === '/backend/v1/bot/projects') {
       let filtered = mockProjects.filter((p) => p.tenant === derivedTenant)
@@ -361,6 +382,17 @@ export function runBotIntegrationTests(): BotIntegrationTestResult {
     )
   } catch (e) {
     assert('Filtros Kanban: Consulta responde formato exato', false, String(e))
+  }
+
+  // Teste 11: Endpoint base /backend/v1/bot responde 200 sem necessidade de auth (diagnóstico/discovery)
+  try {
+    const resBase = executeBotApi('GET', '/backend/v1/bot', {})
+    assert(
+      'Endpoint Base: /backend/v1/bot responde 200 informativo para testes diretos e navegadores',
+      resBase.status === 200 && (resBase.body as any).status === 'ok',
+    )
+  } catch (e) {
+    assert('Endpoint Base: /backend/v1/bot responde 200 informativo', false, String(e))
   }
 
   const failedCount = results.filter((r) => !r.passed).length
