@@ -1,25 +1,17 @@
 // API de Integração com Bot (Hermes): Endpoints somente leitura estruturados em JSON
 // Autenticação exclusiva por Chave de API de Município (Authorization: Bearer <chave> ou X-API-Key: <chave>)
 // O município é estritamente derivado da chave — nenhum parâmetro de tenant externo é aceito.
-
-// Helper local por rota para autenticação da chave e rate limit
-// Endpoints:
-// 1. GET /backend/v1/bot/info
-// 2. GET /backend/v1/bot/projects
-// 3. GET /backend/v1/bot/projects/summary
-// 4. GET /backend/v1/bot/dfds
-// 5. GET /backend/v1/bot/dfds/{id}
-// 6. GET /backend/v1/bot/deadlines
-// 7. GET /backend/v1/bot/users
-// 8. GET /backend/v1/bot/notifications
+// Implementação 100% inline por rota, compatível com JSVM PocketBase 0.26 / goja.
 
 // --- 1. BOT INFO & CONTEXT ---
+console.log('[BOT_READ_API] Loading bot_read_api.js file into JSVM...')
+
 routerAdd('GET', '/backend/v1/bot/info', (e) => {
-  // Autenticação da chave
-  const reqInfo = e.requestInfo()
-  const rawAuthHeader = String(reqInfo.headers['authorization'] || '').trim()
-  const rawApiKeyHeader = String(reqInfo.headers['x_api_key'] || '').trim()
-  let rawKey = ''
+  var reqInfo = e.requestInfo()
+  var headers = reqInfo.headers || {}
+  var rawAuthHeader = String(headers['authorization'] || '').trim()
+  var rawApiKeyHeader = String(headers['x_api_key'] || headers['x-api-key'] || '').trim()
+  var rawKey = ''
   if (rawApiKeyHeader) {
     rawKey = rawApiKeyHeader
   } else if (rawAuthHeader) {
@@ -39,8 +31,8 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
     })
   }
 
-  const keyHash = $security.sha256(rawKey)
-  let keyRecord = null
+  var keyHash = $security.sha256(rawKey)
+  var keyRecord = null
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
@@ -59,11 +51,22 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
     })
   }
 
-  // Rate limit: 60 requisições por minuto por chave
-  const ip = e.remoteIP()
-  const cache = $app.store()
-  const rateKey = 'bot_rate_' + keyRecord.id
-  let attempts = 0
+  // Rate limit: 60 requisições por janela de 60 segundos por chave
+  var now = Date.now()
+  var cache = $app.store()
+  var rateKey = 'bot_rate_' + keyRecord.id
+  var resetKey = 'bot_rate_reset_' + keyRecord.id
+
+  var resetAt = 0
+  if (cache.has(resetKey)) {
+    resetAt = Number(cache.get(resetKey)) || 0
+  }
+  if (now > resetAt) {
+    cache.set(rateKey, 0)
+    cache.set(resetKey, now + 60000)
+  }
+
+  var attempts = 0
   if (cache.has(rateKey)) {
     attempts = Number(cache.get(rateKey)) || 0
   }
@@ -74,17 +77,17 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
       message: 'Limite de requisições excedido (máximo 60 por minuto). Aguarde um instante.',
     })
   }
-  cache.set(rateKey, attempts + 1, 60)
+  cache.set(rateKey, attempts + 1)
 
   // Atualizar last_used_at
   try {
-    const nowIso = new Date().toISOString().replace('T', ' ').slice(0, 19)
+    var nowIso = new Date().toISOString().replace('T', ' ').slice(0, 19)
     keyRecord.set('last_used_at', nowIso)
     $app.save(keyRecord)
   } catch (_) {}
 
-  const tenantId = keyRecord.getString('tenant')
-  let tenantRec = null
+  var tenantId = keyRecord.getString('tenant')
+  var tenantRec = null
   try {
     tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
   } catch (_) {
@@ -98,7 +101,7 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
   return e.json(200, {
     status: 'ok',
     sistema: 'Bússola Jurídica Municipal 2.0',
-    versao: '0.0.102',
+    versao: '0.0.103',
     municipio: {
       id: tenantRec.id,
       nome: tenantRec.getString('name'),
@@ -126,10 +129,11 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
 
 // --- 2. LISTAR PROJETOS DO TENANT (COM FILTROS POR COLUNA, PRIORIDADE, RESPONSÁVEL) ---
 routerAdd('GET', '/backend/v1/bot/projects', (e) => {
-  const reqInfo = e.requestInfo()
-  const rawAuthHeader = String(reqInfo.headers['authorization'] || '').trim()
-  const rawApiKeyHeader = String(reqInfo.headers['x_api_key'] || '').trim()
-  let rawKey = ''
+  var reqInfo = e.requestInfo()
+  var headers = reqInfo.headers || {}
+  var rawAuthHeader = String(headers['authorization'] || '').trim()
+  var rawApiKeyHeader = String(headers['x_api_key'] || headers['x-api-key'] || '').trim()
+  var rawKey = ''
   if (rawApiKeyHeader) {
     rawKey = rawApiKeyHeader
   } else if (rawAuthHeader) {
@@ -149,8 +153,8 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
     })
   }
 
-  const keyHash = $security.sha256(rawKey)
-  let keyRecord = null
+  var keyHash = $security.sha256(rawKey)
+  var keyRecord = null
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
@@ -169,10 +173,21 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
     })
   }
 
-  // Rate limit
-  const cache = $app.store()
-  const rateKey = 'bot_rate_' + keyRecord.id
-  let attempts = 0
+  var now = Date.now()
+  var cache = $app.store()
+  var rateKey = 'bot_rate_' + keyRecord.id
+  var resetKey = 'bot_rate_reset_' + keyRecord.id
+
+  var resetAt = 0
+  if (cache.has(resetKey)) {
+    resetAt = Number(cache.get(resetKey)) || 0
+  }
+  if (now > resetAt) {
+    cache.set(rateKey, 0)
+    cache.set(resetKey, now + 60000)
+  }
+
+  var attempts = 0
   if (cache.has(rateKey)) {
     attempts = Number(cache.get(rateKey)) || 0
   }
@@ -183,24 +198,24 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
       message: 'Limite de requisições excedido. Aguarde um instante.',
     })
   }
-  cache.set(rateKey, attempts + 1, 60)
+  cache.set(rateKey, attempts + 1)
 
   try {
-    const nowIso = new Date().toISOString().replace('T', ' ').slice(0, 19)
+    var nowIso = new Date().toISOString().replace('T', ' ').slice(0, 19)
     keyRecord.set('last_used_at', nowIso)
     $app.save(keyRecord)
   } catch (_) {}
 
-  const tenantId = keyRecord.getString('tenant')
-  const query = reqInfo.query || {}
-  const coluna = String(query.coluna || query.column || '').trim()
-  const prioridade = String(query.prioridade || query.priority || '').trim()
-  const busca = String(query.busca || query.q || '')
+  var tenantId = keyRecord.getString('tenant')
+  var query = reqInfo.query || {}
+  var coluna = String(query.coluna || query.column || '').trim()
+  var prioridade = String(query.prioridade || query.priority || '').trim()
+  var busca = String(query.busca || query.q || '')
     .trim()
     .toLowerCase()
 
-  let filter = 'tenant = {:tenantId}'
-  const params = { tenantId: tenantId }
+  var filter = 'tenant = {:tenantId}'
+  var params = { tenantId: tenantId }
 
   if (coluna) {
     filter += ' && coluna_kanban = {:coluna}'
@@ -212,29 +227,29 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
   }
 
   try {
-    const records = $app.findRecordsByFilter('projects', filter, '-created', 200, 0, params)
-    const items = []
+    var records = $app.findRecordsByFilter('projects', filter, '-created', 200, 0, params)
+    var items = []
 
-    for (let i = 0; i < records.length; i++) {
-      const p = records[i]
-      const titulo = p.getString('titulo') || ''
-      const descricao = p.getString('descricao') || ''
-      const objeto = p.getString('objeto') || ''
+    for (var i = 0; i < records.length; i++) {
+      var p = records[i]
+      var titulo = p.getString('titulo') || ''
+      var descricao = p.getString('descricao') || ''
+      var objeto = p.getString('objeto') || ''
 
       if (busca) {
-        const match =
+        var match =
           titulo.toLowerCase().indexOf(busca) !== -1 ||
           descricao.toLowerCase().indexOf(busca) !== -1 ||
           objeto.toLowerCase().indexOf(busca) !== -1
         if (!match) continue
       }
 
-      const respId = p.getString('responsible_user')
-      let respName = 'Não atribuído'
-      let respEmail = ''
+      var respId = p.getString('responsible_user')
+      var respName = 'Não atribuído'
+      var respEmail = ''
       if (respId) {
         try {
-          const u = $app.findFirstRecordByData('users', 'id', respId)
+          var u = $app.findFirstRecordByData('users', 'id', respId)
           respName = u.getString('name') || 'Sem nome'
           respEmail = u.getString('email') || ''
         } catch (_) {}
@@ -271,10 +286,11 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
 
 // --- 3. RESUMO / CONTAGEM DO KANBAN POR COLUNA E PRIORIDADE ---
 routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
-  const reqInfo = e.requestInfo()
-  const rawAuthHeader = String(reqInfo.headers['authorization'] || '').trim()
-  const rawApiKeyHeader = String(reqInfo.headers['x_api_key'] || '').trim()
-  let rawKey = ''
+  var reqInfo = e.requestInfo()
+  var headers = reqInfo.headers || {}
+  var rawAuthHeader = String(headers['authorization'] || '').trim()
+  var rawApiKeyHeader = String(headers['x_api_key'] || headers['x-api-key'] || '').trim()
+  var rawKey = ''
   if (rawApiKeyHeader) {
     rawKey = rawApiKeyHeader
   } else if (rawAuthHeader) {
@@ -293,8 +309,8 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
     })
   }
 
-  const keyHash = $security.sha256(rawKey)
-  let keyRecord = null
+  var keyHash = $security.sha256(rawKey)
+  var keyRecord = null
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
@@ -305,26 +321,37 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
     return e.json(403, { code: 403, error: 'KEY_REVOKED', message: 'Chave de API revogada.' })
   }
 
-  // Rate limit
-  const cache = $app.store()
-  const rateKey = 'bot_rate_' + keyRecord.id
-  let attempts = 0
+  var now = Date.now()
+  var cache = $app.store()
+  var rateKey = 'bot_rate_' + keyRecord.id
+  var resetKey = 'bot_rate_reset_' + keyRecord.id
+
+  var resetAt = 0
+  if (cache.has(resetKey)) {
+    resetAt = Number(cache.get(resetKey)) || 0
+  }
+  if (now > resetAt) {
+    cache.set(rateKey, 0)
+    cache.set(resetKey, now + 60000)
+  }
+
+  var attempts = 0
   if (cache.has(rateKey)) {
     attempts = Number(cache.get(rateKey)) || 0
   }
   if (attempts >= 60) {
     return e.json(429, { code: 429, error: 'RATE_LIMIT_EXCEEDED', message: 'Limite excedido.' })
   }
-  cache.set(rateKey, attempts + 1, 60)
+  cache.set(rateKey, attempts + 1)
 
-  const tenantId = keyRecord.getString('tenant')
-  const filter = 'tenant = {:tenantId}'
-  const params = { tenantId: tenantId }
+  var tenantId = keyRecord.getString('tenant')
+  var filter = 'tenant = {:tenantId}'
+  var params = { tenantId: tenantId }
 
   try {
-    const records = $app.findRecordsByFilter('projects', filter, '', 500, 0, params)
+    var records = $app.findRecordsByFilter('projects', filter, '', 500, 0, params)
 
-    const porColuna = {
+    var porColuna = {
       Ideação: 0,
       'Projeto Executivo': 0,
       'Elaborar DFD': 0,
@@ -334,15 +361,15 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
       Marketing: 0,
     }
 
-    const porPrioridade = {
+    var porPrioridade = {
       Alta: 0,
       Média: 0,
       Baixa: 0,
     }
 
     // Matriz cruzada coluna x prioridade
-    const cruzado = {}
-    const colunas = [
+    var cruzado = {}
+    var colunas = [
       'Ideação',
       'Projeto Executivo',
       'Elaborar DFD',
@@ -351,13 +378,13 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
       'Prestação de Contas',
       'Marketing',
     ]
-    for (let c = 0; c < colunas.length; c++) {
+    for (var c = 0; c < colunas.length; c++) {
       cruzado[colunas[c]] = { Alta: 0, Média: 0, Baixa: 0 }
     }
 
-    for (let i = 0; i < records.length; i++) {
-      const col = records[i].getString('coluna_kanban')
-      const prio = records[i].getString('priority')
+    for (var i = 0; i < records.length; i++) {
+      var col = records[i].getString('coluna_kanban')
+      var prio = records[i].getString('priority')
 
       if (porColuna[col] !== undefined) {
         porColuna[col]++
@@ -384,10 +411,11 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
 
 // --- 4. LISTAR DFDS DO TENANT ---
 routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
-  const reqInfo = e.requestInfo()
-  const rawAuthHeader = String(reqInfo.headers['authorization'] || '').trim()
-  const rawApiKeyHeader = String(reqInfo.headers['x_api_key'] || '').trim()
-  let rawKey = ''
+  var reqInfo = e.requestInfo()
+  var headers = reqInfo.headers || {}
+  var rawAuthHeader = String(headers['authorization'] || '').trim()
+  var rawApiKeyHeader = String(headers['x_api_key'] || headers['x-api-key'] || '').trim()
+  var rawKey = ''
   if (rawApiKeyHeader) {
     rawKey = rawApiKeyHeader
   } else if (rawAuthHeader) {
@@ -402,8 +430,8 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
     return e.json(401, { code: 401, error: 'UNAUTHORIZED', message: 'Chave ausente.' })
   }
 
-  const keyHash = $security.sha256(rawKey)
-  let keyRecord = null
+  var keyHash = $security.sha256(rawKey)
+  var keyRecord = null
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
@@ -414,23 +442,35 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
     return e.json(403, { code: 403, error: 'KEY_REVOKED', message: 'Chave revogada.' })
   }
 
-  const cache = $app.store()
-  const rateKey = 'bot_rate_' + keyRecord.id
-  let attempts = 0
+  var now = Date.now()
+  var cache = $app.store()
+  var rateKey = 'bot_rate_' + keyRecord.id
+  var resetKey = 'bot_rate_reset_' + keyRecord.id
+
+  var resetAt = 0
+  if (cache.has(resetKey)) {
+    resetAt = Number(cache.get(resetKey)) || 0
+  }
+  if (now > resetAt) {
+    cache.set(rateKey, 0)
+    cache.set(resetKey, now + 60000)
+  }
+
+  var attempts = 0
   if (cache.has(rateKey)) {
     attempts = Number(cache.get(rateKey)) || 0
   }
   if (attempts >= 60) {
     return e.json(429, { code: 429, error: 'RATE_LIMIT_EXCEEDED', message: 'Limite excedido.' })
   }
-  cache.set(rateKey, attempts + 1, 60)
+  cache.set(rateKey, attempts + 1)
 
-  const tenantId = keyRecord.getString('tenant')
-  const query = reqInfo.query || {}
-  const statusFilter = String(query.status || '').trim()
+  var tenantId = keyRecord.getString('tenant')
+  var query = reqInfo.query || {}
+  var statusFilter = String(query.status || '').trim()
 
-  let filter = 'tenant = {:tenantId}'
-  const params = { tenantId: tenantId }
+  var filter = 'tenant = {:tenantId}'
+  var params = { tenantId: tenantId }
 
   if (statusFilter) {
     filter += ' && status = {:status}'
@@ -438,25 +478,25 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
   }
 
   try {
-    const records = $app.findRecordsByFilter('dfds', filter, '-created', 100, 0, params)
-    const items = []
+    var records = $app.findRecordsByFilter('dfds', filter, '-created', 100, 0, params)
+    var items = []
 
-    for (let i = 0; i < records.length; i++) {
-      const d = records[i]
-      const respId = d.getString('responsible_user')
-      let respName = 'Não atribuído'
+    for (var i = 0; i < records.length; i++) {
+      var d = records[i]
+      var respId = d.getString('responsible_user')
+      var respName = 'Não atribuído'
       if (respId) {
         try {
-          const u = $app.findFirstRecordByData('users', 'id', respId)
+          var u = $app.findFirstRecordByData('users', 'id', respId)
           respName = u.getString('name') || ''
         } catch (_) {}
       }
 
-      const projId = d.getString('projeto_id')
-      let projTitle = ''
+      var projId = d.getString('projeto_id')
+      var projTitle = ''
       if (projId) {
         try {
-          const p = $app.findFirstRecordByData('projects', 'id', projId)
+          var p = $app.findFirstRecordByData('projects', 'id', projId)
           projTitle = p.getString('titulo') || ''
         } catch (_) {}
       }
@@ -491,10 +531,11 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
 
 // --- 5. DETALHE DE UM DFD POR ID (APENAS DO TENANT) ---
 routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
-  const reqInfo = e.requestInfo()
-  const rawAuthHeader = String(reqInfo.headers['authorization'] || '').trim()
-  const rawApiKeyHeader = String(reqInfo.headers['x_api_key'] || '').trim()
-  let rawKey = ''
+  var reqInfo = e.requestInfo()
+  var headers = reqInfo.headers || {}
+  var rawAuthHeader = String(headers['authorization'] || '').trim()
+  var rawApiKeyHeader = String(headers['x_api_key'] || headers['x-api-key'] || '').trim()
+  var rawKey = ''
   if (rawApiKeyHeader) {
     rawKey = rawApiKeyHeader
   } else if (rawAuthHeader) {
@@ -509,8 +550,8 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
     return e.json(401, { code: 401, error: 'UNAUTHORIZED', message: 'Chave ausente.' })
   }
 
-  const keyHash = $security.sha256(rawKey)
-  let keyRecord = null
+  var keyHash = $security.sha256(rawKey)
+  var keyRecord = null
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
@@ -521,12 +562,12 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
     return e.json(403, { code: 403, error: 'KEY_REVOKED', message: 'Chave revogada.' })
   }
 
-  const dfdId = e.request.pathValue('id')
+  var dfdId = e.request.pathValue('id')
   if (!dfdId) {
     return e.json(400, { code: 400, error: 'BAD_REQUEST', message: 'ID do DFD obrigatório.' })
   }
 
-  let dfdRec = null
+  var dfdRec = null
   try {
     dfdRec = $app.findFirstRecordByData('dfds', 'id', dfdId)
   } catch (_) {
@@ -542,22 +583,22 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
     })
   }
 
-  const respId = dfdRec.getString('responsible_user')
-  let respName = 'Não atribuído'
-  let respEmail = ''
+  var respId = dfdRec.getString('responsible_user')
+  var respName = 'Não atribuído'
+  var respEmail = ''
   if (respId) {
     try {
-      const u = $app.findFirstRecordByData('users', 'id', respId)
+      var u = $app.findFirstRecordByData('users', 'id', respId)
       respName = u.getString('name') || ''
       respEmail = u.getString('email') || ''
     } catch (_) {}
   }
 
-  const projId = dfdRec.getString('projeto_id')
-  let projInfo = null
+  var projId = dfdRec.getString('projeto_id')
+  var projInfo = null
   if (projId) {
     try {
-      const p = $app.findFirstRecordByData('projects', 'id', projId)
+      var p = $app.findFirstRecordByData('projects', 'id', projId)
       projInfo = {
         id: p.id,
         titulo: p.getString('titulo'),
@@ -589,10 +630,11 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
 
 // --- 6. CONSULTAR PRAZOS DO TENANT (VENCIDOS, DA SEMANA, PRÓXIMOS) ---
 routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
-  const reqInfo = e.requestInfo()
-  const rawAuthHeader = String(reqInfo.headers['authorization'] || '').trim()
-  const rawApiKeyHeader = String(reqInfo.headers['x_api_key'] || '').trim()
-  let rawKey = ''
+  var reqInfo = e.requestInfo()
+  var headers = reqInfo.headers || {}
+  var rawAuthHeader = String(headers['authorization'] || '').trim()
+  var rawApiKeyHeader = String(headers['x_api_key'] || headers['x-api-key'] || '').trim()
+  var rawKey = ''
   if (rawApiKeyHeader) {
     rawKey = rawApiKeyHeader
   } else if (rawAuthHeader) {
@@ -607,8 +649,8 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
     return e.json(401, { code: 401, error: 'UNAUTHORIZED', message: 'Chave ausente.' })
   }
 
-  const keyHash = $security.sha256(rawKey)
-  let keyRecord = null
+  var keyHash = $security.sha256(rawKey)
+  var keyRecord = null
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
@@ -619,12 +661,12 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
     return e.json(403, { code: 403, error: 'KEY_REVOKED', message: 'Chave revogada.' })
   }
 
-  const tenantId = keyRecord.getString('tenant')
-  const filter = "tenant = {:tenantId} && prazo != ''"
-  const params = { tenantId: tenantId }
+  var tenantId = keyRecord.getString('tenant')
+  var filter = "tenant = {:tenantId} && prazo != ''"
+  var params = { tenantId: tenantId }
 
   try {
-    const projectsWithDeadlines = $app.findRecordsByFilter(
+    var projectsWithDeadlines = $app.findRecordsByFilter(
       'projects',
       filter,
       'prazo',
@@ -633,29 +675,29 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
       params,
     )
 
-    const now = new Date()
-    const todayStr = now.toISOString().slice(0, 10)
-    const next7Days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
-    const next7DaysStr = next7Days.toISOString().slice(0, 10)
+    var now = new Date()
+    var todayStr = now.toISOString().slice(0, 10)
+    var next7Days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+    var next7DaysStr = next7Days.toISOString().slice(0, 10)
 
-    const vencidos = []
-    const daSemana = []
-    const futuros = []
+    var vencidos = []
+    var daSemana = []
+    var futuros = []
 
-    for (let i = 0; i < projectsWithDeadlines.length; i++) {
-      const p = projectsWithDeadlines[i]
-      const prazo = p.getString('prazo').slice(0, 10)
+    for (var i = 0; i < projectsWithDeadlines.length; i++) {
+      var p = projectsWithDeadlines[i]
+      var prazo = p.getString('prazo').slice(0, 10)
 
-      const respId = p.getString('responsible_user')
-      let respName = 'Não atribuído'
+      var respId = p.getString('responsible_user')
+      var respName = 'Não atribuído'
       if (respId) {
         try {
-          const u = $app.findFirstRecordByData('users', 'id', respId)
+          var u = $app.findFirstRecordByData('users', 'id', respId)
           respName = u.getString('name') || ''
         } catch (_) {}
       }
 
-      const item = {
+      var item = {
         id: p.id,
         titulo: p.getString('titulo'),
         coluna_kanban: p.getString('coluna_kanban'),
@@ -690,10 +732,11 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
 
 // --- 7. CONSULTAR USUÁRIOS / SERVIDORES DO TENANT COM PAPÉIS ---
 routerAdd('GET', '/backend/v1/bot/users', (e) => {
-  const reqInfo = e.requestInfo()
-  const rawAuthHeader = String(reqInfo.headers['authorization'] || '').trim()
-  const rawApiKeyHeader = String(reqInfo.headers['x_api_key'] || '').trim()
-  let rawKey = ''
+  var reqInfo = e.requestInfo()
+  var headers = reqInfo.headers || {}
+  var rawAuthHeader = String(headers['authorization'] || '').trim()
+  var rawApiKeyHeader = String(headers['x_api_key'] || headers['x-api-key'] || '').trim()
+  var rawKey = ''
   if (rawApiKeyHeader) {
     rawKey = rawApiKeyHeader
   } else if (rawAuthHeader) {
@@ -708,8 +751,8 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
     return e.json(401, { code: 401, error: 'UNAUTHORIZED', message: 'Chave ausente.' })
   }
 
-  const keyHash = $security.sha256(rawKey)
-  let keyRecord = null
+  var keyHash = $security.sha256(rawKey)
+  var keyRecord = null
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
@@ -720,18 +763,18 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
     return e.json(403, { code: 403, error: 'KEY_REVOKED', message: 'Chave revogada.' })
   }
 
-  const tenantId = keyRecord.getString('tenant')
-  const filter = 'tenant = {:tenantId}'
-  const params = { tenantId: tenantId }
+  var tenantId = keyRecord.getString('tenant')
+  var filter = 'tenant = {:tenantId}'
+  var params = { tenantId: tenantId }
 
   try {
-    const mems = $app.findRecordsByFilter('user_memberships', filter, '-created', 200, 0, params)
-    const users = []
+    var mems = $app.findRecordsByFilter('user_memberships', filter, '-created', 200, 0, params)
+    var users = []
 
-    for (let i = 0; i < mems.length; i++) {
-      const m = mems[i]
-      const uId = m.getString('user')
-      let uRec = null
+    for (var i = 0; i < mems.length; i++) {
+      var m = mems[i]
+      var uId = m.getString('user')
+      var uRec = null
       try {
         uRec = $app.findFirstRecordByData('users', 'id', uId)
       } catch (_) {}
@@ -759,10 +802,11 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
 
 // --- 8. CONSULTAR NOTIFICAÇÕES E ALERTAS DO TENANT ---
 routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
-  const reqInfo = e.requestInfo()
-  const rawAuthHeader = String(reqInfo.headers['authorization'] || '').trim()
-  const rawApiKeyHeader = String(reqInfo.headers['x_api_key'] || '').trim()
-  let rawKey = ''
+  var reqInfo = e.requestInfo()
+  var headers = reqInfo.headers || {}
+  var rawAuthHeader = String(headers['authorization'] || '').trim()
+  var rawApiKeyHeader = String(headers['x_api_key'] || headers['x-api-key'] || '').trim()
+  var rawKey = ''
   if (rawApiKeyHeader) {
     rawKey = rawApiKeyHeader
   } else if (rawAuthHeader) {
@@ -777,8 +821,8 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
     return e.json(401, { code: 401, error: 'UNAUTHORIZED', message: 'Chave ausente.' })
   }
 
-  const keyHash = $security.sha256(rawKey)
-  let keyRecord = null
+  var keyHash = $security.sha256(rawKey)
+  var keyRecord = null
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
@@ -789,13 +833,13 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
     return e.json(403, { code: 403, error: 'KEY_REVOKED', message: 'Chave revogada.' })
   }
 
-  const tenantId = keyRecord.getString('tenant')
-  const query = reqInfo.query || {}
-  const apenasNaoLidas = query.nao_lidas === 'true' || query.unread === 'true'
-  const tipo = String(query.tipo || '').trim()
+  var tenantId = keyRecord.getString('tenant')
+  var query = reqInfo.query || {}
+  var apenasNaoLidas = query.nao_lidas === 'true' || query.unread === 'true'
+  var tipo = String(query.tipo || '').trim()
 
-  let filter = 'tenant = {:tenantId}'
-  const params = { tenantId: tenantId }
+  var filter = 'tenant = {:tenantId}'
+  var params = { tenantId: tenantId }
 
   if (apenasNaoLidas) {
     filter += ' && lida = false'
@@ -806,11 +850,11 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
   }
 
   try {
-    const notifs = $app.findRecordsByFilter('notifications', filter, '-created', 100, 0, params)
-    const items = []
+    var notifs = $app.findRecordsByFilter('notifications', filter, '-created', 100, 0, params)
+    var items = []
 
-    for (let i = 0; i < notifs.length; i++) {
-      const n = notifs[i]
+    for (var i = 0; i < notifs.length; i++) {
+      var n = notifs[i]
       items.push({
         id: n.id,
         tipo: n.getString('tipo'),
