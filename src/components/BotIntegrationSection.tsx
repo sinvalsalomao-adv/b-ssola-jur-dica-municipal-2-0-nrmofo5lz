@@ -14,6 +14,8 @@ import {
   ShieldCheck,
   UserCheck,
   Lock,
+  Boxes,
+  Sparkles,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -67,11 +69,13 @@ export function BotIntegrationSection({
 
   // Copiar curl de exemplo
   const [copiedSnippet, setCopiedSnippet] = useState<string | null>(null)
+  const [copiedAllHermes, setCopiedAllHermes] = useState(false)
 
   const baseUrl = (
     import.meta.env.VITE_POCKETBASE_URL ||
     (typeof window !== 'undefined' ? window.location.origin : 'https://bussola.municipio.gov.br')
   ).replace(/\/+$/, '')
+  const botApiBaseUrl = `${baseUrl}/backend/v1/bot`
   const activeKey = keys.find((k) => k.status === 'ativa')
 
   const isUserAdminOrSuper = user?.role === 'admin' || user?.role === 'superadmin'
@@ -147,7 +151,189 @@ export function BotIntegrationSection({
     toast.success('Copiado para a área de transferência!')
   }
 
-  const sampleToken = activeKey ? activeKey.key_prefix : 'bjm_suaChaveSecreta...'
+  const sampleToken = createdKeyData
+    ? createdKeyData.raw_key
+    : activeKey
+      ? activeKey.key_prefix
+      : 'bjm_suaChaveSecreta...'
+
+  const generateHermesFullConfigBlock = (): string => {
+    const rawKeyAvailable = !!createdKeyData?.raw_key
+    const apiKeyValue = rawKeyAvailable
+      ? createdKeyData!.raw_key
+      : activeKey
+        ? `[ATENÇÃO: Chave ativa detectada (prefixo ${activeKey.key_prefix}), mas o valor secreto completo só é exibido no momento da criação. Caso não tenha o segredo guardado, gere uma nova chave na aba "Integração Bot / Hermes" em /configuracoes para obter o token completo.]`
+        : `[ATENÇÃO: Nenhuma chave de API ativa encontrada. Acesse a aba "Integração Bot / Hermes" em /configuracoes e clique em "Nova Chave de API" para gerar seu token.]`
+
+    const curlToken = rawKeyAvailable
+      ? createdKeyData!.raw_key
+      : activeKey
+        ? `<SUA_CHAVE_API_PREFIXO_${activeKey.key_prefix}>`
+        : '<SUA_CHAVE_API>'
+
+    return `================================================================================
+CONFIGURAÇÃO COMPLETA DE INTEGRAÇÃO — AGENTE HERMES & BÚSSOLA JURÍDICA MUNICIPAL 2.0
+Município: ${tenantName || 'Prefeitura Vinculada'} (ID: ${tenantId})
+Usuário: ${user?.name || user?.email || 'Servidor Municipal'}
+Papel Efetivo: ${userRoleLabel} (${isUserAdminOrSuper ? 'Visão ampla da prefeitura' : 'Visão estrita do servidor'})
+================================================================================
+
+1. URL BASE DA API DO BOT
+--------------------------------------------------------------------------------
+URL Base: ${botApiBaseUrl}
+Status de Teste: ${botApiBaseUrl}/ping (responde {"status":"ok","message":"Bot Read API is active and healthy"})
+Autenticação: Header "Authorization: Bearer <chave>" ou "X-API-Key: <chave>"
+Isolamento: 100% Multi-tenant com RBAC embutido na chave. O município e o papel do usuário são resolvidos diretamente no servidor a partir da chave de API.
+
+2. CHAVE DE API (BUSSOLA_API_KEY)
+--------------------------------------------------------------------------------
+${rawKeyAvailable ? `Chave Gerada Nesta Sessão (Valor Completo):\n${createdKeyData!.raw_key}` : `Instrução para a Chave de API:\n${apiKeyValue}`}
+
+3. VARIÁVEIS DE AMBIENTE PARA O DOCKER DO HERMES
+--------------------------------------------------------------------------------
+No painel do Gerenciador Docker do seu Hermes (ou arquivo docker-compose / .env), configure as variáveis em "Ambiente":
+
+BUSSOLA_API_URL=${botApiBaseUrl}
+BUSSOLA_API_KEY=${rawKeyAvailable ? createdKeyData!.raw_key : '<COLE_AQUI_A_CHAVE_GERADA_NA_ABA_CONFIGURACOES>'}
+
+4. CATÁLOGO DOS 9 ENDPOINTS COM EXEMPLOS DE CURL
+--------------------------------------------------------------------------------
+Observação: A chave deriva automaticamente o município (${tenantName || tenantId}) e as permissões de ${userRoleLabel}.
+
+[1] Healthcheck / Ping
+Endpoint: GET ${botApiBaseUrl}/ping
+Permissão: Público / Teste de conectividade
+Descrição: Verifica se o subsistema de bot da Bússola está ativo e saudável.
+Exemplo cURL:
+curl -X GET "${botApiBaseUrl}/ping"
+
+[2] Informações de Identidade e Escopo da Chave
+Endpoint: GET ${botApiBaseUrl}/info
+Permissão: Todas as chaves ativas
+Descrição: Retorna os dados do município vinculado, usuário emissor, papel RBAC em tempo real e colunas do Kanban.
+Exemplo cURL:
+curl -X GET "${botApiBaseUrl}/info" \\
+  -H "Authorization: Bearer ${curlToken}"
+
+[3] Listagem de Projetos do Kanban
+Endpoint: GET ${botApiBaseUrl}/projects[?coluna=...&prioridade=...&busca=...]
+Permissão: Escopado por papel
+  - Admin/Superadmin: visualiza todos os projetos do município.
+  - Usuário Comum: visualiza exclusivamente os projetos onde é responsável direto.
+Filtros suportados:
+  - coluna: Ideação, Projeto Executivo, Elaborar DFD, Procedimentos Internos, Execução, Prestação de Contas, Marketing
+  - prioridade: Alta, Média, Baixa
+  - busca: termo de busca textual no título, objeto ou número de processo
+Exemplo cURL:
+curl -X GET "${botApiBaseUrl}/projects?coluna=Elaborar%20DFD" \\
+  -H "Authorization: Bearer ${curlToken}"
+
+[4] Resumo Agregado do Kanban (Totais por Coluna e Prioridade)
+Endpoint: GET ${botApiBaseUrl}/projects/summary
+Permissão: Exclusivo Administradores (Admin / Superadmin). Retorna 403 Forbidden para Usuário Comum.
+Descrição: Retorna contadores de cards por coluna, por prioridade e a matriz cruzada coluna x prioridade.
+Exemplo cURL:
+curl -X GET "${botApiBaseUrl}/projects/summary" \\
+  -H "Authorization: Bearer ${curlToken}"
+
+[5] Listagem de Documentos de Formalização de Demanda (DFDs)
+Endpoint: GET ${botApiBaseUrl}/dfds[?status=...]
+Permissão: Escopado por papel
+  - Admin/Superadmin: visualiza todos os DFDs do município.
+  - Usuário Comum: visualiza exclusivamente os DFDs sob sua responsabilidade.
+Filtros suportados:
+  - status: Em Elaboração, Aguardando Aprovação, Aprovado, Rejeitado, etc.
+Exemplo cURL:
+curl -X GET "${botApiBaseUrl}/dfds" \\
+  -H "Authorization: Bearer ${curlToken}"
+
+[6] Detalhe de um DFD por ID
+Endpoint: GET ${botApiBaseUrl}/dfds/{id}
+Permissão: Escopado por papel
+  - Admin/Superadmin: visualiza qualquer DFD do município.
+  - Usuário Comum: visualiza somente se for o responsável direto pelo DFD. DFDs de outros usuários ou outros municípios retornam 404 Not Found.
+Exemplo cURL:
+curl -X GET "${botApiBaseUrl}/dfds/SEU_ID_DFD" \\
+  -H "Authorization: Bearer ${curlToken}"
+
+[7] Monitoramento de Prazos e Gargalos
+Endpoint: GET ${botApiBaseUrl}/deadlines
+Permissão: Escopado por papel
+  - Admin/Superadmin: analisa todos os prazos do município.
+  - Usuário Comum: analisa apenas os prazos dos seus processos atribuídos.
+Descrição: Retorna itens vencidos, prazos que vencem nos próximos 7 dias e contadores analíticos.
+Exemplo cURL:
+curl -X GET "${botApiBaseUrl}/deadlines" \\
+  -H "Authorization: Bearer ${curlToken}"
+
+[8] Servidores e Usuários do Município
+Endpoint: GET ${botApiBaseUrl}/users
+Permissão: Exclusivo Administradores (Admin / Superadmin). Retorna 403 Forbidden para Usuário Comum.
+Descrição: Lista servidores com vínculo ativo no município, seus e-mails e respectivos papéis (admin / servidor).
+Exemplo cURL:
+curl -X GET "${botApiBaseUrl}/users" \\
+  -H "Authorization: Bearer ${curlToken}"
+
+[9] Notificações e Alertas Internos
+Endpoint: GET ${botApiBaseUrl}/notifications[?nao_lidas=true&tipo=...]
+Permissão: Escopado por papel
+  - Admin/Superadmin: visualiza notificações do município.
+  - Usuário Comum: visualiza exclusivamente notificações direcionadas a ele ou gerais da equipe.
+Filtros suportados:
+  - nao_lidas=true: filtra apenas pendentes de leitura
+  - tipo: alerta_gargalo, prazo_vencendo, etc.
+Exemplo cURL:
+curl -X GET "${botApiBaseUrl}/notifications?nao_lidas=true" \\
+  -H "Authorization: Bearer ${curlToken}"
+
+5. SYSTEM PROMPT PRONTO PARA O AGENTE HERMES (EM PORTUGUÊS)
+--------------------------------------------------------------------------------
+Copie e cole as diretrizes abaixo no campo de System Prompt ou Instruções do seu Agente Hermes:
+
+"""
+Você é o Hermes, o assistente oficial de inteligência operacional da plataforma Bússola Jurídica Municipal 2.0 para a Prefeitura de ${tenantName || 'seu município'}.
+
+DIRETRIZES FUNDAMENTAIS:
+1. IDIOMA E TONALIDADE:
+   - Responda sempre em português brasileiro de forma clara, profissional, objetiva e segura.
+   - Apresente informações organizadas com listas com marcadores, datas no padrão DD/MM/AAAA e destaques em negrito.
+
+2. COMUNICAÇÃO COM A API:
+   - Sua URL base é: ${botApiBaseUrl}
+   - Em todas as requisições HTTP, envie obrigatoriamente o cabeçalho:
+     Authorization: Bearer ${rawKeyAvailable ? createdKeyData!.raw_key : '$BUSSOLA_API_KEY'}
+     (ou utilize o header equivalente: X-API-Key: ${rawKeyAvailable ? createdKeyData!.raw_key : '$BUSSOLA_API_KEY'})
+   - Para identificar o usuário conectado, prefeitura e limitações de acesso, realize primeiro uma chamada a:
+     GET ${botApiBaseUrl}/info
+
+3. RESPEITO ESTRITO AO RBAC E ESCOPO DE SEGURANÇA:
+   - A Bússola Jurídica isola os dados por chave no servidor:
+     * Usuários com papel de Administrador Municipal ou Superadministrador têm acesso global aos dados da prefeitura (${botApiBaseUrl}/projects/summary e ${botApiBaseUrl}/users são permitidos).
+     * Usuários com papel Comum (Servidores) têm visão estrita. Eles visualizam apenas seus próprios processos em /projects, seus próprios DFDs em /dfds, seus prazos em /deadlines e suas notificações em /notifications.
+   - Se um endpoint retornar HTTP 403 Forbidden com mensagem de permissão, explique educadamente ao usuário em português que a consulta agregada municipal é restrita a administradores e ofereça a alternativa permitida para o perfil dele.
+   - Jamais invente ou alucine dados jurídicos ou números de processos. Todas as respostas com dados da prefeitura devem ser baseadas estritamente nos retornos JSON recebidos dos endpoints oficiais da Bússola.
+
+4. ENDPOINTS DISPONÍVEIS:
+   - GET ${botApiBaseUrl}/ping -> Verificação de integridade
+   - GET ${botApiBaseUrl}/info -> Perfil do usuário autenticado, município e colunas
+   - GET ${botApiBaseUrl}/projects -> Projetos no Kanban (filtros: coluna, prioridade, busca)
+   - GET ${botApiBaseUrl}/projects/summary -> Resumo com contagem por coluna/prioridade (apenas Admins)
+   - GET ${botApiBaseUrl}/dfds -> DFDs (Documentos de Formalização de Demanda)
+   - GET ${botApiBaseUrl}/dfds/{id} -> Detalhes de um DFD específico
+   - GET ${botApiBaseUrl}/deadlines -> Prazos vencidos, da semana e futuros
+   - GET ${botApiBaseUrl}/users -> Lista de servidores municipais (apenas Admins)
+   - GET ${botApiBaseUrl}/notifications -> Notificações e avisos de gargalo
+"""
+================================================================================`
+  }
+
+  const handleCopyAllHermes = () => {
+    const fullText = generateHermesFullConfigBlock()
+    navigator.clipboard.writeText(fullText)
+    setCopiedAllHermes(true)
+    setTimeout(() => setCopiedAllHermes(false), 3000)
+    toast.success('Configuração completa copiada para a área de transferência!')
+  }
 
   const exampleQuestions = isUserAdminOrSuper
     ? [
@@ -257,18 +443,34 @@ export function BotIntegrationSection({
                 </p>
               </div>
             </div>
-            <Button
-              onClick={() => setCreateModalOpen(true)}
-              disabled={!hermesEnabled}
-              size="sm"
-              className="bg-[#1c2a3e] hover:bg-[#283b54] text-white text-xs h-8 gap-1.5 disabled:opacity-50"
-              title={
-                !hermesEnabled ? 'Integração Hermes desativada para esta prefeitura.' : undefined
-              }
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Nova Chave de API
-            </Button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                onClick={handleCopyAllHermes}
+                size="sm"
+                variant="outline"
+                className="border-indigo-200 text-indigo-700 bg-indigo-50/50 hover:bg-indigo-100 text-xs h-8 gap-1.5 font-medium shadow-none"
+                title="Copia URL base, chave, os 9 endpoints com cURL, variáveis Docker e o prompt do Hermes"
+              >
+                {copiedAllHermes ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5 text-indigo-600" />
+                )}
+                Copiar tudo para o Hermes
+              </Button>
+              <Button
+                onClick={() => setCreateModalOpen(true)}
+                disabled={!hermesEnabled}
+                size="sm"
+                className="bg-[#1c2a3e] hover:bg-[#283b54] text-white text-xs h-8 gap-1.5 disabled:opacity-50"
+                title={
+                  !hermesEnabled ? 'Integração Hermes desativada para esta prefeitura.' : undefined
+                }
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Nova Chave de API
+              </Button>
+            </div>
           </div>
 
           {!hermesEnabled && (
@@ -458,6 +660,134 @@ export function BotIntegrationSection({
             </div>
           </div>
 
+          {/* Card de Destaque: Botão Copiar Tudo para o Hermes + Instruções de Variáveis de Ambiente */}
+          <div className="rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50/70 via-purple-50/40 to-blue-50/60 p-4 sm:p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-md bg-indigo-600 text-white flex items-center justify-center">
+                    <Sparkles className="w-3.5 h-3.5" />
+                  </div>
+                  <h4 className="text-xs font-bold text-indigo-950 uppercase tracking-wide">
+                    Integração Rápida com Agente Hermes
+                  </h4>
+                </div>
+                <p className="text-xs text-indigo-900 leading-relaxed max-w-xl">
+                  Gere o pacote unificado pronto para colar no Hermes: inclui a{' '}
+                  <strong>URL Base</strong> ({botApiBaseUrl}), a <strong>Chave de API</strong> (com
+                  o valor integral se gerada agora ou instrução de criação), o catálogo completo dos{' '}
+                  <strong>9 endpoints</strong> e o <strong>Prompt do Agente</strong> em português.
+                </p>
+              </div>
+              <Button
+                type="button"
+                onClick={handleCopyAllHermes}
+                size="sm"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs h-9 px-4 gap-2 shrink-0 shadow-sm font-semibold"
+              >
+                {copiedAllHermes ? (
+                  <Check className="w-4 h-4 text-emerald-200" />
+                ) : (
+                  <Copy className="w-4 h-4" />
+                )}
+                {copiedAllHermes
+                  ? 'Copiado para a Área de Transferência!'
+                  : 'Copiar tudo para o Hermes'}
+              </Button>
+            </div>
+
+            {/* Instruções de Variáveis de Ambiente para o Docker do Hermes */}
+            <div className="border-t border-indigo-100/80 pt-3.5 space-y-2">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-900">
+                <Boxes className="w-4 h-4 text-indigo-600" />
+                <span>Variáveis de Ambiente para o Docker do Hermes</span>
+              </div>
+              <p className="text-[11px] text-indigo-800/90 leading-relaxed">
+                No painel do Gerenciador Docker do seu Hermes (aba{' '}
+                <em>Editor visual &gt; Ambiente</em>), adicione as duas variáveis obrigatórias:
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
+                <div className="p-2.5 rounded-lg bg-white/90 border border-indigo-100 flex items-center justify-between gap-2 shadow-2xs">
+                  <div className="min-w-0">
+                    <span className="text-[10px] text-gray-500 font-sans block">
+                      Nome da Variável:
+                    </span>
+                    <span className="font-semibold text-gray-800">BUSSOLA_API_URL</span>
+                    <span
+                      className="text-[11px] text-indigo-600 block truncate"
+                      title={botApiBaseUrl}
+                    >
+                      {botApiBaseUrl}
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 shrink-0 text-gray-500 hover:text-indigo-600"
+                    onClick={() => copyToClipboard(botApiBaseUrl, 'env_url')}
+                    title="Copiar URL"
+                  >
+                    {copiedSnippet === 'env_url' ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                  </Button>
+                </div>
+
+                <div className="p-2.5 rounded-lg bg-white/90 border border-indigo-100 flex items-center justify-between gap-2 shadow-2xs">
+                  <div className="min-w-0">
+                    <span className="text-[10px] text-gray-500 font-sans block">
+                      Nome da Variável:
+                    </span>
+                    <span className="font-semibold text-gray-800">BUSSOLA_API_KEY</span>
+                    <span
+                      className="text-[11px] text-indigo-600 block truncate"
+                      title={
+                        createdKeyData?.raw_key ||
+                        (activeKey
+                          ? `Chave ativa (prefixo ${activeKey.key_prefix})`
+                          : 'Gere uma chave')
+                      }
+                    >
+                      {createdKeyData?.raw_key ||
+                        (activeKey
+                          ? `Chave ativa (${activeKey.key_prefix}...)`
+                          : 'Clique em "Nova Chave de API"')}
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 shrink-0 text-gray-500 hover:text-indigo-600"
+                    onClick={() => {
+                      if (createdKeyData?.raw_key) {
+                        copyToClipboard(createdKeyData.raw_key, 'env_key')
+                      } else {
+                        toast.info(
+                          activeKey
+                            ? 'Copie a chave completa gerada ou gere uma nova chave nesta aba.'
+                            : 'Gere uma nova chave de API primeiro.',
+                        )
+                      }
+                    }}
+                    title={
+                      createdKeyData?.raw_key ? 'Copiar chave completa' : 'Instrução sobre a chave'
+                    }
+                  >
+                    {copiedSnippet === 'env_key' ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* URL Base e Autenticação */}
           <div className="space-y-2">
             <Label className="text-xs font-bold text-gray-700">
@@ -466,13 +796,13 @@ export function BotIntegrationSection({
             <div className="flex items-center gap-2">
               <Input
                 readOnly
-                value={`${baseUrl}/backend/v1/bot`}
+                value={botApiBaseUrl}
                 className="bg-gray-50 font-mono text-xs text-gray-700"
               />
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => copyToClipboard(`${baseUrl}/backend/v1/bot`, 'url_base')}
+                onClick={() => copyToClipboard(botApiBaseUrl, 'url_base')}
                 className="h-9 px-3 gap-1 text-xs shrink-0"
               >
                 {copiedSnippet === 'url_base' ? (
@@ -483,7 +813,7 @@ export function BotIntegrationSection({
                 Copiar
               </Button>
               <a
-                href={`${baseUrl}/backend/v1/bot`}
+                href={botApiBaseUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 px-2 py-1.5 rounded hover:bg-blue-50 transition-colors"
@@ -730,9 +1060,36 @@ export function BotIntegrationSection({
                     ) : (
                       <Copy className="w-3.5 h-3.5" />
                     )}
-                    Copiar
+                    Copiar Chave
                   </Button>
                 </div>
+              </div>
+
+              {/* Botão integrado de copiar tudo para o Hermes com o token recém-criado */}
+              <div className="p-3 rounded-lg border border-indigo-100 bg-indigo-50/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+                <div className="space-y-0.5">
+                  <span className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                    Pacote Completo para o Hermes
+                  </span>
+                  <p className="text-[11px] text-indigo-800">
+                    Copie a URL base, esta chave recém-gerada, variáveis Docker e o prompt do Hermes
+                    em um só bloco.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  onClick={handleCopyAllHermes}
+                  size="sm"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs h-8 px-3 gap-1.5 shrink-0"
+                >
+                  {copiedAllHermes ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-200" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
+                  Copiar tudo para o Hermes
+                </Button>
               </div>
 
               <div className="rounded-lg bg-slate-50 border border-slate-200 p-2.5 text-xs text-slate-700 space-y-0.5">
