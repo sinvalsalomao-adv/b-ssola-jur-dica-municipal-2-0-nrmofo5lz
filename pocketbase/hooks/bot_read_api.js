@@ -1,17 +1,18 @@
 // API de Integração com Bot (Hermes): Endpoints somente leitura estruturados em JSON
-// Autenticação exclusiva por Chave de API de Município (Authorization: Bearer <chave> ou X-API-Key: <chave>)
-// O município é estritamente derivado da chave — nenhum parâmetro de tenant externo é aceito.
+// Autenticação exclusiva por Chave de API vinculada a Usuário + Município (RBAC)
+// (Authorization: Bearer <chave> ou X-API-Key: <chave>)
+// O município e o usuário são estritamente derivados da chave — nenhum parâmetro de tenant ou de usuário externo é aceito.
 // Implementação 100% inline por rota, compatível com JSVM PocketBase 0.26 / goja.
 
 // --- 1. BOT INFO & CONTEXT ---
-console.log('[BOT_READ_API] Loading bot_read_api.js file into JSVM...')
+console.log('[BOT_READ_API] Loading bot_read_api.js file into JSVM (v0.0.106)...')
 
 // --- 0. PING / HEALTH TEST & BASE INFO ---
 routerAdd('GET', '/backend/v1/bot', (e) => {
   return e.json(200, {
     status: 'ok',
     message: 'Bússola Jurídica Municipal 2.0 - Bot Read API (Hermes)',
-    version: '0.0.105',
+    version: '0.0.106',
     ping: '/backend/v1/bot/ping',
     endpoints: [
       '/backend/v1/bot/ping',
@@ -32,10 +33,12 @@ routerAdd('GET', '/backend/v1/bot/ping', (e) => {
   return e.json(200, {
     status: 'ok',
     message: 'Bot Read API is active and healthy',
+    version: '0.0.106',
     timestamp: new Date().toISOString(),
   })
 })
 
+// --- 1. GET /backend/v1/bot/info (INFORMAÇÕES DA CHAVE, MUNICÍPIO E PAPEL VINCULADO) ---
 routerAdd('GET', '/backend/v1/bot/info', (e) => {
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
@@ -128,10 +131,58 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
     })
   }
 
+  // Resolução do usuário vinculado e do seu papel RBAC ao vivo no município
+  var userId = keyRecord.getString('user') || keyRecord.getString('created_by')
+  var userRec = null
+  if (userId) {
+    try {
+      userRec = $app.findFirstRecordByData('users', 'id', userId)
+    } catch (_) {}
+  }
+
+  if (!userRec) {
+    return e.json(403, {
+      code: 403,
+      error: 'USER_NOT_FOUND',
+      message: 'Usuário proprietário da chave não encontrado no sistema.',
+    })
+  }
+
+  if (userRec.getString('status') === 'inativo') {
+    return e.json(403, {
+      code: 403,
+      error: 'USER_INACTIVE',
+      message: 'O usuário associado a esta chave de API encontra-se inativo.',
+    })
+  }
+
+  // Verificar membership ativa do usuário neste tenant
+  var memRec = null
+  var memFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
+  var memParams = { userId: userRec.id, tenantId: tenantId, status: 'ativo' }
+  try {
+    var mems = $app.findRecordsByFilter('user_memberships', memFilter, '', 1, 0, memParams)
+    if (mems.length > 0) {
+      memRec = mems[0]
+    }
+  } catch (_) {}
+
+  if (!memRec) {
+    return e.json(403, {
+      code: 403,
+      error: 'MEMBERSHIP_INACTIVE',
+      message: 'O usuário associado a esta chave não possui mais vínculo ativo com este município.',
+    })
+  }
+
+  var liveRole = memRec.getString('role') || 'servidor'
+  var isSuperadmin = userRec.getString('role') === 'superadmin'
+  var isAdmin = isSuperadmin || liveRole === 'admin'
+
   return e.json(200, {
     status: 'ok',
     sistema: 'Bússola Jurídica Municipal 2.0',
-    versao: '0.0.105',
+    versao: '0.0.106',
     municipio: {
       id: tenantRec.id,
       nome: tenantRec.getString('name'),
@@ -139,10 +190,24 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
       cnpj: tenantRec.getString('cnpj'),
       status: tenantRec.getString('status'),
     },
+    usuario: {
+      id: userRec.id,
+      nome: userRec.getString('name') || '',
+      email: userRec.getString('email') || '',
+      papel_no_municipio: liveRole,
+      is_admin_ou_superior: isAdmin,
+    },
     chave: {
       nome: keyRecord.getString('name'),
       prefixo: keyRecord.getString('key_prefix'),
       criada_em: keyRecord.getString('created'),
+      papel_registro: keyRecord.getString('role_snapshot') || liveRole,
+    },
+    escopo: {
+      modo: isAdmin ? 'municipal_completo' : 'pessoal_estrito',
+      descricao: isAdmin
+        ? 'Acesso total aos dados e visões gerenciais da sua prefeitura.'
+        : 'Acesso restrito aos projetos, prazos e notificações atribuídos a você.',
     },
     colunas_kanban: [
       'Ideação',
@@ -157,7 +222,7 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
   })
 })
 
-// --- 2. LISTAR PROJETOS DO TENANT (COM FILTROS POR COLUNA, PRIORIDADE, RESPONSÁVEL) ---
+// --- 2. LISTAR PROJETOS (ESCOPADO: ADMIN VÊ DO MUNICÍPIO; SERVIDOR VÊ APENAS ATRIBUÍDOS/PARTICIPANTE) ---
 routerAdd('GET', '/backend/v1/bot/projects', (e) => {
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
@@ -237,6 +302,45 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
   } catch (_) {}
 
   var tenantId = keyRecord.getString('tenant')
+
+  // Resolver usuário e papel ao vivo
+  var userId = keyRecord.getString('user') || keyRecord.getString('created_by')
+  var userRec = null
+  if (userId) {
+    try {
+      userRec = $app.findFirstRecordByData('users', 'id', userId)
+    } catch (_) {}
+  }
+  if (!userRec || userRec.getString('status') === 'inativo') {
+    return e.json(403, {
+      code: 403,
+      error: 'USER_INACTIVE',
+      message: 'Usuário vinculado à chave inexistente ou inativo.',
+    })
+  }
+
+  var memFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
+  var memParams = { userId: userRec.id, tenantId: tenantId, status: 'ativo' }
+  var memRec = null
+  try {
+    var mems = $app.findRecordsByFilter('user_memberships', memFilter, '', 1, 0, memParams)
+    if (mems.length > 0) {
+      memRec = mems[0]
+    }
+  } catch (_) {}
+
+  if (!memRec) {
+    return e.json(403, {
+      code: 403,
+      error: 'MEMBERSHIP_INACTIVE',
+      message: 'Vínculo municipal inativo ou inexistente.',
+    })
+  }
+
+  var liveRole = memRec.getString('role') || 'servidor'
+  var isSuperadmin = userRec.getString('role') === 'superadmin'
+  var isAdmin = isSuperadmin || liveRole === 'admin'
+
   var query = reqInfo.query || {}
   var coluna = String(query.coluna || query.column || '').trim()
   var prioridade = String(query.prioridade || query.priority || '').trim()
@@ -246,6 +350,13 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
 
   var filter = 'tenant = {:tenantId}'
   var params = { tenantId: tenantId }
+
+  if (!isAdmin) {
+    // Servidor comum consulta apenas projetos aos quais tem acesso no app:
+    // projetos onde ele é o responsável direto
+    filter += ' && responsible_user = {:ownerUserId}'
+    params.ownerUserId = userRec.id
+  }
 
   if (coluna) {
     filter += ' && coluna_kanban = {:coluna}'
@@ -306,6 +417,7 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
 
     return e.json(200, {
       total: items.length,
+      escopo: isAdmin ? 'todos_do_municipio' : 'meus_projetos',
       projetos: items,
     })
   } catch (err) {
@@ -314,7 +426,7 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
   }
 })
 
-// --- 3. RESUMO / CONTAGEM DO KANBAN POR COLUNA E PRIORIDADE ---
+// --- 3. RESUMO AGREGADO DO KANBAN (EXCLUSIVO PARA ADMIN / SUPERADMIN — 403 PARA SERVIDOR COMUM) ---
 routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
@@ -351,6 +463,46 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
     return e.json(403, { code: 403, error: 'KEY_REVOKED', message: 'Chave de API revogada.' })
   }
 
+  var tenantId = keyRecord.getString('tenant')
+  var userId = keyRecord.getString('user') || keyRecord.getString('created_by')
+  var userRec = null
+  if (userId) {
+    try {
+      userRec = $app.findFirstRecordByData('users', 'id', userId)
+    } catch (_) {}
+  }
+  if (!userRec || userRec.getString('status') === 'inativo') {
+    return e.json(403, { code: 403, error: 'USER_INACTIVE', message: 'Usuário inativo.' })
+  }
+
+  var memFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
+  var memParams = { userId: userRec.id, tenantId: tenantId, status: 'ativo' }
+  var memRec = null
+  try {
+    var mems = $app.findRecordsByFilter('user_memberships', memFilter, '', 1, 0, memParams)
+    if (mems.length > 0) {
+      memRec = mems[0]
+    }
+  } catch (_) {}
+
+  if (!memRec) {
+    return e.json(403, { code: 403, error: 'MEMBERSHIP_INACTIVE', message: 'Vínculo inativo.' })
+  }
+
+  var liveRole = memRec.getString('role') || 'servidor'
+  var isSuperadmin = userRec.getString('role') === 'superadmin'
+  var isAdmin = isSuperadmin || liveRole === 'admin'
+
+  // Decisão 2: Endpoints agregados de toda a prefeitura ficam restritos a admin+
+  if (!isAdmin) {
+    return e.json(403, {
+      code: 403,
+      error: 'FORBIDDEN',
+      message:
+        'Visões agregadas e resumos de todo o município são restritos a administradores. Como servidor comum, consulte seus projetos em /backend/v1/bot/projects.',
+    })
+  }
+
   var now = Date.now()
   var cache = $app.store()
   var rateKey = 'bot_rate_' + keyRecord.id
@@ -374,7 +526,6 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
   }
   cache.set(rateKey, attempts + 1)
 
-  var tenantId = keyRecord.getString('tenant')
   var filter = 'tenant = {:tenantId}'
   var params = { tenantId: tenantId }
 
@@ -397,7 +548,6 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
       Baixa: 0,
     }
 
-    // Matriz cruzada coluna x prioridade
     var cruzado = {}
     var colunas = [
       'Ideação',
@@ -439,7 +589,7 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
   }
 })
 
-// --- 4. LISTAR DFDS DO TENANT ---
+// --- 4. LISTAR DFDS (ESCOPADO: ADMIN VÊ DO TENANT; SERVIDOR VÊ APENAS ATRIBUÍDOS A ELE) ---
 routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
@@ -472,6 +622,36 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
     return e.json(403, { code: 403, error: 'KEY_REVOKED', message: 'Chave revogada.' })
   }
 
+  var tenantId = keyRecord.getString('tenant')
+  var userId = keyRecord.getString('user') || keyRecord.getString('created_by')
+  var userRec = null
+  if (userId) {
+    try {
+      userRec = $app.findFirstRecordByData('users', 'id', userId)
+    } catch (_) {}
+  }
+  if (!userRec || userRec.getString('status') === 'inativo') {
+    return e.json(403, { code: 403, error: 'USER_INACTIVE', message: 'Usuário inativo.' })
+  }
+
+  var memFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
+  var memParams = { userId: userRec.id, tenantId: tenantId, status: 'ativo' }
+  var memRec = null
+  try {
+    var mems = $app.findRecordsByFilter('user_memberships', memFilter, '', 1, 0, memParams)
+    if (mems.length > 0) {
+      memRec = mems[0]
+    }
+  } catch (_) {}
+
+  if (!memRec) {
+    return e.json(403, { code: 403, error: 'MEMBERSHIP_INACTIVE', message: 'Vínculo inativo.' })
+  }
+
+  var liveRole = memRec.getString('role') || 'servidor'
+  var isSuperadmin = userRec.getString('role') === 'superadmin'
+  var isAdmin = isSuperadmin || liveRole === 'admin'
+
   var now = Date.now()
   var cache = $app.store()
   var rateKey = 'bot_rate_' + keyRecord.id
@@ -495,12 +675,16 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
   }
   cache.set(rateKey, attempts + 1)
 
-  var tenantId = keyRecord.getString('tenant')
   var query = reqInfo.query || {}
   var statusFilter = String(query.status || '').trim()
 
   var filter = 'tenant = {:tenantId}'
   var params = { tenantId: tenantId }
+
+  if (!isAdmin) {
+    filter += ' && responsible_user = {:ownerUserId}'
+    params.ownerUserId = userRec.id
+  }
 
   if (statusFilter) {
     filter += ' && status = {:status}'
@@ -552,6 +736,7 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
 
     return e.json(200, {
       total: items.length,
+      escopo: isAdmin ? 'todos_do_municipio' : 'meus_dfds',
       dfds: items,
     })
   } catch (err) {
@@ -559,7 +744,7 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
   }
 })
 
-// --- 5. DETALHE DE UM DFD POR ID (APENAS DO TENANT) ---
+// --- 5. DETALHE DE UM DFD POR ID (ISOLAMENTO MULTI-TENANT + RBAC DO USUÁRIO) ---
 routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
@@ -592,6 +777,36 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
     return e.json(403, { code: 403, error: 'KEY_REVOKED', message: 'Chave revogada.' })
   }
 
+  var tenantId = keyRecord.getString('tenant')
+  var userId = keyRecord.getString('user') || keyRecord.getString('created_by')
+  var userRec = null
+  if (userId) {
+    try {
+      userRec = $app.findFirstRecordByData('users', 'id', userId)
+    } catch (_) {}
+  }
+  if (!userRec || userRec.getString('status') === 'inativo') {
+    return e.json(403, { code: 403, error: 'USER_INACTIVE', message: 'Usuário inativo.' })
+  }
+
+  var memFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
+  var memParams = { userId: userRec.id, tenantId: tenantId, status: 'ativo' }
+  var memRec = null
+  try {
+    var mems = $app.findRecordsByFilter('user_memberships', memFilter, '', 1, 0, memParams)
+    if (mems.length > 0) {
+      memRec = mems[0]
+    }
+  } catch (_) {}
+
+  if (!memRec) {
+    return e.json(403, { code: 403, error: 'MEMBERSHIP_INACTIVE', message: 'Vínculo inativo.' })
+  }
+
+  var liveRole = memRec.getString('role') || 'servidor'
+  var isSuperadmin = userRec.getString('role') === 'superadmin'
+  var isAdmin = isSuperadmin || liveRole === 'admin'
+
   var dfdId = e.request.pathValue('id')
   if (!dfdId) {
     return e.json(400, { code: 400, error: 'BAD_REQUEST', message: 'ID do DFD obrigatório.' })
@@ -604,12 +819,21 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
     return e.json(404, { code: 404, error: 'NOT_FOUND', message: 'DFD não encontrado.' })
   }
 
-  // ISOLAMENTO RIGOROSO: Garantir que o DFD pertence ao mesmo tenant da chave
-  if (dfdRec.getString('tenant') !== keyRecord.getString('tenant')) {
+  // ISOLAMENTO RIGOROSO 1: Garantir que o DFD pertence ao mesmo tenant da chave
+  if (dfdRec.getString('tenant') !== tenantId) {
     return e.json(404, {
       code: 404,
       error: 'NOT_FOUND',
       message: 'DFD não encontrado no município.',
+    })
+  }
+
+  // ISOLAMENTO RIGOROSO 2 (RBAC Servidor Comum): Se não for admin, só pode acessar se for o responsável
+  if (!isAdmin && dfdRec.getString('responsible_user') !== userRec.id) {
+    return e.json(404, {
+      code: 404,
+      error: 'NOT_FOUND',
+      message: 'DFD não encontrado ou não atribuído ao seu usuário.',
     })
   }
 
@@ -658,7 +882,7 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
   })
 })
 
-// --- 6. CONSULTAR PRAZOS DO TENANT (VENCIDOS, DA SEMANA, PRÓXIMOS) ---
+// --- 6. CONSULTAR PRAZOS (VENCIDOS, DA SEMANA, PRÓXIMOS — ESCOPADO POR PAPEL) ---
 routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
@@ -692,8 +916,42 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
   }
 
   var tenantId = keyRecord.getString('tenant')
+  var userId = keyRecord.getString('user') || keyRecord.getString('created_by')
+  var userRec = null
+  if (userId) {
+    try {
+      userRec = $app.findFirstRecordByData('users', 'id', userId)
+    } catch (_) {}
+  }
+  if (!userRec || userRec.getString('status') === 'inativo') {
+    return e.json(403, { code: 403, error: 'USER_INACTIVE', message: 'Usuário inativo.' })
+  }
+
+  var memFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
+  var memParams = { userId: userRec.id, tenantId: tenantId, status: 'ativo' }
+  var memRec = null
+  try {
+    var mems = $app.findRecordsByFilter('user_memberships', memFilter, '', 1, 0, memParams)
+    if (mems.length > 0) {
+      memRec = mems[0]
+    }
+  } catch (_) {}
+
+  if (!memRec) {
+    return e.json(403, { code: 403, error: 'MEMBERSHIP_INACTIVE', message: 'Vínculo inativo.' })
+  }
+
+  var liveRole = memRec.getString('role') || 'servidor'
+  var isSuperadmin = userRec.getString('role') === 'superadmin'
+  var isAdmin = isSuperadmin || liveRole === 'admin'
+
   var filter = "tenant = {:tenantId} && prazo != ''"
   var params = { tenantId: tenantId }
+
+  if (!isAdmin) {
+    filter += ' && responsible_user = {:ownerUserId}'
+    params.ownerUserId = userRec.id
+  }
 
   try {
     var projectsWithDeadlines = $app.findRecordsByFilter(
@@ -747,6 +1005,7 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
 
     return e.json(200, {
       data_referencia: todayStr,
+      escopo: isAdmin ? 'todos_do_municipio' : 'meus_prazos',
       total_com_prazo: projectsWithDeadlines.length,
       contagem_vencidos: vencidos.length,
       contagem_da_semana: daSemana.length,
@@ -760,7 +1019,7 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
   }
 })
 
-// --- 7. CONSULTAR USUÁRIOS / SERVIDORES DO TENANT COM PAPÉIS ---
+// --- 7. CONSULTAR USUÁRIOS / SERVIDORES (EXCLUSIVO ADMIN / SUPERADMIN — 403 PARA COMUM) ---
 routerAdd('GET', '/backend/v1/bot/users', (e) => {
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
@@ -794,27 +1053,66 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
   }
 
   var tenantId = keyRecord.getString('tenant')
+  var userId = keyRecord.getString('user') || keyRecord.getString('created_by')
+  var userRec = null
+  if (userId) {
+    try {
+      userRec = $app.findFirstRecordByData('users', 'id', userId)
+    } catch (_) {}
+  }
+  if (!userRec || userRec.getString('status') === 'inativo') {
+    return e.json(403, { code: 403, error: 'USER_INACTIVE', message: 'Usuário inativo.' })
+  }
+
+  var memFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
+  var memParams = { userId: userRec.id, tenantId: tenantId, status: 'ativo' }
+  var memRec = null
+  try {
+    var mems = $app.findRecordsByFilter('user_memberships', memFilter, '', 1, 0, memParams)
+    if (mems.length > 0) {
+      memRec = mems[0]
+    }
+  } catch (_) {}
+
+  if (!memRec) {
+    return e.json(403, { code: 403, error: 'MEMBERSHIP_INACTIVE', message: 'Vínculo inativo.' })
+  }
+
+  var liveRole = memRec.getString('role') || 'servidor'
+  var isSuperadmin = userRec.getString('role') === 'superadmin'
+  var isAdmin = isSuperadmin || liveRole === 'admin'
+
+  // Decisão 2: Listagem geral de usuários do município é restrita a administradores
+  if (!isAdmin) {
+    return e.json(403, {
+      code: 403,
+      error: 'FORBIDDEN',
+      message:
+        'A listagem geral de usuários e servidores da prefeitura é restrita a administradores municipais.',
+    })
+  }
+
   var filter = 'tenant = {:tenantId}'
   var params = { tenantId: tenantId }
 
   try {
-    var mems = $app.findRecordsByFilter('user_memberships', filter, '-created', 200, 0, params)
+    var memsList = $app.findRecordsByFilter('user_memberships', filter, '-created', 200, 0, params)
     var users = []
 
-    for (var i = 0; i < mems.length; i++) {
-      var m = mems[i]
+    for (var i = 0; i < memsList.length; i++) {
+      var m = memsList[i]
       var uId = m.getString('user')
-      var uRec = null
+      var uRecord = null
       try {
-        uRec = $app.findFirstRecordByData('users', 'id', uId)
+        uRecord = $app.findFirstRecordByData('users', 'id', uId)
       } catch (_) {}
 
-      if (!uRec) continue
+      if (!uRecord) continue
 
       users.push({
-        id: uRec.id,
-        nome: uRec.getString('name') || '',
-        email: uRec.getString('email') || '',
+        id: uRecord.id,
+        nome: uRecord.getString('name') || '',
+        email: uRecord.getString('email') || '',
         papel_no_municipio: m.getString('role'),
         status_no_municipio: m.getString('status'),
         desde: m.getString('created'),
@@ -830,7 +1128,7 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
   }
 })
 
-// --- 8. CONSULTAR NOTIFICAÇÕES E ALERTAS DO TENANT ---
+// --- 8. CONSULTAR NOTIFICAÇÕES (ESCOPADO: ADMIN VÊ DO TENANT; SERVIDOR VÊ SUAS NOTIFICAÇÕES) ---
 routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
@@ -864,12 +1162,48 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
   }
 
   var tenantId = keyRecord.getString('tenant')
+  var userId = keyRecord.getString('user') || keyRecord.getString('created_by')
+  var userRec = null
+  if (userId) {
+    try {
+      userRec = $app.findFirstRecordByData('users', 'id', userId)
+    } catch (_) {}
+  }
+  if (!userRec || userRec.getString('status') === 'inativo') {
+    return e.json(403, { code: 403, error: 'USER_INACTIVE', message: 'Usuário inativo.' })
+  }
+
+  var memFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
+  var memParams = { userId: userRec.id, tenantId: tenantId, status: 'ativo' }
+  var memRec = null
+  try {
+    var mems = $app.findRecordsByFilter('user_memberships', memFilter, '', 1, 0, memParams)
+    if (mems.length > 0) {
+      memRec = mems[0]
+    }
+  } catch (_) {}
+
+  if (!memRec) {
+    return e.json(403, { code: 403, error: 'MEMBERSHIP_INACTIVE', message: 'Vínculo inativo.' })
+  }
+
+  var liveRole = memRec.getString('role') || 'servidor'
+  var isSuperadmin = userRec.getString('role') === 'superadmin'
+  var isAdmin = isSuperadmin || liveRole === 'admin'
+
   var query = reqInfo.query || {}
   var apenasNaoLidas = query.nao_lidas === 'true' || query.unread === 'true'
   var tipo = String(query.tipo || '').trim()
 
   var filter = 'tenant = {:tenantId}'
   var params = { tenantId: tenantId }
+
+  if (!isAdmin) {
+    // Servidor comum vê apenas notificações direcionadas a ele (target_user = userId)
+    // ou gerais da equipe sem destinatário exclusivo
+    filter += ' && (target_user = {:ownerUserId} || target_user = null || target_user = "")'
+    params.ownerUserId = userRec.id
+  }
 
   if (apenasNaoLidas) {
     filter += ' && lida = false'
@@ -900,6 +1234,7 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
 
     return e.json(200, {
       total: items.length,
+      escopo: isAdmin ? 'todas_do_municipio' : 'minhas_notificacoes',
       notificacoes: items,
     })
   } catch (err) {

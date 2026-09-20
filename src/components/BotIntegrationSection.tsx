@@ -8,11 +8,12 @@ import {
   Ban,
   Terminal,
   FileCode,
-  HelpCircle,
   AlertTriangle,
   Loader2,
   ExternalLink,
   ShieldCheck,
+  UserCheck,
+  Lock,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -30,6 +31,7 @@ import {
 import { toast } from 'sonner'
 import { formatDate } from '@/lib/dateUtils'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
+import { useAuth } from '@/context/AuthContext'
 import {
   listBotApiKeys,
   createBotApiKey,
@@ -44,6 +46,7 @@ interface BotIntegrationSectionProps {
 }
 
 export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSectionProps) {
+  const { user } = useAuth()
   const [keys, setKeys] = useState<BotApiKey[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -65,6 +68,14 @@ export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSe
     (typeof window !== 'undefined' ? window.location.origin : 'https://bussola.municipio.gov.br')
   ).replace(/\/+$/, '')
   const activeKey = keys.find((k) => k.status === 'ativa')
+
+  const isUserAdminOrSuper = user?.role === 'admin' || user?.role === 'superadmin'
+  const userRoleLabel =
+    user?.role === 'superadmin'
+      ? 'Superadministrador'
+      : user?.role === 'admin'
+        ? 'Administrador Municipal'
+        : 'Usuário Comum (Servidor)'
 
   const loadKeys = async () => {
     if (!tenantId) return
@@ -90,7 +101,7 @@ export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSe
       setCreatedKeyData(res)
       setCreateModalOpen(false)
       setNewKeyName('')
-      toast.success('Chave de API gerada com sucesso!')
+      toast.success('Chave de API vinculada gerada com sucesso!')
       await loadKeys()
     } catch (err) {
       toast.error('Falha ao gerar chave: ' + getErrorMessage(err))
@@ -133,36 +144,97 @@ export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSe
 
   const sampleToken = activeKey ? activeKey.key_prefix : 'bjm_suaChaveSecreta...'
 
-  const exampleQuestions = [
-    {
-      pergunta: 'Quantas ideações estão em andamento?',
-      endpoint: '/backend/v1/bot/projects/summary',
-      dica: 'Retorna a contagem exata na coluna "Ideação" em contagem_por_coluna.',
-    },
-    {
-      pergunta: 'Qual ideação está com prioridade baixa/média/alta?',
-      endpoint: '/backend/v1/bot/projects?coluna=Ideação&prioridade=Alta',
-      dica: 'Filtra os cards de Ideação pelo nível de prioridade especificado.',
-    },
-    {
-      pergunta: 'O que está na coluna Elaborar DFD do Kanban?',
-      endpoint: '/backend/v1/bot/projects?coluna=Elaborar DFD',
-      dica: 'Lista detalhada com título, responsável, objeto e prazo de cada card na coluna.',
-    },
-    {
-      pergunta: 'Quantos processos estão parados ou têm prazos vencidos?',
-      endpoint: '/backend/v1/bot/deadlines',
-      dica: 'Traz os vencidos da semana, hoje e próximos dias para o bot resumir.',
-    },
-    {
-      pergunta: 'Quem é o responsável por determinado projeto ou secretaria?',
-      endpoint: '/backend/v1/bot/users',
-      dica: 'Lista os servidores ativos no município com seus papéis e responsabilidades.',
-    },
-  ]
+  const exampleQuestions = isUserAdminOrSuper
+    ? [
+        {
+          pergunta: 'Quantas ideações estão em andamento na prefeitura?',
+          endpoint: '/backend/v1/bot/projects/summary',
+          dica: 'Resumo geral do Kanban em contagem_por_coluna (exclusivo para administradores).',
+          permissao: 'Admin/Superadmin',
+        },
+        {
+          pergunta: 'Qual ideação está com prioridade baixa/média/alta?',
+          endpoint: '/backend/v1/bot/projects?coluna=Ideação&prioridade=Alta',
+          dica: 'Filtra os cards de Ideação pelo nível de prioridade no município.',
+          permissao: 'Todos (Admin vê do município; Comum vê os seus)',
+        },
+        {
+          pergunta: 'O que está na coluna Elaborar DFD do Kanban?',
+          endpoint: '/backend/v1/bot/projects?coluna=Elaborar DFD',
+          dica: 'Lista detalhada com título, responsável, objeto e prazo.',
+          permissao: 'Todos (escopado por papel)',
+        },
+        {
+          pergunta: 'Quantos processos estão parados ou têm prazos vencidos?',
+          endpoint: '/backend/v1/bot/deadlines',
+          dica: 'Traz os vencidos da semana, hoje e próximos dias para o bot resumir.',
+          permissao: 'Todos (escopado por papel)',
+        },
+        {
+          pergunta: 'Quem são os servidores e procuradores ativos no município?',
+          endpoint: '/backend/v1/bot/users',
+          dica: 'Lista os servidores ativos com seus papéis municipais (exclusivo para administradores).',
+          permissao: 'Admin/Superadmin',
+        },
+      ]
+    : [
+        {
+          pergunta: 'Quais são os meus projetos em andamento?',
+          endpoint: '/backend/v1/bot/projects',
+          dica: 'Retorna exclusivamente os projetos onde você é o responsável.',
+          permissao: 'Usuário Comum',
+        },
+        {
+          pergunta: 'Quais prazos dos meus processos vencem esta semana?',
+          endpoint: '/backend/v1/bot/deadlines',
+          dica: 'Retorna prazos vencidos e próximos dias apenas dos seus projetos atribuídos.',
+          permissao: 'Usuário Comum',
+        },
+        {
+          pergunta: 'Quais DFDs estão sob minha responsabilidade?',
+          endpoint: '/backend/v1/bot/dfds',
+          dica: 'Lista os DFDs atribuídos ao seu usuário neste município.',
+          permissao: 'Usuário Comum',
+        },
+        {
+          pergunta: 'Tenho alguma notificação pendente de leitura?',
+          endpoint: '/backend/v1/bot/notifications?nao_lidas=true',
+          dica: 'Retorna alertas e comunicados direcionados a você.',
+          permissao: 'Usuário Comum',
+        },
+      ]
 
   return (
     <div className="space-y-6">
+      {/* Banner de Contexto RBAC da Sessão */}
+      <div className="rounded-lg bg-slate-900 text-white p-4 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <UserCheck className="w-4 h-4 text-emerald-400" />
+            <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">
+              Identidade RBAC de Emissão
+            </span>
+          </div>
+          <p className="text-sm font-bold text-white">
+            Esta chave consulta como <span className="text-blue-300">{userRoleLabel}</span> de{' '}
+            <span className="text-blue-300">{tenantName || 'este município'}</span>
+          </p>
+          <p className="text-xs text-slate-300">
+            {isUserAdminOrSuper
+              ? 'Permissão ampla: o bot Hermes consultará todos os projetos, prazos e resumos desta prefeitura.'
+              : 'Permissão estrita: o bot Hermes consultará apenas os projetos, prazos e notificações atribuídos a você.'}
+          </p>
+        </div>
+        <div className="shrink-0 flex items-center gap-2">
+          <Badge
+            variant="outline"
+            className="border-slate-700 bg-slate-800 text-slate-200 text-xs py-1"
+          >
+            {user?.email}
+          </Badge>
+        </div>
+      </div>
+
       {/* Bloco de Gestão das Chaves */}
       <Card className="bg-white border-0 shadow-subtle">
         <CardContent className="p-5 space-y-4">
@@ -175,8 +247,8 @@ export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSe
                 <h3 className="text-sm font-bold text-[#1c2a3e]">Chaves de API do Município</h3>
                 <p className="text-xs text-gray-500">
                   {tenantName
-                    ? `Escopadas exclusivamente à ${tenantName}`
-                    : 'Isolamento estrito por município'}
+                    ? `Escopadas a ${tenantName} com credencial do usuário emissor`
+                    : 'Isolamento estrito por município e usuário'}
                 </p>
               </div>
             </div>
@@ -201,7 +273,8 @@ export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSe
                 Nenhuma chave de API gerada para este município.
               </p>
               <p className="text-[11px] text-gray-400 mt-0.5">
-                Gere uma chave para permitir que o bot Hermes consulte dados com segurança.
+                Gere uma chave para permitir que o bot Hermes consulte dados com segurança e
+                isolamento por perfil.
               </p>
             </div>
           ) : (
@@ -209,10 +282,10 @@ export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSe
               {keys.map((k) => (
                 <div
                   key={k.id}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg border border-gray-100 bg-gray-50/50 hover:bg-gray-50 transition-colors gap-3"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-lg border border-gray-100 bg-gray-50/50 hover:bg-gray-50 transition-colors gap-3"
                 >
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs font-semibold text-gray-800">{k.name}</span>
                       <Badge
                         variant="outline"
@@ -224,8 +297,26 @@ export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSe
                       >
                         {k.status === 'ativa' ? 'Ativa' : 'Revogada'}
                       </Badge>
+                      {k.role_snapshot && (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] px-2 py-0 h-4 border-gray-200 text-gray-600 bg-white"
+                        >
+                          Papel:{' '}
+                          {k.role_snapshot === 'admin'
+                            ? 'Admin'
+                            : k.role_snapshot === 'superadmin'
+                              ? 'Superadmin'
+                              : 'Servidor Comum'}
+                        </Badge>
+                      )}
+                      {k.user_name && (
+                        <span className="text-[11px] text-gray-500">
+                          (Criada por: <strong>{k.user_name}</strong>)
+                        </span>
+                      )}
                     </div>
-                    <div className="flex items-center gap-3 text-[11px] text-gray-500 font-mono">
+                    <div className="flex items-center gap-3 text-[11px] text-gray-500 font-mono flex-wrap">
                       <span>Prefixo: {k.key_prefix}</span>
                       <span>•</span>
                       <span>Criada em: {formatDate(k.created)}</span>
@@ -263,17 +354,30 @@ export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSe
             </div>
           )}
 
-          <div className="rounded-lg bg-blue-50/50 border border-blue-100 p-3 text-xs text-blue-800 space-y-1">
-            <div className="flex items-center gap-1.5 font-semibold">
-              <ShieldCheck className="w-4 h-4 text-blue-600" />
-              <span>Garantia de Isolamento Multi-Tenant</span>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+            <div className="rounded-lg bg-blue-50/60 border border-blue-100 p-3 text-xs text-blue-900 space-y-1">
+              <div className="flex items-center gap-1.5 font-semibold">
+                <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0" />
+                <span>Isolamento Multi-Tenant Inviolável</span>
+              </div>
+              <p className="text-[11px] text-blue-700 leading-relaxed">
+                Toda chave tem escopo <strong>fixo ao município</strong>. As rotas do bot ignoram
+                parâmetros externos de município e derivam o contexto estritamente do registro da
+                chave. O Hermes nunca expõe dados de outra cidade.
+              </p>
             </div>
-            <p className="text-[11px] text-blue-700 leading-relaxed">
-              Toda chave gerada aqui tem escopo <strong>fixo e inalterável</strong> à prefeitura
-              selecionada. As rotas do bot recusam parâmetros manuais de município e extraem o
-              contexto diretamente da chave. Um Telegram configurado com esta chave jamais receberá
-              dados de outra cidade.
-            </p>
+
+            <div className="rounded-lg bg-purple-50/60 border border-purple-100 p-3 text-xs text-purple-900 space-y-1">
+              <div className="flex items-center gap-1.5 font-semibold">
+                <Lock className="w-4 h-4 text-purple-600 shrink-0" />
+                <span>Espelhamento de Papel (RBAC ao vivo)</span>
+              </div>
+              <p className="text-[11px] text-purple-700 leading-relaxed">
+                A chave resolve as permissões <strong>ao vivo</strong> a partir do vínculo do
+                usuário no banco. Um servidor comum consulta apenas o que é dele; resumos gerenciais
+                e listagens globais retornam 403 Forbidden.
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -304,8 +408,7 @@ export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSe
               </div>
               <p className="text-[11px] text-gray-600 leading-relaxed">
                 Abra o Telegram, procure por <code>@BotFather</code>, envie o comando{' '}
-                <code>/newbot</code> e siga as instruções para obter o{' '}
-                <strong>Telegram Bot Token</strong>.
+                <code>/newbot</code> e obtenha o <strong>Telegram Bot Token</strong>.
               </p>
             </div>
 
@@ -317,9 +420,8 @@ export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSe
                 <span className="text-xs font-bold text-gray-800">Configurar Agente Hermes</span>
               </div>
               <p className="text-[11px] text-gray-600 leading-relaxed">
-                Na plataforma Hermes, adicione o Token do Bot e defina a ferramenta de busca
-                apontando para a URL Base abaixo com o Header{' '}
-                <code>Authorization: Bearer &lt;chave&gt;</code>.
+                Na plataforma Hermes, informe o Token do Bot e configure a chamada de API usando a
+                URL Base abaixo com o Header <code>Authorization: Bearer &lt;chave&gt;</code>.
               </p>
             </div>
 
@@ -328,11 +430,11 @@ export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSe
                 <span className="w-5 h-5 rounded-full bg-[#1c2a3e] text-white text-[11px] font-bold flex items-center justify-center">
                   3
                 </span>
-                <span className="text-xs font-bold text-gray-800">Homologar Perguntas</span>
+                <span className="text-xs font-bold text-gray-800">Conversar com Segurança</span>
               </div>
               <p className="text-[11px] text-gray-600 leading-relaxed">
-                Inicie uma conversa no Telegram com seu bot e pergunte em português natural. O
-                Hermes consultará esta API em tempo real e montará as respostas.
+                Pergunte em português natural. As respostas serão rigorosamente escopadas ao seu
+                papel ({userRoleLabel}) e município ({tenantName}).
               </p>
             </div>
           </div>
@@ -380,11 +482,16 @@ export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSe
 
           {/* Catálogo de Endpoints e Perguntas Equivalentes */}
           <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Terminal className="w-4 h-4 text-[#1c2a3e]" />
-              <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider">
-                Exemplos de Perguntas e Endpoints Mapeados
-              </h4>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Terminal className="w-4 h-4 text-[#1c2a3e]" />
+                <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider">
+                  Exemplos de Perguntas para o seu Papel ({userRoleLabel})
+                </h4>
+              </div>
+              <Badge variant="outline" className="text-[10px] font-mono">
+                {isUserAdminOrSuper ? 'Visão de Gestão Municipal' : 'Visão de Servidor Responsável'}
+              </Badge>
             </div>
 
             <div className="space-y-2.5">
@@ -426,7 +533,10 @@ export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSe
                       )}
                     </button>
                   </div>
-                  <p className="text-[11px] text-gray-500">{q.dica}</p>
+                  <div className="flex items-center justify-between text-[11px] text-gray-500">
+                    <span>{q.dica}</span>
+                    <span className="text-[10px] text-gray-400 font-medium">{q.permissao}</span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -437,7 +547,7 @@ export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSe
             <div className="flex items-center gap-2">
               <FileCode className="w-4 h-4 text-[#1c2a3e]" />
               <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider">
-                Exemplo de Resposta Estruturada (JSON)
+                Exemplo de Resposta Estruturada (GET /backend/v1/bot/info)
               </h4>
             </div>
 
@@ -450,23 +560,20 @@ export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSe
                       {
                         status: 'ok',
                         sistema: 'Bússola Jurídica Municipal 2.0',
-                        total_projetos: 14,
-                        contagem_por_coluna: {
-                          Ideação: 3,
-                          'Projeto Executivo': 2,
-                          'Elaborar DFD': 4,
-                          'Procedimentos Internos': 2,
-                          Execução: 1,
-                          'Prestação de Contas': 1,
-                          Marketing: 1,
+                        versao: '0.0.106',
+                        municipio: {
+                          id: tenantId,
+                          nome: tenantName || 'Prefeitura de Exemplo',
+                          slug: 'prefeitura-exemplo',
                         },
-                        contagem_por_prioridade: {
-                          Alta: 5,
-                          Média: 6,
-                          Baixa: 3,
+                        usuario: {
+                          id: user?.id || 'usr_123',
+                          nome: user?.name || 'Servidor Municipal',
+                          papel_no_municipio: user?.role || 'servidor',
+                          is_admin_ou_superior: isUserAdminOrSuper,
                         },
-                        cruzamento_coluna_prioridade: {
-                          Ideação: { Alta: 1, Média: 2, Baixa: 0 },
+                        escopo: {
+                          modo: isUserAdminOrSuper ? 'municipal_completo' : 'pessoal_estrito',
                         },
                       },
                       null,
@@ -485,25 +592,23 @@ export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSe
                 )}
               </button>
               <pre className="text-[11px] text-gray-300">
-                {`// GET /backend/v1/bot/projects/summary
+                {`// GET /backend/v1/bot/info
 {
-  "total_projetos": 14,
-  "contagem_por_coluna": {
-    "Ideação": 3,
-    "Projeto Executivo": 2,
-    "Elaborar DFD": 4,
-    "Procedimentos Internos": 2,
-    "Execução": 1,
-    "Prestação de Contas": 1,
-    "Marketing": 1
+  "status": "ok",
+  "sistema": "Bússola Jurídica Municipal 2.0",
+  "versao": "0.0.106",
+  "municipio": {
+    "id": "${tenantId}",
+    "nome": "${tenantName || 'Prefeitura de Exemplo'}"
   },
-  "contagem_por_prioridade": {
-    "Alta": 5,
-    "Média": 6,
-    "Baixa": 3
+  "usuario": {
+    "id": "${user?.id || 'usr_123'}",
+    "nome": "${user?.name || 'Servidor'}",
+    "papel_no_municipio": "${user?.role || 'servidor'}",
+    "is_admin_ou_superior": ${isUserAdminOrSuper}
   },
-  "cruzamento_coluna_prioridade": {
-    "Ideação": { "Alta": 1, "Média": 2, "Baixa": 0 }
+  "escopo": {
+    "modo": "${isUserAdminOrSuper ? 'municipal_completo' : 'pessoal_estrito'}"
   }
 }`}
               </pre>
@@ -520,8 +625,8 @@ export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSe
               Gerar Nova Chave de API
             </DialogTitle>
             <DialogDescription className="text-xs text-gray-500">
-              Esta chave dará acesso <strong>somente leitura</strong> aos dados de{' '}
-              {tenantName || 'este município'}.
+              Esta chave herdará seu papel de <strong>{userRoleLabel}</strong> e dará acesso{' '}
+              <strong>somente leitura</strong> aos dados de {tenantName || 'este município'}.
             </DialogDescription>
           </DialogHeader>
 
@@ -534,6 +639,15 @@ export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSe
                 placeholder="Ex.: Hermes Telegram Gabinete"
                 className="mt-1 text-xs"
               />
+            </div>
+
+            <div className="rounded-lg bg-blue-50 border border-blue-200 p-2.5 text-xs text-blue-800 space-y-1">
+              <p className="font-semibold text-blue-900">Vínculo Automático:</p>
+              <p className="text-[11px] text-blue-700">
+                • Usuário: <strong>{user?.name || user?.email}</strong>
+                <br />• Papel Efetivo: <strong>{userRoleLabel}</strong>
+                <br />• Município Fixo: <strong>{tenantName || 'Selecionado'}</strong>
+              </p>
             </div>
           </div>
 
@@ -600,6 +714,17 @@ export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSe
                     Copiar
                   </Button>
                 </div>
+              </div>
+
+              <div className="rounded-lg bg-slate-50 border border-slate-200 p-2.5 text-xs text-slate-700 space-y-0.5">
+                <p className="font-semibold text-slate-800">Metadados da Chave:</p>
+                <p className="text-[11px] text-slate-600">
+                  Proprietário: <strong>{createdKeyData.user_name || createdKeyData.user}</strong> (
+                  {createdKeyData.role})
+                </p>
+                <p className="text-[11px] text-slate-600">
+                  Município: <strong>{createdKeyData.tenant_name || tenantName}</strong>
+                </p>
               </div>
 
               <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 space-y-1">

@@ -1339,14 +1339,14 @@ export const CANONICAL_SCHEMA_CONTRACT: SchemaContractDefinition = {
       name: 'bot_api_keys',
       type: 'base',
       apiRules: {
-        list: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
-        view: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+        list: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+        view: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
         create:
-          "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+          "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.status ?= 'ativo'))",
         update:
-          "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+          "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
         delete:
-          "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+          "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
       },
       fields: [
         {
@@ -1390,6 +1390,20 @@ export const CANONICAL_SCHEMA_CONTRACT: SchemaContractDefinition = {
           name: 'last_used_at',
           type: 'date',
           required: false,
+        },
+        {
+          name: 'user',
+          type: 'relation',
+          required: false,
+          collectionRef: 'users',
+          maxSelect: 1,
+        },
+        {
+          name: 'role_snapshot',
+          type: 'select',
+          required: false,
+          selectValues: ['superadmin', 'admin', 'servidor', 'gestor', 'secretario', 'procurador'],
+          maxSelect: 1,
         },
       ],
       indexes: [
@@ -2275,11 +2289,11 @@ migrate((app) => {
   app.save(new Collection({
     name: "bot_api_keys",
     type: "base",
-    listRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
-    viewRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
-    createRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
-    updateRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
-    deleteRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+    listRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+    viewRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+    createRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.status ?= 'ativo'))",
+    updateRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+    deleteRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
     fields: [
       { name: "tenant", type: "relation", required: true, collectionId: tenantsId, cascadeDelete: true, maxSelect: 1 },
       { name: "name", type: "text", required: true },
@@ -2289,12 +2303,15 @@ migrate((app) => {
       { name: "created_by", type: "relation", collectionId: "_pb_users_auth_", maxSelect: 1 },
       { name: "last_used_at", type: "date" },
       { name: "created", type: "autodate", onCreate: true, onUpdate: false },
-      { name: "updated", type: "autodate", onCreate: true, onUpdate: true }
+      { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
+      { name: "user", type: "relation", collectionId: "_pb_users_auth_", maxSelect: 1 },
+      { name: "role_snapshot", type: "select", values: ["superadmin", "admin", "servidor", "gestor", "secretario", "procurador"], maxSelect: 1 }
     ],
     indexes: [
       "CREATE INDEX idx_bot_api_keys_tenant ON bot_api_keys (tenant)",
       "CREATE UNIQUE INDEX idx_bot_api_keys_hash ON bot_api_keys (key_hash)",
-      "CREATE INDEX idx_bot_api_keys_status ON bot_api_keys (status)"
+      "CREATE INDEX idx_bot_api_keys_status ON bot_api_keys (status)",
+      "CREATE INDEX idx_bot_api_keys_user ON bot_api_keys (user)"
     ]
   }));
 }, (app) => {});

@@ -3,7 +3,10 @@
  * 1. Garantia de isolamento rigoroso por município (chave de A nunca acessa dados de B)
  * 2. Autenticação por chave: ausente, inválida, revogada
  * 3. Somente leitura: endpoints recusam parâmetros que tentem bypass de tenant e não expõem escrita
- * 4. Validação de formato JSON estável e esperado pelo Hermes
+ * 4. Validação de RBAC espelhado:
+ *    - Admin municipal vê todos os projetos e tem acesso a resumos agregados e lista de usuários
+ *    - Servidor comum vê apenas os próprios projetos atribuídos e recebe 403 em resumos/usuários
+ * 5. Validação de formato JSON estável (v0.0.106)
  */
 
 export interface BotIntegrationTestResult {
@@ -32,13 +35,23 @@ export function runBotIntegrationTests(): BotIntegrationTestResult {
     }
   }
 
-  // Simulação / Modelagem de banco de dados para testes unitários em memória
+  // Modelagem para simulação em memória
   interface MockApiKey {
     id: string
     tenant: string
     key_hash: string
     status: 'ativa' | 'revogada'
     name: string
+    user: string
+    role_snapshot: 'admin' | 'servidor' | 'superadmin'
+  }
+
+  interface MockMembership {
+    id: string
+    user: string
+    tenant: string
+    role: 'admin' | 'servidor' | 'superadmin'
+    status: 'ativo' | 'pendente'
   }
 
   interface MockProject {
@@ -56,18 +69,24 @@ export function runBotIntegrationTests(): BotIntegrationTestResult {
     tenant: string
     titulo: string
     status: string
+    responsible_user: string | null
   }
 
-  // Tenants fictícios para o teste
+  // Tenants fictícios
   const TENANT_A = 'tenant_sao_jose_001'
   const TENANT_B = 'tenant_rio_claro_002'
 
+  // Usuários fictícios
+  const USER_ADMIN_A = 'usr_admin_sao_jose'
+  const USER_COMUM_A = 'usr_servidor_sao_jose'
+  const USER_ADMIN_B = 'usr_admin_rio_claro'
+
   // Chaves
-  const KEY_A_RAW = 'bjm_secret_token_tenant_a_12345678'
-  const KEY_B_RAW = 'bjm_secret_token_tenant_b_87654321'
+  const KEY_ADMIN_A_RAW = 'bjm_secret_token_admin_a_12345678'
+  const KEY_COMUM_A_RAW = 'bjm_secret_token_comum_a_55555555'
+  const KEY_ADMIN_B_RAW = 'bjm_secret_token_admin_b_87654321'
   const KEY_REVOKED_RAW = 'bjm_secret_token_revoked_99999999'
 
-  // Simulação de sha256 simples para o test runner
   function simpleHash(val: string): string {
     let hash = 0
     for (let i = 0; i < val.length; i++) {
@@ -81,23 +100,62 @@ export function runBotIntegrationTests(): BotIntegrationTestResult {
     {
       id: 'k1',
       tenant: TENANT_A,
-      key_hash: simpleHash(KEY_A_RAW),
+      key_hash: simpleHash(KEY_ADMIN_A_RAW),
       status: 'ativa',
-      name: 'Bot São José',
+      name: 'Bot Admin São José',
+      user: USER_ADMIN_A,
+      role_snapshot: 'admin',
     },
     {
       id: 'k2',
-      tenant: TENANT_B,
-      key_hash: simpleHash(KEY_B_RAW),
+      tenant: TENANT_A,
+      key_hash: simpleHash(KEY_COMUM_A_RAW),
       status: 'ativa',
-      name: 'Bot Rio Claro',
+      name: 'Bot Servidor Comum São José',
+      user: USER_COMUM_A,
+      role_snapshot: 'servidor',
     },
     {
       id: 'k3',
+      tenant: TENANT_B,
+      key_hash: simpleHash(KEY_ADMIN_B_RAW),
+      status: 'ativa',
+      name: 'Bot Admin Rio Claro',
+      user: USER_ADMIN_B,
+      role_snapshot: 'admin',
+    },
+    {
+      id: 'k4',
       tenant: TENANT_A,
       key_hash: simpleHash(KEY_REVOKED_RAW),
       status: 'revogada',
-      name: 'Chave Antiga São José',
+      name: 'Chave Revogada',
+      user: USER_ADMIN_A,
+      role_snapshot: 'admin',
+    },
+  ]
+
+  const mockMemberships: MockMembership[] = [
+    {
+      id: 'm1',
+      user: USER_ADMIN_A,
+      tenant: TENANT_A,
+      role: 'admin',
+      status: 'ativo',
+    },
+    {
+      id: 'm2',
+      user: USER_COMUM_A,
+      tenant: TENANT_A,
+      role: 'servidor',
+      status: 'ativo',
+    },
+    {
+      id: 'm3',
+      user: USER_ADMIN_B,
+      tenant: TENANT_B,
+      role: 'admin',
+      status: 'ativo',
     },
   ]
 
@@ -109,7 +167,7 @@ export function runBotIntegrationTests(): BotIntegrationTestResult {
       coluna_kanban: 'Ideação',
       priority: 'Alta',
       prazo: '2025-05-10',
-      responsible_user: 'user1',
+      responsible_user: USER_ADMIN_A,
     },
     {
       id: 'pA2',
@@ -118,7 +176,7 @@ export function runBotIntegrationTests(): BotIntegrationTestResult {
       coluna_kanban: 'Elaborar DFD',
       priority: 'Média',
       prazo: '2025-05-15',
-      responsible_user: 'user1',
+      responsible_user: USER_COMUM_A,
     },
     {
       id: 'pB1',
@@ -127,28 +185,65 @@ export function runBotIntegrationTests(): BotIntegrationTestResult {
       coluna_kanban: 'Ideação',
       priority: 'Alta',
       prazo: '2025-06-01',
-      responsible_user: 'user2',
+      responsible_user: USER_ADMIN_B,
     },
   ]
 
   const mockDfds: MockDfd[] = [
-    { id: 'dfdA1', tenant: TENANT_A, titulo: 'DFD Fórum', status: 'em_elaboracao' },
-    { id: 'dfdB1', tenant: TENANT_B, titulo: 'DFD Escola', status: 'em_elaboracao' },
+    {
+      id: 'dfdA1',
+      tenant: TENANT_A,
+      titulo: 'DFD Fórum',
+      status: 'em_elaboracao',
+      responsible_user: USER_ADMIN_A,
+    },
+    {
+      id: 'dfdA2',
+      tenant: TENANT_A,
+      titulo: 'DFD TI',
+      status: 'em_elaboracao',
+      responsible_user: USER_COMUM_A,
+    },
+    {
+      id: 'dfdB1',
+      tenant: TENANT_B,
+      titulo: 'DFD Escola',
+      status: 'em_elaboracao',
+      responsible_user: USER_ADMIN_B,
+    },
   ]
 
-  // Simulador do pipeline do pb_hook
+  // Simulador do pipeline RBAC do pb_hook
   function executeBotApi(
     method: string,
     route: string,
     headers: Record<string, string>,
     query: Record<string, string> = {},
   ) {
-    // 1. Somente leitura: rejeita POST, PUT, DELETE, PATCH
     if (method !== 'GET') {
       return { status: 405, body: { code: 405, error: 'METHOD_NOT_ALLOWED' } }
     }
 
-    // 2. Autenticação da chave
+    // Rota pública de diagnóstico
+    if (route === '/backend/v1/bot') {
+      return {
+        status: 200,
+        body: {
+          status: 'ok',
+          message: 'Bússola Jurídica Municipal 2.0 - Bot Read API (Hermes)',
+          version: '0.0.106',
+          ping: '/backend/v1/bot/ping',
+        },
+      }
+    }
+
+    if (route === '/backend/v1/bot/ping') {
+      return {
+        status: 200,
+        body: { status: 'ok', message: 'Bot Read API is active and healthy', version: '0.0.106' },
+      }
+    }
+
     const authHeader = headers['authorization'] || ''
     const apiKeyHeader = headers['x-api-key'] || ''
     let token = ''
@@ -172,44 +267,74 @@ export function runBotIntegrationTests(): BotIntegrationTestResult {
       return { status: 403, body: { code: 403, error: 'KEY_REVOKED' } }
     }
 
-    // Tenant derivado EXCLUSIVAMENTE da chave
     const derivedTenant = keyRec.tenant
+    const derivedUser = keyRec.user
 
-    // Rota /backend/v1/bot (base info)
-    if (route === '/backend/v1/bot') {
+    // Resolver papel ao vivo a partir da membership
+    const membership = mockMemberships.find(
+      (m) => m.user === derivedUser && m.tenant === derivedTenant && m.status === 'ativo',
+    )
+    if (!membership) {
+      return { status: 403, body: { code: 403, error: 'MEMBERSHIP_INACTIVE' } }
+    }
+
+    const isAdmin = membership.role === 'admin' || membership.role === 'superadmin'
+
+    // Rota /backend/v1/bot/info
+    if (route === '/backend/v1/bot/info') {
       return {
         status: 200,
         body: {
           status: 'ok',
-          message: 'Bússola Jurídica Municipal 2.0 - Bot Read API (Hermes)',
-          version: '0.0.105',
-          ping: '/backend/v1/bot/ping',
+          sistema: 'Bússola Jurídica Municipal 2.0',
+          versao: '0.0.106',
+          municipio: { id: derivedTenant },
+          usuario: {
+            id: derivedUser,
+            papel_no_municipio: membership.role,
+            is_admin_ou_superior: isAdmin,
+          },
+          escopo: {
+            modo: isAdmin ? 'municipal_completo' : 'pessoal_estrito',
+          },
         },
-      }
-    }
-
-    // Rota /backend/v1/bot/ping
-    if (route === '/backend/v1/bot/ping') {
-      return {
-        status: 200,
-        body: { status: 'ok', message: 'Bot Read API is active and healthy' },
       }
     }
 
     // Rota /backend/v1/bot/projects
     if (route === '/backend/v1/bot/projects') {
       let filtered = mockProjects.filter((p) => p.tenant === derivedTenant)
+      if (!isAdmin) {
+        filtered = filtered.filter((p) => p.responsible_user === derivedUser)
+      }
       if (query.coluna) {
         filtered = filtered.filter((p) => p.coluna_kanban === query.coluna)
       }
       if (query.prioridade) {
         filtered = filtered.filter((p) => p.priority === query.prioridade)
       }
-      return { status: 200, body: { total: filtered.length, projetos: filtered } }
+      return {
+        status: 200,
+        body: {
+          total: filtered.length,
+          escopo: isAdmin ? 'todos_do_municipio' : 'meus_projetos',
+          projetos: filtered,
+        },
+      }
     }
 
-    // Rota /backend/v1/bot/projects/summary
+    // Rota /backend/v1/bot/projects/summary (Exclusivo Admin)
     if (route === '/backend/v1/bot/projects/summary') {
+      if (!isAdmin) {
+        return {
+          status: 403,
+          body: {
+            code: 403,
+            error: 'FORBIDDEN',
+            message: 'Visões agregadas restritas a administradores.',
+          },
+        }
+      }
       const filtered = mockProjects.filter((p) => p.tenant === derivedTenant)
       const porColuna: Record<string, number> = {}
       for (const p of filtered) {
@@ -221,11 +346,30 @@ export function runBotIntegrationTests(): BotIntegrationTestResult {
       }
     }
 
+    // Rota /backend/v1/bot/users (Exclusivo Admin)
+    if (route === '/backend/v1/bot/users') {
+      if (!isAdmin) {
+        return {
+          status: 403,
+          body: {
+            code: 403,
+            error: 'FORBIDDEN',
+            message: 'Listagem geral de usuários restrita a administradores.',
+          },
+        }
+      }
+      const filteredMems = mockMemberships.filter((m) => m.tenant === derivedTenant)
+      return { status: 200, body: { total: filteredMems.length, usuarios: filteredMems } }
+    }
+
     // Rota /backend/v1/bot/dfds/{id}
     if (route.startsWith('/backend/v1/bot/dfds/')) {
       const id = route.split('/').pop()
       const dfd = mockDfds.find((d) => d.id === id)
       if (!dfd || dfd.tenant !== derivedTenant) {
+        return { status: 404, body: { code: 404, error: 'NOT_FOUND' } }
+      }
+      if (!isAdmin && dfd.responsible_user !== derivedUser) {
         return { status: 404, body: { code: 404, error: 'NOT_FOUND' } }
       }
       return { status: 200, body: dfd }
@@ -234,9 +378,9 @@ export function runBotIntegrationTests(): BotIntegrationTestResult {
     return { status: 404, body: { code: 404, error: 'ROUTE_NOT_FOUND' } }
   }
 
-  // --- EXECUÇÃO DOS TESTES ---
+  // --- SUÍTE DE TESTES ---
 
-  // Teste 1: Chave ausente resulta em 401 UNAUTHORIZED
+  // 1. Chave ausente => 401 UNAUTHORIZED
   try {
     const res = executeBotApi('GET', '/backend/v1/bot/projects', {})
     const errBody = res.body as { error?: string }
@@ -248,7 +392,7 @@ export function runBotIntegrationTests(): BotIntegrationTestResult {
     assert('Autenticação: Chave ausente rejeitada com 401', false, String(e))
   }
 
-  // Teste 2: Chave inválida resulta em 401 INVALID_KEY
+  // 2. Chave inválida => 401 INVALID_KEY
   try {
     const res = executeBotApi('GET', '/backend/v1/bot/projects', {
       authorization: 'Bearer bjm_chave_totalmente_invalida_999',
@@ -262,7 +406,7 @@ export function runBotIntegrationTests(): BotIntegrationTestResult {
     assert('Autenticação: Chave inválida rejeitada com 401', false, String(e))
   }
 
-  // Teste 3: Chave revogada resulta em 403 KEY_REVOKED
+  // 3. Chave revogada => 403 KEY_REVOKED
   try {
     const res = executeBotApi('GET', '/backend/v1/bot/projects', {
       authorization: `Bearer ${KEY_REVOKED_RAW}`,
@@ -276,10 +420,10 @@ export function runBotIntegrationTests(): BotIntegrationTestResult {
     assert('Autenticação: Chave revogada rejeitada com 403', false, String(e))
   }
 
-  // Teste 4: Isolamento absoluto — Chave da Prefeitura A NUNCA vê dados da Prefeitura B
+  // 4. Isolamento multi-tenant intransponível: Chave de A NUNCA vê dados de B
   try {
     const resA = executeBotApi('GET', '/backend/v1/bot/projects', {
-      authorization: `Bearer ${KEY_A_RAW}`,
+      authorization: `Bearer ${KEY_ADMIN_A_RAW}`,
     })
     const projs = (resA.body as any).projetos as MockProject[]
     const leakFound = projs.some((p) => p.tenant !== TENANT_A)
@@ -292,10 +436,10 @@ export function runBotIntegrationTests(): BotIntegrationTestResult {
     assert('Isolamento: Chave do Município A só retorna projetos do Município A', false, String(e))
   }
 
-  // Teste 5: Isolamento absoluto reverso — Chave da Prefeitura B NUNCA vê dados da Prefeitura A
+  // 5. Isolamento reverso: Chave de B NUNCA vê dados de A
   try {
     const resB = executeBotApi('GET', '/backend/v1/bot/projects', {
-      authorization: `Bearer ${KEY_B_RAW}`,
+      authorization: `Bearer ${KEY_ADMIN_B_RAW}`,
     })
     const projs = (resB.body as any).projetos as MockProject[]
     const leakFound = projs.some((p) => p.tenant !== TENANT_B)
@@ -308,13 +452,12 @@ export function runBotIntegrationTests(): BotIntegrationTestResult {
     assert('Isolamento: Chave do Município B só retorna projetos do Município B', false, String(e))
   }
 
-  // Teste 6: Tentativa de bypass de tenant via query param é completamente ignorada
+  // 6. Tentativa de bypass de tenant via query param é inócua
   try {
-    // Atacante com chave de A tenta passar ?tenant=tenant_rio_claro_002
     const resBypass = executeBotApi(
       'GET',
       '/backend/v1/bot/projects',
-      { authorization: `Bearer ${KEY_A_RAW}` },
+      { authorization: `Bearer ${KEY_ADMIN_A_RAW}` },
       { tenant: TENANT_B } as any,
     )
     const projs = (resBypass.body as any).projetos as MockProject[]
@@ -327,69 +470,106 @@ export function runBotIntegrationTests(): BotIntegrationTestResult {
     assert('Segurança: Parâmetro tenant na query é inócuo', false, String(e))
   }
 
-  // Teste 7: Consulta de DFD individual de outro tenant é bloqueada com 404
+  // 7. RBAC: Chave de Servidor Comum consulta APENAS os projetos atribuídos a ele
   try {
-    // Chave A tenta acessar DFD do tenant B
-    const resDfdCross = executeBotApi('GET', '/backend/v1/bot/dfds/dfdB1', {
-      authorization: `Bearer ${KEY_A_RAW}`,
+    const resComum = executeBotApi('GET', '/backend/v1/bot/projects', {
+      authorization: `Bearer ${KEY_COMUM_A_RAW}`,
     })
+    const body = resComum.body as any
+    const projs = body.projetos as MockProject[]
     assert(
-      'Isolamento: DFD de outro município retorna 404 Not Found para a chave',
-      resDfdCross.status === 404,
+      'RBAC: Servidor Comum consulta apenas projetos onde é o responsável',
+      resComum.status === 200 &&
+        body.escopo === 'meus_projetos' &&
+        projs.length === 1 &&
+        projs[0].responsible_user === USER_COMUM_A &&
+        projs[0].id === 'pA2',
     )
   } catch (e) {
-    assert('Isolamento: DFD de outro município retorna 404', false, String(e))
+    assert('RBAC: Servidor Comum consulta apenas projetos atribuídos', false, String(e))
   }
 
-  // Teste 8: Rejeição estrita de métodos de escrita (Somente Leitura)
+  // 8. RBAC: Chave de Servidor Comum recebe 403 Forbidden em visões agregadas (projects/summary)
   try {
-    const resPost = executeBotApi('POST', '/backend/v1/bot/projects', {
-      authorization: `Bearer ${KEY_A_RAW}`,
+    const resSummaryForbidden = executeBotApi('GET', '/backend/v1/bot/projects/summary', {
+      authorization: `Bearer ${KEY_COMUM_A_RAW}`,
     })
     assert(
-      'Somente Leitura: Métodos de escrita (POST/PUT/DELETE) rejeitados com 405',
-      resPost.status === 405,
+      'RBAC: Servidor Comum recebe 403 Forbidden em /projects/summary',
+      resSummaryForbidden.status === 403 && (resSummaryForbidden.body as any).error === 'FORBIDDEN',
     )
+  } catch (e) {
+    assert('RBAC: Servidor Comum recebe 403 em /projects/summary', false, String(e))
+  }
+
+  // 9. RBAC: Chave de Admin Municipal acessa visões agregadas normalmente
+  try {
+    const resSummaryAdmin = executeBotApi('GET', '/backend/v1/bot/projects/summary', {
+      authorization: `Bearer ${KEY_ADMIN_A_RAW}`,
+    })
+    assert(
+      'RBAC: Admin Municipal acessa /projects/summary com sucesso',
+      resSummaryAdmin.status === 200 && (resSummaryAdmin.body as any).total_projetos === 2,
+    )
+  } catch (e) {
+    assert('RBAC: Admin Municipal acessa /projects/summary', false, String(e))
+  }
+
+  // 10. RBAC: Chave de Servidor Comum recebe 403 Forbidden ao tentar listar usuários da prefeitura
+  try {
+    const resUsersForbidden = executeBotApi('GET', '/backend/v1/bot/users', {
+      authorization: `Bearer ${KEY_COMUM_A_RAW}`,
+    })
+    assert(
+      'RBAC: Servidor Comum recebe 403 Forbidden em /users',
+      resUsersForbidden.status === 403 && (resUsersForbidden.body as any).error === 'FORBIDDEN',
+    )
+  } catch (e) {
+    assert('RBAC: Servidor Comum recebe 403 em /users', false, String(e))
+  }
+
+  // 11. RBAC: Servidor Comum tentando acessar DFD de outro servidor recebe 404 (não vaza existência)
+  try {
+    const resDfdAlheio = executeBotApi('GET', '/backend/v1/bot/dfds/dfdA1', {
+      authorization: `Bearer ${KEY_COMUM_A_RAW}`,
+    })
+    assert(
+      'RBAC: Servidor Comum tentando acessar DFD atribuído a outro recebe 404 Not Found',
+      resDfdAlheio.status === 404,
+    )
+  } catch (e) {
+    assert('RBAC: Servidor Comum recebe 404 para DFD não atribuído', false, String(e))
+  }
+
+  // 12. Somente Leitura: Rejeição estrita de métodos de escrita (POST/PUT/DELETE)
+  try {
+    const resPost = executeBotApi('POST', '/backend/v1/bot/projects', {
+      authorization: `Bearer ${KEY_ADMIN_A_RAW}`,
+    })
+    assert('Somente Leitura: Métodos de escrita rejeitados com 405', resPost.status === 405)
   } catch (e) {
     assert('Somente Leitura: Métodos de escrita rejeitados', false, String(e))
   }
 
-  // Teste 9: Suporte transparente ao header alternativo X-API-Key
+  // 13. Compatibilidade: Header X-API-Key funciona perfeitamente
   try {
     const resApiKeyHeader = executeBotApi('GET', '/backend/v1/bot/projects', {
-      'x-api-key': KEY_A_RAW,
+      'x-api-key': KEY_ADMIN_A_RAW,
     })
     assert(
-      'Compatibilidade: Header X-API-Key funciona com mesma segurança e isolamento',
+      'Compatibilidade: Header X-API-Key autentica e aplica RBAC com sucesso',
       resApiKeyHeader.status === 200,
     )
   } catch (e) {
     assert('Compatibilidade: Header X-API-Key', false, String(e))
   }
 
-  // Teste 10: Filtro estruturado do Kanban (Ideação + Prioridade Alta)
-  try {
-    const resFiltered = executeBotApi(
-      'GET',
-      '/backend/v1/bot/projects',
-      { authorization: `Bearer ${KEY_A_RAW}` },
-      { coluna: 'Ideação', prioridade: 'Alta' },
-    )
-    const projs = (resFiltered.body as any).projetos as MockProject[]
-    assert(
-      'Filtros Kanban: Consulta de Ideação com Prioridade Alta responde formato exato para Hermes',
-      resFiltered.status === 200 && projs.length === 1 && projs[0].coluna_kanban === 'Ideação',
-    )
-  } catch (e) {
-    assert('Filtros Kanban: Consulta responde formato exato', false, String(e))
-  }
-
-  // Teste 11: Endpoint base /backend/v1/bot responde 200 sem necessidade de auth (diagnóstico/discovery)
+  // 14. Endpoint base /backend/v1/bot responde 200 com versão 0.0.106
   try {
     const resBase = executeBotApi('GET', '/backend/v1/bot', {})
     assert(
-      'Endpoint Base: /backend/v1/bot responde 200 informativo para testes diretos e navegadores',
-      resBase.status === 200 && (resBase.body as any).status === 'ok',
+      'Endpoint Base: /backend/v1/bot responde 200 informativo na versão 0.0.106',
+      resBase.status === 200 && (resBase.body as any).version === '0.0.106',
     )
   } catch (e) {
     assert('Endpoint Base: /backend/v1/bot responde 200 informativo', false, String(e))

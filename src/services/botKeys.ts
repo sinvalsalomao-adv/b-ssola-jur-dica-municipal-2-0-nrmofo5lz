@@ -6,6 +6,10 @@ export interface BotApiKey {
   name: string
   key_prefix: string
   status: 'ativa' | 'revogada'
+  user?: string | null
+  user_name?: string
+  user_email?: string
+  role_snapshot?: string | null
   last_used_at?: string | null
   created: string
   updated: string
@@ -15,15 +19,19 @@ export interface BotApiKey {
 export interface CreateBotKeyResponse {
   id: string
   tenant: string
+  tenant_name?: string
   name: string
   key_prefix: string
   raw_key: string
   status: 'ativa'
+  user: string
+  user_name?: string
+  role: string
   created: string
 }
 
 /**
- * Cria/gera uma nova chave de API para o município informado.
+ * Cria/gera uma nova chave de API vinculada ao usuário autenticado e ao município informado.
  * A chave em texto claro é retornada apenas nesta resposta e nunca mais.
  */
 export async function createBotApiKey(
@@ -42,6 +50,7 @@ export async function createBotApiKey(
 
 /**
  * Lista as chaves de API do município (apenas prefixos mascarados).
+ * Admin vê as chaves do município; usuário comum vê as suas próprias.
  */
 export async function listBotApiKeys(tenantId: string): Promise<BotApiKey[]> {
   const res = await pb.send<BotApiKey[]>('/backend/v1/bot-keys/list', {
