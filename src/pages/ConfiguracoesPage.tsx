@@ -8,6 +8,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { COLUMNS } from '@/types/project'
 import { StallLimits, DEFAULT_STALL_LIMITS, DEFAULT_PROXIMITY_DAYS } from '@/types/controle'
 import { useAuth } from '@/context/AuthContext'
+import pb from '@/lib/pocketbase/client'
 import {
   getTenantSettings,
   saveTenantSettings,
@@ -44,6 +45,10 @@ export default function ConfiguracoesPage() {
   const [isSmtpConfigured, setIsSmtpConfigured] = useState(false)
   const [settingsId, setSettingsId] = useState<string | null>(null)
 
+  // Controle de ativação do Hermes no tenant e status de membership ativa
+  const [hermesEnabled, setHermesEnabled] = useState(false)
+  const [hasActiveMembership, setHasActiveMembership] = useState(false)
+
   useEffect(() => {
     if (!user?.tenantId) {
       setLoading(false)
@@ -51,21 +56,44 @@ export default function ConfiguracoesPage() {
     }
     ;(async () => {
       try {
-        const ts = await getTenantSettings(user.tenantId!)
-        if (ts) {
-          setSettingsId(ts.id)
-          setLimits(parseStallLimits(ts.stall_limits))
-          const parsed = parseSmtpConfig(ts.smtp_config)
-          setSmtp({ ...parsed, password: '', senderName: parsed.senderName || '' })
-          if (parsed.password === '••••••••' || (parsed.password && parsed.password.length > 0)) {
-            setIsSmtpConfigured(true)
+        // 1. Carregar dados do tenant para checar hermes_enabled
+        try {
+          const tenantRec = await pb.collection('tenants').getOne(user.tenantId!)
+          setHermesEnabled(Boolean(tenantRec.hermes_enabled))
+        } catch {
+          setHermesEnabled(false)
+        }
+
+        // 2. Verificar se o usuário possui vínculo ativo com este tenant
+        if (user.id) {
+          try {
+            const mems = await pb.collection('user_memberships').getFullList({
+              filter: `user = "${user.id}" && tenant = "${user.tenantId}" && status = "ativo"`,
+            })
+            setHasActiveMembership(mems.length > 0)
+          } catch {
+            setHasActiveMembership(false)
           }
-          if (ts.proximity_days && ts.proximity_days > 0) setProximityDays(ts.proximity_days)
-        } else {
-          const ps = await getPlatformSettings()
-          if (ps) {
-            setLimits(parseStallLimits(ps.stall_limits))
-            if (ps.proximity_days && ps.proximity_days > 0) setProximityDays(ps.proximity_days)
+        }
+
+        // 3. Carregar configurações gerais caso seja admin
+        if (isAdmin) {
+          const ts = await getTenantSettings(user.tenantId!)
+          if (ts) {
+            setSettingsId(ts.id)
+            setLimits(parseStallLimits(ts.stall_limits))
+            const parsed = parseSmtpConfig(ts.smtp_config)
+            setSmtp({ ...parsed, password: '', senderName: parsed.senderName || '' })
+            if (parsed.password === '••••••••' || (parsed.password && parsed.password.length > 0)) {
+              setIsSmtpConfigured(true)
+            }
+            if (ts.proximity_days && ts.proximity_days > 0) setProximityDays(ts.proximity_days)
+          } else {
+            const ps = await getPlatformSettings()
+            if (ps) {
+              setLimits(parseStallLimits(ps.stall_limits))
+              if (ps.proximity_days && ps.proximity_days > 0) setProximityDays(ps.proximity_days)
+            }
           }
         }
       } catch {
@@ -73,7 +101,7 @@ export default function ConfiguracoesPage() {
       }
       setLoading(false)
     })()
-  }, [user?.tenantId])
+  }, [user?.tenantId, user?.id, isAdmin])
 
   const handleSaveLimits = async () => {
     if (!user?.tenantId) return
@@ -128,7 +156,18 @@ export default function ConfiguracoesPage() {
     }
   }
 
-  if (!isAdmin) {
+  const canSeeHermesTab = hermesEnabled && hasActiveMembership
+  const canAccessPage = isAdmin || canSeeHermesTab
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+      </div>
+    )
+  }
+
+  if (!canAccessPage) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] gap-2 animate-fade-in">
         <Settings className="w-10 h-10 text-gray-300" />
@@ -142,181 +181,194 @@ export default function ConfiguracoesPage() {
       <div className="space-y-4 animate-fade-in max-w-2xl mx-auto">
         <TenantRequiredNotice
           title="Selecione uma prefeitura para configurar os parâmetros municipais"
-          description="Os limites de gargalo do Kanban e as configurações de remetente de e-mail (SMTP) são específicos de cada prefeitura. Selecione um município para continuar."
+          description="Os limites de gargalo do Kanban, as configurações de remetente de e-mail (SMTP) e a integração com bots são específicos de cada prefeitura. Selecione um município para continuar."
         />
       </div>
     )
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[50vh]">
-        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-      </div>
-    )
-  }
+  const defaultTab = isAdmin ? 'geral' : 'bot'
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
       <PageHeader
-        title="Configurações do Município"
-        description="Ajuste os parâmetros locais, limites do Kanban, notificações e integrações de API com bots."
-        icon={Settings}
+        title={isAdmin ? 'Configurações do Município' : 'Integração Bot / Hermes'}
+        description={
+          isAdmin
+            ? 'Ajuste os parâmetros locais, limites do Kanban, notificações e integrações de API com bots.'
+            : 'Gere sua chave pessoal de API para conectar seu assistente do Telegram à Bússola Jurídica.'
+        }
+        icon={isAdmin ? Settings : Bot}
       />
 
-      <Tabs defaultValue="geral" className="w-full">
-        <TabsList className="grid grid-cols-2 max-w-sm mb-4">
-          <TabsTrigger value="geral" className="text-xs gap-1.5">
-            <Settings className="w-3.5 h-3.5" />
-            Parâmetros & SMTP
-          </TabsTrigger>
-          <TabsTrigger value="bot" className="text-xs gap-1.5">
-            <Bot className="w-3.5 h-3.5" />
-            Integração Bot / Hermes
-          </TabsTrigger>
+      <Tabs defaultValue={defaultTab} className="w-full">
+        <TabsList
+          className={`grid ${
+            isAdmin && canSeeHermesTab ? 'grid-cols-2 max-w-sm' : 'grid-cols-1 max-w-[200px]'
+          } mb-4`}
+        >
+          {isAdmin && (
+            <TabsTrigger value="geral" className="text-xs gap-1.5">
+              <Settings className="w-3.5 h-3.5" />
+              Parâmetros & SMTP
+            </TabsTrigger>
+          )}
+          {canSeeHermesTab && (
+            <TabsTrigger value="bot" className="text-xs gap-1.5">
+              <Bot className="w-3.5 h-3.5" />
+              Integração Bot / Hermes
+            </TabsTrigger>
+          )}
         </TabsList>
 
-        <TabsContent value="geral" className="space-y-6">
-          <Card className="bg-white border-0 shadow-subtle">
-            <CardContent className="p-5 space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
-                <Zap className="w-4 h-4 text-[#3b82f6]" />
-                <h3 className="text-sm font-bold text-[#1c2a3e]">Limites de Gargalo (Kanban)</h3>
-              </div>
-              <p className="text-xs text-gray-500">
-                Dias máximos que um card pode ficar parado em cada coluna antes de gerar alerta.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {COLUMNS.map((col) => (
-                  <div key={col} className="flex items-center justify-between gap-3">
-                    <Label className="text-xs text-gray-700 flex-1">{col}</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={limits[col]}
-                      onChange={(e) =>
-                        setLimits({ ...limits, [col]: Math.max(1, Number(e.target.value)) })
-                      }
-                      className="w-20 h-8 text-center"
-                    />
-                  </div>
-                ))}
-              </div>
-              <div className="flex items-center justify-between gap-3 pt-2 border-t border-gray-100">
-                <Label className="text-xs text-gray-700 flex-1 font-semibold">
-                  Proximidade de Prazo (dias)
-                </Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={proximityDays}
-                  onChange={(e) => setProximityDays(Math.max(1, Number(e.target.value)))}
-                  className="w-20 h-8 text-center"
-                />
-              </div>
-              <SubmitButton
-                type="button"
-                onClick={handleSaveLimits}
-                submitting={savingLimits}
-                submittingText="Salvando limites..."
-                icon={<Save className="w-4 h-4" aria-hidden="true" />}
-                aria-label="Salvar limites de gargalo do Kanban"
-              >
-                Salvar Limites
-              </SubmitButton>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white border-0 shadow-subtle">
-            <CardContent className="p-5 space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
-                <Mail className="w-4 h-4 text-[#3b82f6]" />
-                <h3 className="text-sm font-bold text-[#1c2a3e]">Configuração de E-mail (SMTP)</h3>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs font-semibold text-gray-700">Servidor SMTP</Label>
-                  <Input
-                    value={smtp.server}
-                    onChange={(e) => setSmtp({ ...smtp, server: e.target.value })}
-                    className="mt-1"
-                    placeholder="smtp.exemplo.com"
-                  />
+        {isAdmin && (
+          <TabsContent value="geral" className="space-y-6">
+            <Card className="bg-white border-0 shadow-subtle">
+              <CardContent className="p-5 space-y-4">
+                <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
+                  <Zap className="w-4 h-4 text-[#3b82f6]" />
+                  <h3 className="text-sm font-bold text-[#1c2a3e]">Limites de Gargalo (Kanban)</h3>
                 </div>
-                <div>
-                  <Label className="text-xs font-semibold text-gray-700">Porta</Label>
-                  <Input
-                    value={smtp.port}
-                    onChange={(e) => setSmtp({ ...smtp, port: e.target.value })}
-                    className="mt-1"
-                    placeholder="587"
-                  />
+                <p className="text-xs text-gray-500">
+                  Dias máximos que um card pode ficar parado em cada coluna antes de gerar alerta.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {COLUMNS.map((col) => (
+                    <div key={col} className="flex items-center justify-between gap-3">
+                      <Label className="text-xs text-gray-700 flex-1">{col}</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={limits[col]}
+                        onChange={(e) =>
+                          setLimits({ ...limits, [col]: Math.max(1, Number(e.target.value)) })
+                        }
+                        className="w-20 h-8 text-center"
+                      />
+                    </div>
+                  ))}
                 </div>
-                <div>
-                  <Label className="text-xs font-semibold text-gray-700">Usuário</Label>
-                  <Input
-                    value={smtp.username}
-                    onChange={(e) => setSmtp({ ...smtp, username: e.target.value })}
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold text-gray-700">
-                    Senha {isSmtpConfigured && '(Configurada)'}
+                <div className="flex items-center justify-between gap-3 pt-2 border-t border-gray-100">
+                  <Label className="text-xs text-gray-700 flex-1 font-semibold">
+                    Proximidade de Prazo (dias)
                   </Label>
                   <Input
-                    type="password"
-                    value={newSmtpPassword}
-                    onChange={(e) => setNewSmtpPassword(e.target.value)}
-                    placeholder={
-                      isSmtpConfigured
-                        ? '•••••••• (Preencha para alterar)'
-                        : 'Senha do servidor SMTP'
-                    }
-                    className="mt-1"
+                    type="number"
+                    min={1}
+                    value={proximityDays}
+                    onChange={(e) => setProximityDays(Math.max(1, Number(e.target.value)))}
+                    className="w-20 h-8 text-center"
                   />
                 </div>
-                <div>
-                  <Label className="text-xs font-semibold text-gray-700">Nome do Remetente</Label>
-                  <Input
-                    value={smtp.senderName}
-                    onChange={(e) => setSmtp({ ...smtp, senderName: e.target.value })}
-                    className="mt-1"
-                    placeholder="Bússola Jurídica"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold text-gray-700">E-mail Remetente</Label>
-                  <Input
-                    value={smtp.senderEmail}
-                    onChange={(e) => setSmtp({ ...smtp, senderEmail: e.target.value })}
-                    className="mt-1"
-                    placeholder="noreply@exemplo.com"
-                  />
-                </div>
-              </div>
-              <SubmitButton
-                type="button"
-                onClick={handleSaveSmtp}
-                submitting={savingSmtp}
-                submittingText="Salvando configurações..."
-                icon={<Save className="w-4 h-4" aria-hidden="true" />}
-                aria-label="Salvar configurações de e-mail SMTP"
-              >
-                Salvar Configurações
-              </SubmitButton>
-            </CardContent>
-          </Card>
-        </TabsContent>
+                <SubmitButton
+                  type="button"
+                  onClick={handleSaveLimits}
+                  submitting={savingLimits}
+                  submittingText="Salvando limites..."
+                  icon={<Save className="w-4 h-4" aria-hidden="true" />}
+                  aria-label="Salvar limites de gargalo do Kanban"
+                >
+                  Salvar Limites
+                </SubmitButton>
+              </CardContent>
+            </Card>
 
-        <TabsContent value="bot">
-          {user?.tenantId && (
-            <BotIntegrationSection
-              tenantId={user.tenantId}
-              tenantName={user.prefeitura || undefined}
-            />
-          )}
-        </TabsContent>
+            <Card className="bg-white border-0 shadow-subtle">
+              <CardContent className="p-5 space-y-4">
+                <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
+                  <Mail className="w-4 h-4 text-[#3b82f6]" />
+                  <h3 className="text-sm font-bold text-[#1c2a3e]">
+                    Configuração de E-mail (SMTP)
+                  </h3>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs font-semibold text-gray-700">Servidor SMTP</Label>
+                    <Input
+                      value={smtp.server}
+                      onChange={(e) => setSmtp({ ...smtp, server: e.target.value })}
+                      className="mt-1"
+                      placeholder="smtp.exemplo.com"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-semibold text-gray-700">Porta</Label>
+                    <Input
+                      value={smtp.port}
+                      onChange={(e) => setSmtp({ ...smtp, port: e.target.value })}
+                      className="mt-1"
+                      placeholder="587"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-semibold text-gray-700">Usuário</Label>
+                    <Input
+                      value={smtp.username}
+                      onChange={(e) => setSmtp({ ...smtp, username: e.target.value })}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-semibold text-gray-700">
+                      Senha {isSmtpConfigured && '(Configurada)'}
+                    </Label>
+                    <Input
+                      type="password"
+                      value={newSmtpPassword}
+                      onChange={(e) => setNewSmtpPassword(e.target.value)}
+                      placeholder={
+                        isSmtpConfigured
+                          ? '•••••••• (Preencha para alterar)'
+                          : 'Senha do servidor SMTP'
+                      }
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-semibold text-gray-700">Nome do Remetente</Label>
+                    <Input
+                      value={smtp.senderName}
+                      onChange={(e) => setSmtp({ ...smtp, senderName: e.target.value })}
+                      className="mt-1"
+                      placeholder="Bússola Jurídica"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-semibold text-gray-700">E-mail Remetente</Label>
+                    <Input
+                      value={smtp.senderEmail}
+                      onChange={(e) => setSmtp({ ...smtp, senderEmail: e.target.value })}
+                      className="mt-1"
+                      placeholder="noreply@exemplo.com"
+                    />
+                  </div>
+                </div>
+                <SubmitButton
+                  type="button"
+                  onClick={handleSaveSmtp}
+                  submitting={savingSmtp}
+                  submittingText="Salvando configurações..."
+                  icon={<Save className="w-4 h-4" aria-hidden="true" />}
+                  aria-label="Salvar configurações de e-mail SMTP"
+                >
+                  Salvar Configurações
+                </SubmitButton>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
+        {canSeeHermesTab && (
+          <TabsContent value="bot">
+            {user?.tenantId && (
+              <BotIntegrationSection
+                tenantId={user.tenantId}
+                tenantName={user.prefeitura || undefined}
+                hermesEnabled={hermesEnabled}
+              />
+            )}
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   )

@@ -13,6 +13,7 @@ export function normalizeTenant(r: any): Prefeitura {
     cidade: r.cidade || '',
     estado: r.estado || '',
     status: r.status || 'ativa',
+    hermesEnabled: Boolean(r.hermes_enabled),
     createdAt: r.created || '',
   }
 }
@@ -32,6 +33,10 @@ export const updateTenant = async (id: string, data: Record<string, any>) => {
   if (payload.adminName !== undefined) payload.adminName = sanitizeInput(payload.adminName)
   if (payload.cidade !== undefined) payload.cidade = sanitizeInput(payload.cidade)
   if (payload.estado !== undefined) payload.estado = sanitizeInput(payload.estado)
+  if (payload.hermesEnabled !== undefined && payload.hermes_enabled === undefined) {
+    payload.hermes_enabled = Boolean(payload.hermesEnabled)
+    delete payload.hermesEnabled
+  }
   return normalizeTenant(await pb.collection('tenants').update(id, payload))
 }
 

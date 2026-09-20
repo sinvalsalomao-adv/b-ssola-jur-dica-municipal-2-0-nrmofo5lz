@@ -132,9 +132,7 @@ export const MainLayout: React.FC = () => {
       ? [{ label: 'Logs de Auditoria', path: '/audit-logs', icon: History }]
       : []),
     ...(isSuperadmin ? [{ label: 'Superadmin', path: '/superadmin', icon: Shield }] : []),
-    ...(isAdminOrSuperadmin
-      ? [{ label: 'Configurações', path: '/configuracoes', icon: Settings }]
-      : []),
+    { label: 'Configurações', path: '/configuracoes', icon: Settings },
     { label: 'Meu Perfil', path: '/perfil', icon: UserIcon },
   ]
 

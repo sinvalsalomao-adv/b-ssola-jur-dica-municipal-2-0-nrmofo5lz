@@ -12,6 +12,7 @@ export interface Prefeitura {
   cidade: string
   estado: string
   status: PrefeituraStatus
+  hermesEnabled?: boolean
   createdAt: string
 }
 

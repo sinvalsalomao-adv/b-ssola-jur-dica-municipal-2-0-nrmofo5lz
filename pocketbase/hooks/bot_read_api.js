@@ -5,14 +5,14 @@
 // Implementação 100% inline por rota, compatível com JSVM PocketBase 0.26 / goja.
 
 // --- 1. BOT INFO & CONTEXT ---
-console.log('[BOT_READ_API] Loading bot_read_api.js file into JSVM (v0.0.106)...')
+console.log('[BOT_READ_API] Loading bot_read_api.js file into JSVM (v0.0.107)...')
 
 // --- 0. PING / HEALTH TEST & BASE INFO ---
 routerAdd('GET', '/backend/v1/bot', (e) => {
   return e.json(200, {
     status: 'ok',
     message: 'Bússola Jurídica Municipal 2.0 - Bot Read API (Hermes)',
-    version: '0.0.106',
+    version: '0.0.107',
     ping: '/backend/v1/bot/ping',
     endpoints: [
       '/backend/v1/bot/ping',
@@ -33,7 +33,7 @@ routerAdd('GET', '/backend/v1/bot/ping', (e) => {
   return e.json(200, {
     status: 'ok',
     message: 'Bot Read API is active and healthy',
-    version: '0.0.106',
+    version: '0.0.107',
     timestamp: new Date().toISOString(),
   })
 })
@@ -84,6 +84,26 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
     })
   }
 
+  var tenantId = keyRecord.getString('tenant')
+  var tenantRec = null
+  try {
+    tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
+  } catch (_) {
+    return e.json(404, {
+      code: 404,
+      error: 'TENANT_NOT_FOUND',
+      message: 'Município associado à chave não encontrado.',
+    })
+  }
+
+  if (!tenantRec.getBool('hermes_enabled')) {
+    return e.json(403, {
+      code: 403,
+      error: 'HERMES_DISABLED',
+      message: 'Integração Hermes desativada para esta prefeitura.',
+    })
+  }
+
   // Rate limit: 60 requisições por janela de 60 segundos por chave
   var now = Date.now()
   var cache = $app.store()
@@ -118,18 +138,6 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
     keyRecord.set('last_used_at', nowIso)
     $app.save(keyRecord)
   } catch (_) {}
-
-  var tenantId = keyRecord.getString('tenant')
-  var tenantRec = null
-  try {
-    tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
-  } catch (_) {
-    return e.json(404, {
-      code: 404,
-      error: 'TENANT_NOT_FOUND',
-      message: 'Município associado à chave não encontrado.',
-    })
-  }
 
   // Resolução do usuário vinculado e do seu papel RBAC ao vivo no município
   var userId = keyRecord.getString('user') || keyRecord.getString('created_by')
@@ -182,13 +190,14 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
   return e.json(200, {
     status: 'ok',
     sistema: 'Bússola Jurídica Municipal 2.0',
-    versao: '0.0.106',
+    versao: '0.0.107',
     municipio: {
       id: tenantRec.id,
       nome: tenantRec.getString('name'),
       slug: tenantRec.getString('slug'),
       cnpj: tenantRec.getString('cnpj'),
       status: tenantRec.getString('status'),
+      hermes_enabled: true,
     },
     usuario: {
       id: userRec.id,
@@ -268,6 +277,26 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
     })
   }
 
+  var tenantId = keyRecord.getString('tenant')
+  var tenantRec = null
+  try {
+    tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
+  } catch (_) {
+    return e.json(404, {
+      code: 404,
+      error: 'TENANT_NOT_FOUND',
+      message: 'Município associado à chave não encontrado.',
+    })
+  }
+
+  if (!tenantRec.getBool('hermes_enabled')) {
+    return e.json(403, {
+      code: 403,
+      error: 'HERMES_DISABLED',
+      message: 'Integração Hermes desativada para esta prefeitura.',
+    })
+  }
+
   var now = Date.now()
   var cache = $app.store()
   var rateKey = 'bot_rate_' + keyRecord.id
@@ -300,8 +329,6 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
     keyRecord.set('last_used_at', nowIso)
     $app.save(keyRecord)
   } catch (_) {}
-
-  var tenantId = keyRecord.getString('tenant')
 
   // Resolver usuário e papel ao vivo
   var userId = keyRecord.getString('user') || keyRecord.getString('created_by')
@@ -464,6 +491,25 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
   }
 
   var tenantId = keyRecord.getString('tenant')
+  var tenantRec = null
+  try {
+    tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
+  } catch (_) {
+    return e.json(404, {
+      code: 404,
+      error: 'TENANT_NOT_FOUND',
+      message: 'Município não encontrado.',
+    })
+  }
+
+  if (!tenantRec.getBool('hermes_enabled')) {
+    return e.json(403, {
+      code: 403,
+      error: 'HERMES_DISABLED',
+      message: 'Integração Hermes desativada para esta prefeitura.',
+    })
+  }
+
   var userId = keyRecord.getString('user') || keyRecord.getString('created_by')
   var userRec = null
   if (userId) {
@@ -493,7 +539,7 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
   var isSuperadmin = userRec.getString('role') === 'superadmin'
   var isAdmin = isSuperadmin || liveRole === 'admin'
 
-  // Decisão 2: Endpoints agregados de toda a prefeitura ficam restritos a admin+
+  // Decisão: Endpoints agregados de toda a prefeitura ficam restritos a admin+
   if (!isAdmin) {
     return e.json(403, {
       code: 403,
@@ -623,6 +669,25 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
   }
 
   var tenantId = keyRecord.getString('tenant')
+  var tenantRec = null
+  try {
+    tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
+  } catch (_) {
+    return e.json(404, {
+      code: 404,
+      error: 'TENANT_NOT_FOUND',
+      message: 'Município não encontrado.',
+    })
+  }
+
+  if (!tenantRec.getBool('hermes_enabled')) {
+    return e.json(403, {
+      code: 403,
+      error: 'HERMES_DISABLED',
+      message: 'Integração Hermes desativada para esta prefeitura.',
+    })
+  }
+
   var userId = keyRecord.getString('user') || keyRecord.getString('created_by')
   var userRec = null
   if (userId) {
@@ -778,6 +843,25 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
   }
 
   var tenantId = keyRecord.getString('tenant')
+  var tenantRec = null
+  try {
+    tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
+  } catch (_) {
+    return e.json(404, {
+      code: 404,
+      error: 'TENANT_NOT_FOUND',
+      message: 'Município não encontrado.',
+    })
+  }
+
+  if (!tenantRec.getBool('hermes_enabled')) {
+    return e.json(403, {
+      code: 403,
+      error: 'HERMES_DISABLED',
+      message: 'Integração Hermes desativada para esta prefeitura.',
+    })
+  }
+
   var userId = keyRecord.getString('user') || keyRecord.getString('created_by')
   var userRec = null
   if (userId) {
@@ -916,6 +1000,25 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
   }
 
   var tenantId = keyRecord.getString('tenant')
+  var tenantRec = null
+  try {
+    tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
+  } catch (_) {
+    return e.json(404, {
+      code: 404,
+      error: 'TENANT_NOT_FOUND',
+      message: 'Município não encontrado.',
+    })
+  }
+
+  if (!tenantRec.getBool('hermes_enabled')) {
+    return e.json(403, {
+      code: 403,
+      error: 'HERMES_DISABLED',
+      message: 'Integração Hermes desativada para esta prefeitura.',
+    })
+  }
+
   var userId = keyRecord.getString('user') || keyRecord.getString('created_by')
   var userRec = null
   if (userId) {
@@ -1053,6 +1156,25 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
   }
 
   var tenantId = keyRecord.getString('tenant')
+  var tenantRec = null
+  try {
+    tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
+  } catch (_) {
+    return e.json(404, {
+      code: 404,
+      error: 'TENANT_NOT_FOUND',
+      message: 'Município não encontrado.',
+    })
+  }
+
+  if (!tenantRec.getBool('hermes_enabled')) {
+    return e.json(403, {
+      code: 403,
+      error: 'HERMES_DISABLED',
+      message: 'Integração Hermes desativada para esta prefeitura.',
+    })
+  }
+
   var userId = keyRecord.getString('user') || keyRecord.getString('created_by')
   var userRec = null
   if (userId) {
@@ -1082,7 +1204,7 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
   var isSuperadmin = userRec.getString('role') === 'superadmin'
   var isAdmin = isSuperadmin || liveRole === 'admin'
 
-  // Decisão 2: Listagem geral de usuários do município é restrita a administradores
+  // Decisão: Listagem geral de usuários do município é restrita a administradores
   if (!isAdmin) {
     return e.json(403, {
       code: 403,
@@ -1162,6 +1284,25 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
   }
 
   var tenantId = keyRecord.getString('tenant')
+  var tenantRec = null
+  try {
+    tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
+  } catch (_) {
+    return e.json(404, {
+      code: 404,
+      error: 'TENANT_NOT_FOUND',
+      message: 'Município não encontrado.',
+    })
+  }
+
+  if (!tenantRec.getBool('hermes_enabled')) {
+    return e.json(403, {
+      code: 403,
+      error: 'HERMES_DISABLED',
+      message: 'Integração Hermes desativada para esta prefeitura.',
+    })
+  }
+
   var userId = keyRecord.getString('user') || keyRecord.getString('created_by')
   var userRec = null
   if (userId) {

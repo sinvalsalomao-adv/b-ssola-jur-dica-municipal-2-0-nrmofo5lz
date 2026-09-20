@@ -43,9 +43,14 @@ import {
 interface BotIntegrationSectionProps {
   tenantId: string
   tenantName?: string
+  hermesEnabled?: boolean
 }
 
-export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSectionProps) {
+export function BotIntegrationSection({
+  tenantId,
+  tenantName,
+  hermesEnabled = true,
+}: BotIntegrationSectionProps) {
   const { user } = useAuth()
   const [keys, setKeys] = useState<BotApiKey[]>([])
   const [loading, setLoading] = useState(true)
@@ -254,13 +259,27 @@ export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSe
             </div>
             <Button
               onClick={() => setCreateModalOpen(true)}
+              disabled={!hermesEnabled}
               size="sm"
-              className="bg-[#1c2a3e] hover:bg-[#283b54] text-white text-xs h-8 gap-1.5"
+              className="bg-[#1c2a3e] hover:bg-[#283b54] text-white text-xs h-8 gap-1.5 disabled:opacity-50"
+              title={
+                !hermesEnabled ? 'Integração Hermes desativada para esta prefeitura.' : undefined
+              }
             >
               <Plus className="w-3.5 h-3.5" />
               Nova Chave de API
             </Button>
           </div>
+
+          {!hermesEnabled && (
+            <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                A integração Hermes está desativada para esta prefeitura pelo superadministrador.
+                Não é possível gerar novas chaves e as chaves existentes estão inoperantes.
+              </span>
+            </div>
+          )}
 
           {loading ? (
             <div className="flex items-center justify-center py-8">
@@ -560,7 +579,7 @@ export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSe
                       {
                         status: 'ok',
                         sistema: 'Bússola Jurídica Municipal 2.0',
-                        versao: '0.0.106',
+                        versao: '0.0.107',
                         municipio: {
                           id: tenantId,
                           nome: tenantName || 'Prefeitura de Exemplo',
@@ -596,7 +615,7 @@ export function BotIntegrationSection({ tenantId, tenantName }: BotIntegrationSe
 {
   "status": "ok",
   "sistema": "Bússola Jurídica Municipal 2.0",
-  "versao": "0.0.106",
+  "versao": "0.0.107",
   "municipio": {
     "id": "${tenantId}",
     "nome": "${tenantName || 'Prefeitura de Exemplo'}"

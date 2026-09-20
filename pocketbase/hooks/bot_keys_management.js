@@ -1,6 +1,7 @@
 // Endpoints de Gerenciamento de Chaves de API para Integração de Bot (Hermes)
 // Acesso RBAC: Superadmin global com município, Admin municipal ativo, ou Usuário Comum ativo no município.
 // Cada chave emitida é estritamente vinculada ao usuário autenticado, ao município selecionado e armazena o snapshot do papel.
+// A gestão e emissão exigem que a integração Hermes esteja ativada na prefeitura (tenants.hermes_enabled === true).
 
 // 1. Criar/Gerar nova chave de API vinculada ao usuário autenticado e município
 routerAdd(
@@ -31,6 +32,15 @@ routerAdd(
       tenantRec = $app.findFirstRecordByData('tenants', 'id', requestedTenant)
     } catch (_) {
       return e.json(404, { code: 404, message: 'Município não encontrado.' })
+    }
+
+    // Verificar se a Integração Hermes está ativada no município
+    if (!tenantRec.getBool('hermes_enabled')) {
+      return e.json(403, {
+        code: 403,
+        error: 'HERMES_DISABLED',
+        message: 'A integração Hermes está desativada para esta prefeitura.',
+      })
     }
 
     // Validação de acesso RBAC no município:
@@ -130,6 +140,23 @@ routerAdd(
       return e.json(400, {
         code: 400,
         message: 'Parâmetro tenant é obrigatório para consultar chaves.',
+      })
+    }
+
+    // Verificar se o município existe
+    var tenantRec = null
+    try {
+      tenantRec = $app.findFirstRecordByData('tenants', 'id', requestedTenant)
+    } catch (_) {
+      return e.json(404, { code: 404, message: 'Município não encontrado.' })
+    }
+
+    // Verificar se a Integração Hermes está ativada no município
+    if (!tenantRec.getBool('hermes_enabled')) {
+      return e.json(403, {
+        code: 403,
+        error: 'HERMES_DISABLED',
+        message: 'A integração Hermes está desativada para esta prefeitura.',
       })
     }
 
@@ -244,6 +271,23 @@ routerAdd(
     }
 
     var targetTenant = keyRec.getString('tenant')
+
+    // Verificar se o município existe e se o Hermes está ativado
+    var tenantRec = null
+    try {
+      tenantRec = $app.findFirstRecordByData('tenants', 'id', targetTenant)
+    } catch (_) {
+      return e.json(404, { code: 404, message: 'Município não encontrado.' })
+    }
+
+    if (!tenantRec.getBool('hermes_enabled')) {
+      return e.json(403, {
+        code: 403,
+        error: 'HERMES_DISABLED',
+        message: 'A integração Hermes está desativada para esta prefeitura.',
+      })
+    }
+
     var keyOwnerId = keyRec.getString('user') || keyRec.getString('created_by')
 
     // Se o usuário atual for o dono da chave, ele tem permissão para revogar a sua própria

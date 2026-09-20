@@ -36,6 +36,7 @@ export const ManagePrefeituraModal: React.FC<Props> = ({ prefeitura, open, onOpe
   const [adminName, setAdminName] = useState(prefeitura.adminName)
   const [cidade, setCidade] = useState(prefeitura.cidade)
   const [estado, setEstado] = useState(prefeitura.estado)
+  const [hermesEnabled, setHermesEnabled] = useState(Boolean(prefeitura.hermesEnabled))
   const [logoDialogOpen, setLogoDialogOpen] = useState(false)
   const [logoUrl, setLogoUrl] = useState<string | null>(getLogoUrl(prefeitura))
 
@@ -45,6 +46,7 @@ export const ManagePrefeituraModal: React.FC<Props> = ({ prefeitura, open, onOpe
       setAdminName(prefeitura.adminName)
       setCidade(prefeitura.cidade)
       setEstado(prefeitura.estado)
+      setHermesEnabled(Boolean(prefeitura.hermesEnabled))
     }
   }, [open, prefeitura])
 
@@ -57,6 +59,7 @@ export const ManagePrefeituraModal: React.FC<Props> = ({ prefeitura, open, onOpe
       adminName: adminName.trim(),
       cidade: cidade.trim(),
       estado: estado.trim(),
+      hermesEnabled,
     })
     if (adminUser && adminName.trim() !== prefeitura.adminName) {
       updateUser(adminUser.id, { name: adminName.trim() })
@@ -102,6 +105,23 @@ export const ManagePrefeituraModal: React.FC<Props> = ({ prefeitura, open, onOpe
                   onCheckedChange={() => togglePrefeituraStatus(prefeitura.id)}
                 />
               </div>
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-slate-50/60">
+              <div className="space-y-0.5">
+                <Label htmlFor="hermes-toggle" className="text-sm font-semibold text-gray-800">
+                  Integração Hermes
+                </Label>
+                <p className="text-xs text-gray-500">
+                  Habilita o bot Telegram/Hermes e a aba de chaves para os servidores desta
+                  prefeitura.
+                </p>
+              </div>
+              <Switch
+                id="hermes-toggle"
+                checked={hermesEnabled}
+                onCheckedChange={setHermesEnabled}
+              />
             </div>
 
             <div>

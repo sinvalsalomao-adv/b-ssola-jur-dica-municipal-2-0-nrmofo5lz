@@ -115,6 +115,7 @@ export const CANONICAL_SCHEMA_CONTRACT: SchemaContractDefinition = {
           maxSelect: 1,
         },
         { name: 'logo', type: 'file', required: false, maxSelect: 1, maxSize: 5242880 },
+        { name: 'hermes_enabled', type: 'bool', required: false },
       ],
       indexes: ['CREATE UNIQUE INDEX idx_tenants_slug ON tenants (slug)'],
     },

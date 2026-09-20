@@ -154,6 +154,7 @@ export const SuperadminProvider: React.FC<{ children: ReactNode }> = ({ children
     if (updates.name !== undefined) apiData.name = updates.name
     if (updates.cnpj !== undefined) apiData.cnpj = updates.cnpj
     if (updates.slug !== undefined) apiData.slug = updates.slug
+    if (updates.hermesEnabled !== undefined) apiData.hermes_enabled = updates.hermesEnabled
     return apiData
   }
 
