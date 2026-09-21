@@ -1,9 +1,11 @@
-// Endpoints de Gerenciamento de Chaves de API para Integração de Bot (Hermes)
-// Acesso RBAC: Superadmin global com município, Admin municipal ativo, ou Usuário Comum ativo no município.
-// Cada chave emitida é estritamente vinculada ao usuário autenticado, ao município selecionado e armazena o snapshot do papel.
-// A gestão e emissão exigem que a integração Hermes esteja ativada na prefeitura (tenants.hermes_enabled === true).
+// Endpoints de Gerenciamento de Chaves de API Mestras do Hermes
+// Regra de Negócio Atualizada:
+// - APENAS o superadmin gera e revoga chaves.
+// - UMA chave mestra por prefeitura (tenant). Gerar nova revoga a anterior automaticamente.
+// - O segredo bruto aparece UMA única vez na criação.
+// - Requer que hermes_enabled seja true no município. Se false, bloqueia com 403 HERMES_DISABLED.
 
-// 1. Criar/Gerar nova chave de API vinculada ao usuário autenticado e município
+// 1. Criar/Gerar nova chave mestra para a prefeitura (exclusivo Superadmin)
 routerAdd(
   'POST',
   '/backend/v1/bot-keys/create',
@@ -15,9 +17,18 @@ routerAdd(
 
     var authId = auth.id
     var authRole = auth.getString('role')
+    if (authRole !== 'superadmin') {
+      return e.json(403, {
+        code: 403,
+        error: 'FORBIDDEN',
+        message:
+          'Apenas superadministradores podem gerar chaves mestras de integração para prefeituras.',
+      })
+    }
+
     var body = e.requestInfo().body || {}
     var requestedTenant = String(body.tenant || '').trim()
-    var name = String(body.name || '').trim() || 'Chave Hermes Telegram'
+    var name = String(body.name || '').trim() || 'Chave Mestra Hermes'
 
     if (!requestedTenant) {
       return e.json(400, {
@@ -26,7 +37,7 @@ routerAdd(
       })
     }
 
-    // Verificar se o município existe e está ativo
+    // Verificar se o município existe e se Hermes está ativado
     var tenantRec = null
     try {
       tenantRec = $app.findFirstRecordByData('tenants', 'id', requestedTenant)
@@ -34,7 +45,6 @@ routerAdd(
       return e.json(404, { code: 404, message: 'Município não encontrado.' })
     }
 
-    // Verificar se a Integração Hermes está ativada no município
     if (!tenantRec.getBool('hermes_enabled')) {
       return e.json(403, {
         code: 403,
@@ -43,42 +53,17 @@ routerAdd(
       })
     }
 
-    // Validação de acesso RBAC no município:
-    // (1) Se for superadmin: só pode gerar se tiver vínculo de membership ativo com o tenant
-    // (Decisão do usuário: superadmin sem vínculo não deve ter chave de prefeitura nenhuma)
-    // (2) Para qualquer outro usuário: precisa ter vínculo membership ativo no tenant
-    var membershipRec = null
-    var checkFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
-    var checkParams = { userId: authId, tenantId: requestedTenant, status: 'ativo' }
+    // Revogar qualquer chave anterior ativa deste tenant (regra: UMA chave mestra por prefeitura)
+    var filterOld = "tenant = {:tenantId} && status = 'ativa'"
+    var paramsOld = { tenantId: requestedTenant }
     try {
-      var mems = $app.findRecordsByFilter('user_memberships', checkFilter, '', 1, 0, checkParams)
-      if (mems.length > 0) {
-        membershipRec = mems[0]
+      var oldKeys = $app.findRecordsByFilter('bot_api_keys', filterOld, '', 50, 0, paramsOld)
+      for (var k = 0; k < oldKeys.length; k++) {
+        var oldK = oldKeys[k]
+        oldK.set('status', 'revogada')
+        $app.save(oldK)
       }
     } catch (_) {}
-
-    if (!membershipRec) {
-      if (authRole === 'superadmin') {
-        return e.json(403, {
-          code: 403,
-          message:
-            'Superadministrador sem vínculo municipal ativo não pode emitir chave para este município.',
-        })
-      }
-      return e.json(403, {
-        code: 403,
-        message:
-          'Você não possui vínculo ativo com este município para gerar chaves de integração.',
-      })
-    }
-
-    var effectiveRole = membershipRec.getString('role') || 'servidor'
-    if (authRole === 'superadmin') {
-      // Se for superadmin no auth mas tiver membership ativa no tenant, o papel no tenant é o da membership (ou admin)
-      if (effectiveRole !== 'admin') {
-        effectiveRole = 'admin'
-      }
-    }
 
     // Gerar chave segura: prefixo "bjm_" seguido por 32 caracteres aleatórios
     var rawRandom = $security.randomString(32)
@@ -96,7 +81,7 @@ routerAdd(
       rec.set('status', 'ativa')
       rec.set('created_by', authId)
       rec.set('user', authId)
-      rec.set('role_snapshot', effectiveRole)
+      rec.set('role_snapshot', 'superadmin')
       $app.save(rec)
 
       return e.json(201, {
@@ -109,7 +94,7 @@ routerAdd(
         status: 'ativa',
         user: authId,
         user_name: auth.getString('name') || auth.getString('email'),
-        role: effectiveRole,
+        role: 'superadmin',
         created: rec.getString('created'),
       })
     } catch (err) {
@@ -120,8 +105,7 @@ routerAdd(
   $apis.requireAuth(),
 )
 
-// 2. Listar chaves do município ou do usuário autenticado
-// Admin vê todas as chaves do município; Servidor comum vê apenas as suas próprias chaves
+// 2. Listar chaves do município (Apenas Superadmin)
 routerAdd(
   'GET',
   '/backend/v1/bot-keys/list',
@@ -131,8 +115,15 @@ routerAdd(
       return e.json(401, { code: 401, message: 'Autenticação necessária.' })
     }
 
-    var authId = auth.id
     var authRole = auth.getString('role')
+    if (authRole !== 'superadmin') {
+      return e.json(403, {
+        code: 403,
+        error: 'FORBIDDEN',
+        message: 'Apenas o superadministrador tem acesso à gestão de chaves mestras de integração.',
+      })
+    }
+
     var query = e.requestInfo().query || {}
     var requestedTenant = String(query.tenant || '').trim()
 
@@ -151,7 +142,6 @@ routerAdd(
       return e.json(404, { code: 404, message: 'Município não encontrado.' })
     }
 
-    // Verificar se a Integração Hermes está ativada no município
     if (!tenantRec.getBool('hermes_enabled')) {
       return e.json(403, {
         code: 403,
@@ -160,74 +150,22 @@ routerAdd(
       })
     }
 
-    // Verificar membership ativa no tenant
-    var isTenantAdmin = false
-    if (authRole === 'superadmin') {
-      // Superadmin tem privilégio de admin caso possua membership ativa
-      var saFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
-      var saParams = { userId: authId, tenantId: requestedTenant, status: 'ativo' }
-      try {
-        var saMems = $app.findRecordsByFilter('user_memberships', saFilter, '', 1, 0, saParams)
-        if (saMems.length > 0) {
-          isTenantAdmin = true
-        }
-      } catch (_) {}
-    } else {
-      var checkFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
-      var checkParams = { userId: authId, tenantId: requestedTenant, status: 'ativo' }
-      try {
-        var mems = $app.findRecordsByFilter('user_memberships', checkFilter, '', 1, 0, checkParams)
-        if (mems.length === 0) {
-          return e.json(403, {
-            code: 403,
-            message: 'Você não possui vínculo ativo com este município.',
-          })
-        }
-        var mRole = mems[0].getString('role')
-        if (mRole === 'admin') {
-          isTenantAdmin = true
-        }
-      } catch (_) {
-        return e.json(403, { code: 403, message: 'Erro ao validar privilégios.' })
-      }
-    }
-
     try {
       var filter = 'tenant = {:tenantId}'
       var params = { tenantId: requestedTenant }
-
-      // Se não for admin do município, restringe estritamente às chaves emitidas por este usuário
-      if (!isTenantAdmin) {
-        filter += ' && user = {:userId}'
-        params.userId = authId
-      }
-
-      var records = $app.findRecordsByFilter('bot_api_keys', filter, '-created', 100, 0, params)
+      var records = $app.findRecordsByFilter('bot_api_keys', filter, '-created', 50, 0, params)
 
       var items = []
       for (var i = 0; i < records.length; i++) {
         var r = records[i]
-        var keyUserId = r.getString('user') || r.getString('created_by')
-        var keyUserName = ''
-        var keyUserEmail = ''
-        if (keyUserId) {
-          try {
-            var uRec = $app.findFirstRecordByData('users', 'id', keyUserId)
-            keyUserName = uRec.getString('name') || ''
-            keyUserEmail = uRec.getString('email') || ''
-          } catch (_) {}
-        }
-
         items.push({
           id: r.id,
           tenant: r.getString('tenant'),
           name: r.getString('name'),
           key_prefix: r.getString('key_prefix'),
           status: r.getString('status'),
-          user: keyUserId || null,
-          user_name: keyUserName,
-          user_email: keyUserEmail,
-          role_snapshot: r.getString('role_snapshot') || null,
+          user: r.getString('user') || r.getString('created_by'),
+          role_snapshot: r.getString('role_snapshot') || 'superadmin',
           last_used_at: r.getString('last_used_at') || null,
           created: r.getString('created'),
           updated: r.getString('updated'),
@@ -243,8 +181,7 @@ routerAdd(
   $apis.requireAuth(),
 )
 
-// 3. Revogar chave de API
-// Admin pode revogar qualquer chave do seu município; usuário comum pode revogar apenas as suas próprias
+// 3. Revogar chave de API mestra (Apenas Superadmin)
 routerAdd(
   'POST',
   '/backend/v1/bot-keys/revoke',
@@ -254,8 +191,15 @@ routerAdd(
       return e.json(401, { code: 401, message: 'Autenticação necessária.' })
     }
 
-    var authId = auth.id
     var authRole = auth.getString('role')
+    if (authRole !== 'superadmin') {
+      return e.json(403, {
+        code: 403,
+        error: 'FORBIDDEN',
+        message: 'Apenas o superadministrador pode revogar chaves mestras de integração.',
+      })
+    }
+
     var body = e.requestInfo().body || {}
     var keyId = String(body.id || body.keyId || '').trim()
 
@@ -271,8 +215,6 @@ routerAdd(
     }
 
     var targetTenant = keyRec.getString('tenant')
-
-    // Verificar se o município existe e se o Hermes está ativado
     var tenantRec = null
     try {
       tenantRec = $app.findFirstRecordByData('tenants', 'id', targetTenant)
@@ -288,33 +230,6 @@ routerAdd(
       })
     }
 
-    var keyOwnerId = keyRec.getString('user') || keyRec.getString('created_by')
-
-    // Se o usuário atual for o dono da chave, ele tem permissão para revogar a sua própria
-    var isOwner = keyOwnerId === authId
-
-    // Caso não seja o dono, precisa ser admin ativo do município ou superadmin com vínculo
-    if (!isOwner) {
-      var isTenantAdmin = false
-      var checkFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
-      var checkParams = { userId: authId, tenantId: targetTenant, status: 'ativo' }
-      try {
-        var mems = $app.findRecordsByFilter('user_memberships', checkFilter, '', 1, 0, checkParams)
-        if (mems.length > 0) {
-          if (authRole === 'superadmin' || mems[0].getString('role') === 'admin') {
-            isTenantAdmin = true
-          }
-        }
-      } catch (_) {}
-
-      if (!isTenantAdmin) {
-        return e.json(403, {
-          code: 403,
-          message: 'Você não possui permissão para revogar esta chave de integração.',
-        })
-      }
-    }
-
     try {
       keyRec.set('status', 'revogada')
       $app.save(keyRec)
@@ -322,7 +237,7 @@ routerAdd(
         success: true,
         id: keyRec.id,
         status: 'revogada',
-        message: 'Chave revogada com sucesso.',
+        message: 'Chave mestra revogada com sucesso.',
       })
     } catch (err) {
       $app.logger().error('Erro ao revogar chave bot_api_keys', 'error', String(err))

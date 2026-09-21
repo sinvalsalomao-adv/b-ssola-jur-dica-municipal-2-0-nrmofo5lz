@@ -11,12 +11,31 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
-import { Building2, Upload } from 'lucide-react'
+import {
+  Building2,
+  Upload,
+  Key,
+  RefreshCw,
+  Ban,
+  Copy,
+  Check,
+  AlertTriangle,
+  Loader2,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { useSuperadmin } from '@/context/SuperadminContext'
 import { Prefeitura } from '@/types/superadmin'
 import { LogoUploadDialog } from '@/components/LogoUploadDialog'
 import pb from '@/lib/pocketbase/client'
+import {
+  listBotApiKeys,
+  createBotApiKey,
+  revokeBotApiKey,
+  type BotApiKey,
+  type CreateBotKeyResponse,
+} from '@/services/botKeys'
+import { formatDate } from '@/lib/dateUtils'
+import { getErrorMessage } from '@/lib/pocketbase/errors'
 
 interface Props {
   prefeitura: Prefeitura
@@ -40,6 +59,27 @@ export const ManagePrefeituraModal: React.FC<Props> = ({ prefeitura, open, onOpe
   const [logoDialogOpen, setLogoDialogOpen] = useState(false)
   const [logoUrl, setLogoUrl] = useState<string | null>(getLogoUrl(prefeitura))
 
+  // Gestão da chave mestra da prefeitura
+  const [botKeys, setBotKeys] = useState<BotApiKey[]>([])
+  const [loadingKeys, setLoadingKeys] = useState(false)
+  const [generatingKey, setGeneratingKey] = useState(false)
+  const [revokingKeyId, setRevokingKeyId] = useState<string | null>(null)
+  const [newlyCreatedKey, setNewlyCreatedKey] = useState<CreateBotKeyResponse | null>(null)
+  const [copiedKey, setCopiedKey] = useState(false)
+
+  const loadBotKeys = async () => {
+    if (!prefeitura.id) return
+    setLoadingKeys(true)
+    try {
+      const data = await listBotApiKeys(prefeitura.id)
+      setBotKeys(data)
+    } catch {
+      setBotKeys([])
+    } finally {
+      setLoadingKeys(false)
+    }
+  }
+
   useEffect(() => {
     if (open) {
       setLogoUrl(getLogoUrl(prefeitura))
@@ -47,8 +87,58 @@ export const ManagePrefeituraModal: React.FC<Props> = ({ prefeitura, open, onOpe
       setCidade(prefeitura.cidade)
       setEstado(prefeitura.estado)
       setHermesEnabled(Boolean(prefeitura.hermesEnabled))
+      setNewlyCreatedKey(null)
+      loadBotKeys()
     }
   }, [open, prefeitura])
+
+  const handleGenerateMasterKey = async () => {
+    if (!prefeitura.id) return
+    if (!hermesEnabled) {
+      toast.error('Ative a Integração Hermes para poder emitir a chave mestra.')
+      return
+    }
+    setGeneratingKey(true)
+    try {
+      const res = await createBotApiKey(prefeitura.id, `Chave Mestra Hermes - ${prefeitura.name}`)
+      setNewlyCreatedKey(res)
+      toast.success('Chave mestra gerada com sucesso! Guarde-a com segurança.')
+      await loadBotKeys()
+    } catch (err) {
+      toast.error('Erro ao gerar chave mestra: ' + getErrorMessage(err))
+    } finally {
+      setGeneratingKey(false)
+    }
+  }
+
+  const handleRevokeMasterKey = async (keyId: string) => {
+    if (
+      !confirm(
+        'Tem certeza de que deseja revogar a chave mestra desta prefeitura? O Hermes perderá acesso imediatamente.',
+      )
+    ) {
+      return
+    }
+    setRevokingKeyId(keyId)
+    try {
+      await revokeBotApiKey(keyId)
+      toast.success('Chave mestra revogada com sucesso.')
+      await loadBotKeys()
+    } catch (err) {
+      toast.error('Erro ao revogar chave mestra: ' + getErrorMessage(err))
+    } finally {
+      setRevokingKeyId(null)
+    }
+  }
+
+  const handleCopySecretKey = (secret: string) => {
+    navigator.clipboard.writeText(secret)
+    setCopiedKey(true)
+    setTimeout(() => setCopiedKey(false), 2500)
+    toast.success('Chave secreta copiada!')
+  }
+
+  const activeMasterKey = botKeys.find((k) => k.status === 'ativa')
 
   const adminUser = globalUsers.find(
     (u: any) => u.prefeituraSlug === prefeitura.slug && u.role === 'admin',
@@ -113,8 +203,7 @@ export const ManagePrefeituraModal: React.FC<Props> = ({ prefeitura, open, onOpe
                   Integração Hermes
                 </Label>
                 <p className="text-xs text-gray-500">
-                  Habilita o bot Telegram/Hermes e a aba de chaves para os servidores desta
-                  prefeitura.
+                  Habilita o bot Telegram/Hermes e a emissão da chave mestra desta prefeitura.
                 </p>
               </div>
               <Switch
@@ -122,6 +211,112 @@ export const ManagePrefeituraModal: React.FC<Props> = ({ prefeitura, open, onOpe
                 checked={hermesEnabled}
                 onCheckedChange={setHermesEnabled}
               />
+            </div>
+
+            {/* Bloco de Gestão da Chave Mestra da Prefeitura */}
+            <div className="p-3.5 rounded-lg border border-indigo-100 bg-indigo-50/40 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Key className="w-4 h-4 text-indigo-700" />
+                  <div>
+                    <h4 className="text-xs font-bold text-indigo-950">
+                      Chave Mestra da Prefeitura
+                    </h4>
+                    <p className="text-[11px] text-indigo-800">
+                      Uma chave por prefeitura. O Hermes envia X-Acting-User para aplicar permissões
+                      ao vivo.
+                    </p>
+                  </div>
+                </div>
+                {hermesEnabled && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleGenerateMasterKey}
+                    disabled={generatingKey}
+                    className="h-7 text-xs border-indigo-300 text-indigo-700 hover:bg-indigo-100 font-medium gap-1"
+                  >
+                    {generatingKey ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-3 h-3" />
+                    )}
+                    {activeMasterKey ? 'Gerar Nova (Revoga Atual)' : 'Gerar Chave Mestra'}
+                  </Button>
+                )}
+              </div>
+
+              {newlyCreatedKey && (
+                <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-2.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                      <Key className="w-3.5 h-3.5 text-emerald-600" />
+                      Chave Mestra Gerada (Segredo Único):
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => handleCopySecretKey(newlyCreatedKey.raw_key)}
+                      className="h-6 px-2 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
+                    >
+                      {copiedKey ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                      {copiedKey ? 'Copiado' : 'Copiar'}
+                    </Button>
+                  </div>
+                  <Input
+                    readOnly
+                    value={newlyCreatedKey.raw_key}
+                    className="font-mono text-xs bg-white text-emerald-950 border-emerald-300 select-all h-8"
+                  />
+                  <p className="text-[10px] text-emerald-700">
+                    Copie agora! Este segredo não será exibido novamente.
+                  </p>
+                </div>
+              )}
+
+              {loadingKeys ? (
+                <div className="py-2 text-center text-xs text-gray-400">
+                  <Loader2 className="w-4 h-4 animate-spin inline mr-1" /> Carregando chave...
+                </div>
+              ) : activeMasterKey ? (
+                <div className="flex items-center justify-between p-2 rounded bg-white border border-indigo-100 text-xs">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-1.5">
+                      <Badge className="bg-emerald-500 text-white text-[10px] h-4 px-1.5">
+                        Ativa
+                      </Badge>
+                      <span className="font-mono font-medium text-slate-800">
+                        {activeMasterKey.key_prefix}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-gray-500">
+                      Criada em {formatDate(activeMasterKey.created)}
+                      {activeMasterKey.last_used_at &&
+                        ` • Último uso: ${formatDate(activeMasterKey.last_used_at)}`}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleRevokeMasterKey(activeMasterKey.id)}
+                    disabled={revokingKeyId === activeMasterKey.id}
+                    className="h-7 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                  >
+                    {revokingKeyId === activeMasterKey.id ? (
+                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                    ) : (
+                      <Ban className="w-3 h-3 mr-1" />
+                    )}
+                    Revogar
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-[11px] text-gray-500 italic">
+                  Nenhuma chave mestra ativa gerada para esta prefeitura.
+                </p>
+              )}
             </div>
 
             <div>

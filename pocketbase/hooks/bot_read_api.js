@@ -1,18 +1,25 @@
 // API de Integração com Bot (Hermes): Endpoints somente leitura estruturados em JSON
-// Autenticação exclusiva por Chave de API vinculada a Usuário + Município (RBAC)
-// (Authorization: Bearer <chave> ou X-API-Key: <chave>)
-// O município e o usuário são estritamente derivados da chave — nenhum parâmetro de tenant ou de usuário externo é aceito.
+// Autenticação:
+// 1. Chave Mestra da Prefeitura via Authorization: Bearer <chave> ou X-API-Key: <chave>
+// 2. Identidade do Usuário Operador via cabeçalho X-Acting-User (e-mail ou ID do usuário no Bússola)
+// O município é estritamente derivado da chave mestra (nenhum dado cruza prefeituras).
+// O usuário operador é resolvido ao vivo no banco: admin municipal (ou superadmin com vínculo) -> visão total;
+// servidor comum -> estritamente o que é dele; usuário de outro município ou inexistente -> negado.
 // Implementação 100% inline por rota, compatível com JSVM PocketBase 0.26 / goja.
 
-// --- 1. BOT INFO & CONTEXT ---
-console.log('[BOT_READ_API] Loading bot_read_api.js file into JSVM (v0.0.107)...')
+console.log('[BOT_READ_API] Loading bot_read_api.js file into JSVM (v0.0.109)...')
 
 // --- 0. PING / HEALTH TEST & BASE INFO ---
 routerAdd('GET', '/backend/v1/bot', (e) => {
   return e.json(200, {
     status: 'ok',
     message: 'Bússola Jurídica Municipal 2.0 - Bot Read API (Hermes)',
-    version: '0.0.107',
+    version: '0.0.109',
+    auth_model: 'tenant_master_key_with_acting_user',
+    required_headers: [
+      'Authorization: Bearer <chave_mestra> (ou X-API-Key: <chave_mestra>)',
+      'X-Acting-User: <email_ou_id_do_usuario>',
+    ],
     ping: '/backend/v1/bot/ping',
     endpoints: [
       '/backend/v1/bot/ping',
@@ -33,15 +40,17 @@ routerAdd('GET', '/backend/v1/bot/ping', (e) => {
   return e.json(200, {
     status: 'ok',
     message: 'Bot Read API is active and healthy',
-    version: '0.0.107',
+    version: '0.0.109',
     timestamp: new Date().toISOString(),
   })
 })
 
-// --- 1. GET /backend/v1/bot/info (INFORMAÇÕES DA CHAVE, MUNICÍPIO E PAPEL VINCULADO) ---
+// --- 1. GET /backend/v1/bot/info ---
 routerAdd('GET', '/backend/v1/bot/info', (e) => {
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
+
+  // Autenticação da Chave Mestra
   var rawAuthHeader = String(headers['authorization'] || '').trim()
   var rawApiKeyHeader = String(headers['x_api_key'] || headers['x-api-key'] || '').trim()
   var rawKey = ''
@@ -60,7 +69,7 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
       code: 401,
       error: 'UNAUTHORIZED',
       message:
-        'Chave de API ausente. Forneça o header Authorization: Bearer <chave> ou X-API-Key: <chave>.',
+        'Chave de API mestra ausente. Forneça o header Authorization: Bearer <chave> ou X-API-Key: <chave>.',
     })
   }
 
@@ -80,7 +89,7 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
     return e.json(403, {
       code: 403,
       error: 'KEY_REVOKED',
-      message: 'Esta chave de API foi revogada ou desativada.',
+      message: 'Esta chave de API mestra foi revogada.',
     })
   }
 
@@ -104,67 +113,37 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
     })
   }
 
-  // Rate limit: 60 requisições por janela de 60 segundos por chave
-  var now = Date.now()
-  var cache = $app.store()
-  var rateKey = 'bot_rate_' + keyRecord.id
-  var resetKey = 'bot_rate_reset_' + keyRecord.id
-
-  var resetAt = 0
-  if (cache.has(resetKey)) {
-    resetAt = Number(cache.get(resetKey)) || 0
-  }
-  if (now > resetAt) {
-    cache.set(rateKey, 0)
-    cache.set(resetKey, now + 60000)
-  }
-
-  var attempts = 0
-  if (cache.has(rateKey)) {
-    attempts = Number(cache.get(rateKey)) || 0
-  }
-  if (attempts >= 60) {
-    return e.json(429, {
-      code: 429,
-      error: 'RATE_LIMIT_EXCEEDED',
-      message: 'Limite de requisições excedido (máximo 60 por minuto). Aguarde um instante.',
+  // Identidade do Usuário Operador via X-Acting-User (e-mail ou ID)
+  var rawActingUser = String(headers['x_acting_user'] || headers['x-acting-user'] || '').trim()
+  if (!rawActingUser) {
+    return e.json(401, {
+      code: 401,
+      error: 'ACTING_USER_REQUIRED',
+      message:
+        'Cabeçalho X-Acting-User ausente. Envie o e-mail ou ID do usuário operador do Bússola.',
     })
   }
-  cache.set(rateKey, attempts + 1)
 
-  // Atualizar last_used_at
-  try {
-    var nowIso = new Date().toISOString().replace('T', ' ').slice(0, 19)
-    keyRecord.set('last_used_at', nowIso)
-    $app.save(keyRecord)
-  } catch (_) {}
-
-  // Resolução do usuário vinculado e do seu papel RBAC ao vivo no município
-  var userId = keyRecord.getString('user') || keyRecord.getString('created_by')
   var userRec = null
-  if (userId) {
+  if (rawActingUser.indexOf('@') !== -1) {
     try {
-      userRec = $app.findFirstRecordByData('users', 'id', userId)
+      userRec = $app.findAuthRecordByEmail('users', rawActingUser.toLowerCase())
+    } catch (_) {}
+  } else {
+    try {
+      userRec = $app.findFirstRecordByData('users', 'id', rawActingUser)
     } catch (_) {}
   }
 
-  if (!userRec) {
+  if (!userRec || userRec.getString('status') === 'inativo') {
     return e.json(403, {
       code: 403,
-      error: 'USER_NOT_FOUND',
-      message: 'Usuário proprietário da chave não encontrado no sistema.',
+      error: 'ACTING_USER_NOT_FOUND',
+      message: 'Usuário operador não encontrado ou inativo no Bússola.',
     })
   }
 
-  if (userRec.getString('status') === 'inativo') {
-    return e.json(403, {
-      code: 403,
-      error: 'USER_INACTIVE',
-      message: 'O usuário associado a esta chave de API encontra-se inativo.',
-    })
-  }
-
-  // Verificar membership ativa do usuário neste tenant
+  // Validar se o usuário possui vínculo ativo com o município da chave mestra (nenhum dado cruza prefeituras)
   var memRec = null
   var memFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
   var memParams = { userId: userRec.id, tenantId: tenantId, status: 'ativo' }
@@ -178,10 +157,42 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
   if (!memRec) {
     return e.json(403, {
       code: 403,
-      error: 'MEMBERSHIP_INACTIVE',
-      message: 'O usuário associado a esta chave não possui mais vínculo ativo com este município.',
+      error: 'ACTING_USER_TENANT_MISMATCH',
+      message: 'O usuário operador não possui vínculo ativo com esta prefeitura.',
     })
   }
+
+  // Rate limit por chave
+  var now = Date.now()
+  var cache = $app.store()
+  var rateKey = 'bot_rate_' + keyRecord.id
+  var resetKey = 'bot_rate_reset_' + keyRecord.id
+  var resetAt = 0
+  if (cache.has(resetKey)) {
+    resetAt = Number(cache.get(resetKey)) || 0
+  }
+  if (now > resetAt) {
+    cache.set(rateKey, 0)
+    cache.set(resetKey, now + 60000)
+  }
+  var attempts = 0
+  if (cache.has(rateKey)) {
+    attempts = Number(cache.get(rateKey)) || 0
+  }
+  if (attempts >= 60) {
+    return e.json(429, {
+      code: 429,
+      error: 'RATE_LIMIT_EXCEEDED',
+      message: 'Limite de requisições excedido. Aguarde um instante.',
+    })
+  }
+  cache.set(rateKey, attempts + 1)
+
+  try {
+    var nowIso = new Date().toISOString().replace('T', ' ').slice(0, 19)
+    keyRecord.set('last_used_at', nowIso)
+    $app.save(keyRecord)
+  } catch (_) {}
 
   var liveRole = memRec.getString('role') || 'servidor'
   var isSuperadmin = userRec.getString('role') === 'superadmin'
@@ -190,7 +201,7 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
   return e.json(200, {
     status: 'ok',
     sistema: 'Bússola Jurídica Municipal 2.0',
-    versao: '0.0.107',
+    versao: '0.0.109',
     municipio: {
       id: tenantRec.id,
       nome: tenantRec.getString('name'),
@@ -199,18 +210,17 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
       status: tenantRec.getString('status'),
       hermes_enabled: true,
     },
-    usuario: {
+    chave_mestra: {
+      nome: keyRecord.getString('name'),
+      prefixo: keyRecord.getString('key_prefix'),
+      tipo: 'chave_mestra_prefeitura',
+    },
+    usuario_operador: {
       id: userRec.id,
       nome: userRec.getString('name') || '',
       email: userRec.getString('email') || '',
       papel_no_municipio: liveRole,
       is_admin_ou_superior: isAdmin,
-    },
-    chave: {
-      nome: keyRecord.getString('name'),
-      prefixo: keyRecord.getString('key_prefix'),
-      criada_em: keyRecord.getString('created'),
-      papel_registro: keyRecord.getString('role_snapshot') || liveRole,
     },
     escopo: {
       modo: isAdmin ? 'municipal_completo' : 'pessoal_estrito',
@@ -231,10 +241,11 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
   })
 })
 
-// --- 2. LISTAR PROJETOS (ESCOPADO: ADMIN VÊ DO MUNICÍPIO; SERVIDOR VÊ APENAS ATRIBUÍDOS/PARTICIPANTE) ---
+// --- 2. GET /backend/v1/bot/projects ---
 routerAdd('GET', '/backend/v1/bot/projects', (e) => {
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
+
   var rawAuthHeader = String(headers['authorization'] || '').trim()
   var rawApiKeyHeader = String(headers['x_api_key'] || headers['x-api-key'] || '').trim()
   var rawKey = ''
@@ -252,8 +263,7 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
     return e.json(401, {
       code: 401,
       error: 'UNAUTHORIZED',
-      message:
-        'Chave de API ausente. Forneça o header Authorization: Bearer <chave> ou X-API-Key: <chave>.',
+      message: 'Chave de API mestra ausente.',
     })
   }
 
@@ -262,19 +272,11 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
-    return e.json(401, {
-      code: 401,
-      error: 'INVALID_KEY',
-      message: 'Chave de API inválida ou não reconhecida.',
-    })
+    return e.json(401, { code: 401, error: 'INVALID_KEY', message: 'Chave de API inválida.' })
   }
 
   if (keyRecord.getString('status') !== 'ativa') {
-    return e.json(403, {
-      code: 403,
-      error: 'KEY_REVOKED',
-      message: 'Esta chave de API foi revogada ou desativada.',
-    })
+    return e.json(403, { code: 403, error: 'KEY_REVOKED', message: 'Chave revogada.' })
   }
 
   var tenantId = keyRecord.getString('tenant')
@@ -285,7 +287,7 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
     return e.json(404, {
       code: 404,
       error: 'TENANT_NOT_FOUND',
-      message: 'Município associado à chave não encontrado.',
+      message: 'Município não encontrado.',
     })
   }
 
@@ -297,52 +299,32 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
     })
   }
 
-  var now = Date.now()
-  var cache = $app.store()
-  var rateKey = 'bot_rate_' + keyRecord.id
-  var resetKey = 'bot_rate_reset_' + keyRecord.id
-
-  var resetAt = 0
-  if (cache.has(resetKey)) {
-    resetAt = Number(cache.get(resetKey)) || 0
-  }
-  if (now > resetAt) {
-    cache.set(rateKey, 0)
-    cache.set(resetKey, now + 60000)
-  }
-
-  var attempts = 0
-  if (cache.has(rateKey)) {
-    attempts = Number(cache.get(rateKey)) || 0
-  }
-  if (attempts >= 60) {
-    return e.json(429, {
-      code: 429,
-      error: 'RATE_LIMIT_EXCEEDED',
-      message: 'Limite de requisições excedido. Aguarde um instante.',
+  // X-Acting-User
+  var rawActingUser = String(headers['x_acting_user'] || headers['x-acting-user'] || '').trim()
+  if (!rawActingUser) {
+    return e.json(401, {
+      code: 401,
+      error: 'ACTING_USER_REQUIRED',
+      message: 'Cabeçalho X-Acting-User obrigatório.',
     })
   }
-  cache.set(rateKey, attempts + 1)
 
-  try {
-    var nowIso = new Date().toISOString().replace('T', ' ').slice(0, 19)
-    keyRecord.set('last_used_at', nowIso)
-    $app.save(keyRecord)
-  } catch (_) {}
-
-  // Resolver usuário e papel ao vivo
-  var userId = keyRecord.getString('user') || keyRecord.getString('created_by')
   var userRec = null
-  if (userId) {
+  if (rawActingUser.indexOf('@') !== -1) {
     try {
-      userRec = $app.findFirstRecordByData('users', 'id', userId)
+      userRec = $app.findAuthRecordByEmail('users', rawActingUser.toLowerCase())
+    } catch (_) {}
+  } else {
+    try {
+      userRec = $app.findFirstRecordByData('users', 'id', rawActingUser)
     } catch (_) {}
   }
+
   if (!userRec || userRec.getString('status') === 'inativo') {
     return e.json(403, {
       code: 403,
-      error: 'USER_INACTIVE',
-      message: 'Usuário vinculado à chave inexistente ou inativo.',
+      error: 'ACTING_USER_NOT_FOUND',
+      message: 'Usuário operador não encontrado ou inativo.',
     })
   }
 
@@ -359,8 +341,8 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
   if (!memRec) {
     return e.json(403, {
       code: 403,
-      error: 'MEMBERSHIP_INACTIVE',
-      message: 'Vínculo municipal inativo ou inexistente.',
+      error: 'ACTING_USER_TENANT_MISMATCH',
+      message: 'Usuário sem vínculo ativo com esta prefeitura.',
     })
   }
 
@@ -379,8 +361,6 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
   var params = { tenantId: tenantId }
 
   if (!isAdmin) {
-    // Servidor comum consulta apenas projetos aos quais tem acesso no app:
-    // projetos onde ele é o responsável direto
     filter += ' && responsible_user = {:ownerUserId}'
     params.ownerUserId = userRec.id
   }
@@ -453,10 +433,11 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
   }
 })
 
-// --- 3. RESUMO AGREGADO DO KANBAN (EXCLUSIVO PARA ADMIN / SUPERADMIN — 403 PARA SERVIDOR COMUM) ---
+// --- 3. GET /backend/v1/bot/projects/summary (Exclusivo Admin / Superadmin com vínculo) ---
 routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
+
   var rawAuthHeader = String(headers['authorization'] || '').trim()
   var rawApiKeyHeader = String(headers['x_api_key'] || headers['x-api-key'] || '').trim()
   var rawKey = ''
@@ -471,11 +452,7 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
   }
 
   if (!rawKey) {
-    return e.json(401, {
-      code: 401,
-      error: 'UNAUTHORIZED',
-      message: 'Chave de API ausente.',
-    })
+    return e.json(401, { code: 401, error: 'UNAUTHORIZED', message: 'Chave de API ausente.' })
   }
 
   var keyHash = $security.sha256(rawKey)
@@ -483,11 +460,11 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
-    return e.json(401, { code: 401, error: 'INVALID_KEY', message: 'Chave de API inválida.' })
+    return e.json(401, { code: 401, error: 'INVALID_KEY', message: 'Chave inválida.' })
   }
 
   if (keyRecord.getString('status') !== 'ativa') {
-    return e.json(403, { code: 403, error: 'KEY_REVOKED', message: 'Chave de API revogada.' })
+    return e.json(403, { code: 403, error: 'KEY_REVOKED', message: 'Chave revogada.' })
   }
 
   var tenantId = keyRecord.getString('tenant')
@@ -510,15 +487,32 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
     })
   }
 
-  var userId = keyRecord.getString('user') || keyRecord.getString('created_by')
+  var rawActingUser = String(headers['x_acting_user'] || headers['x-acting-user'] || '').trim()
+  if (!rawActingUser) {
+    return e.json(401, {
+      code: 401,
+      error: 'ACTING_USER_REQUIRED',
+      message: 'Cabeçalho X-Acting-User obrigatório.',
+    })
+  }
+
   var userRec = null
-  if (userId) {
+  if (rawActingUser.indexOf('@') !== -1) {
     try {
-      userRec = $app.findFirstRecordByData('users', 'id', userId)
+      userRec = $app.findAuthRecordByEmail('users', rawActingUser.toLowerCase())
+    } catch (_) {}
+  } else {
+    try {
+      userRec = $app.findFirstRecordByData('users', 'id', rawActingUser)
     } catch (_) {}
   }
+
   if (!userRec || userRec.getString('status') === 'inativo') {
-    return e.json(403, { code: 403, error: 'USER_INACTIVE', message: 'Usuário inativo.' })
+    return e.json(403, {
+      code: 403,
+      error: 'ACTING_USER_NOT_FOUND',
+      message: 'Usuário operador não encontrado ou inativo.',
+    })
   }
 
   var memFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
@@ -532,14 +526,17 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
   } catch (_) {}
 
   if (!memRec) {
-    return e.json(403, { code: 403, error: 'MEMBERSHIP_INACTIVE', message: 'Vínculo inativo.' })
+    return e.json(403, {
+      code: 403,
+      error: 'ACTING_USER_TENANT_MISMATCH',
+      message: 'Usuário sem vínculo ativo com esta prefeitura.',
+    })
   }
 
   var liveRole = memRec.getString('role') || 'servidor'
   var isSuperadmin = userRec.getString('role') === 'superadmin'
   var isAdmin = isSuperadmin || liveRole === 'admin'
 
-  // Decisão: Endpoints agregados de toda a prefeitura ficam restritos a admin+
   if (!isAdmin) {
     return e.json(403, {
       code: 403,
@@ -548,29 +545,6 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
         'Visões agregadas e resumos de todo o município são restritos a administradores. Como servidor comum, consulte seus projetos em /backend/v1/bot/projects.',
     })
   }
-
-  var now = Date.now()
-  var cache = $app.store()
-  var rateKey = 'bot_rate_' + keyRecord.id
-  var resetKey = 'bot_rate_reset_' + keyRecord.id
-
-  var resetAt = 0
-  if (cache.has(resetKey)) {
-    resetAt = Number(cache.get(resetKey)) || 0
-  }
-  if (now > resetAt) {
-    cache.set(rateKey, 0)
-    cache.set(resetKey, now + 60000)
-  }
-
-  var attempts = 0
-  if (cache.has(rateKey)) {
-    attempts = Number(cache.get(rateKey)) || 0
-  }
-  if (attempts >= 60) {
-    return e.json(429, { code: 429, error: 'RATE_LIMIT_EXCEEDED', message: 'Limite excedido.' })
-  }
-  cache.set(rateKey, attempts + 1)
 
   var filter = 'tenant = {:tenantId}'
   var params = { tenantId: tenantId }
@@ -635,10 +609,11 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
   }
 })
 
-// --- 4. LISTAR DFDS (ESCOPADO: ADMIN VÊ DO TENANT; SERVIDOR VÊ APENAS ATRIBUÍDOS A ELE) ---
+// --- 4. GET /backend/v1/bot/dfds ---
 routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
+
   var rawAuthHeader = String(headers['authorization'] || '').trim()
   var rawApiKeyHeader = String(headers['x_api_key'] || headers['x-api-key'] || '').trim()
   var rawKey = ''
@@ -688,15 +663,32 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
     })
   }
 
-  var userId = keyRecord.getString('user') || keyRecord.getString('created_by')
+  var rawActingUser = String(headers['x_acting_user'] || headers['x-acting-user'] || '').trim()
+  if (!rawActingUser) {
+    return e.json(401, {
+      code: 401,
+      error: 'ACTING_USER_REQUIRED',
+      message: 'Cabeçalho X-Acting-User obrigatório.',
+    })
+  }
+
   var userRec = null
-  if (userId) {
+  if (rawActingUser.indexOf('@') !== -1) {
     try {
-      userRec = $app.findFirstRecordByData('users', 'id', userId)
+      userRec = $app.findAuthRecordByEmail('users', rawActingUser.toLowerCase())
+    } catch (_) {}
+  } else {
+    try {
+      userRec = $app.findFirstRecordByData('users', 'id', rawActingUser)
     } catch (_) {}
   }
+
   if (!userRec || userRec.getString('status') === 'inativo') {
-    return e.json(403, { code: 403, error: 'USER_INACTIVE', message: 'Usuário inativo.' })
+    return e.json(403, {
+      code: 403,
+      error: 'ACTING_USER_NOT_FOUND',
+      message: 'Usuário operador não encontrado ou inativo.',
+    })
   }
 
   var memFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
@@ -710,35 +702,16 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
   } catch (_) {}
 
   if (!memRec) {
-    return e.json(403, { code: 403, error: 'MEMBERSHIP_INACTIVE', message: 'Vínculo inativo.' })
+    return e.json(403, {
+      code: 403,
+      error: 'ACTING_USER_TENANT_MISMATCH',
+      message: 'Usuário sem vínculo ativo com esta prefeitura.',
+    })
   }
 
   var liveRole = memRec.getString('role') || 'servidor'
   var isSuperadmin = userRec.getString('role') === 'superadmin'
   var isAdmin = isSuperadmin || liveRole === 'admin'
-
-  var now = Date.now()
-  var cache = $app.store()
-  var rateKey = 'bot_rate_' + keyRecord.id
-  var resetKey = 'bot_rate_reset_' + keyRecord.id
-
-  var resetAt = 0
-  if (cache.has(resetKey)) {
-    resetAt = Number(cache.get(resetKey)) || 0
-  }
-  if (now > resetAt) {
-    cache.set(rateKey, 0)
-    cache.set(resetKey, now + 60000)
-  }
-
-  var attempts = 0
-  if (cache.has(rateKey)) {
-    attempts = Number(cache.get(rateKey)) || 0
-  }
-  if (attempts >= 60) {
-    return e.json(429, { code: 429, error: 'RATE_LIMIT_EXCEEDED', message: 'Limite excedido.' })
-  }
-  cache.set(rateKey, attempts + 1)
 
   var query = reqInfo.query || {}
   var statusFilter = String(query.status || '').trim()
@@ -809,10 +782,11 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
   }
 })
 
-// --- 5. DETALHE DE UM DFD POR ID (ISOLAMENTO MULTI-TENANT + RBAC DO USUÁRIO) ---
+// --- 5. GET /backend/v1/bot/dfds/{id} ---
 routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
+
   var rawAuthHeader = String(headers['authorization'] || '').trim()
   var rawApiKeyHeader = String(headers['x_api_key'] || headers['x-api-key'] || '').trim()
   var rawKey = ''
@@ -862,15 +836,32 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
     })
   }
 
-  var userId = keyRecord.getString('user') || keyRecord.getString('created_by')
+  var rawActingUser = String(headers['x_acting_user'] || headers['x-acting-user'] || '').trim()
+  if (!rawActingUser) {
+    return e.json(401, {
+      code: 401,
+      error: 'ACTING_USER_REQUIRED',
+      message: 'Cabeçalho X-Acting-User obrigatório.',
+    })
+  }
+
   var userRec = null
-  if (userId) {
+  if (rawActingUser.indexOf('@') !== -1) {
     try {
-      userRec = $app.findFirstRecordByData('users', 'id', userId)
+      userRec = $app.findAuthRecordByEmail('users', rawActingUser.toLowerCase())
+    } catch (_) {}
+  } else {
+    try {
+      userRec = $app.findFirstRecordByData('users', 'id', rawActingUser)
     } catch (_) {}
   }
+
   if (!userRec || userRec.getString('status') === 'inativo') {
-    return e.json(403, { code: 403, error: 'USER_INACTIVE', message: 'Usuário inativo.' })
+    return e.json(403, {
+      code: 403,
+      error: 'ACTING_USER_NOT_FOUND',
+      message: 'Usuário operador não encontrado ou inativo.',
+    })
   }
 
   var memFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
@@ -884,7 +875,11 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
   } catch (_) {}
 
   if (!memRec) {
-    return e.json(403, { code: 403, error: 'MEMBERSHIP_INACTIVE', message: 'Vínculo inativo.' })
+    return e.json(403, {
+      code: 403,
+      error: 'ACTING_USER_TENANT_MISMATCH',
+      message: 'Usuário sem vínculo ativo com esta prefeitura.',
+    })
   }
 
   var liveRole = memRec.getString('role') || 'servidor'
@@ -903,7 +898,7 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
     return e.json(404, { code: 404, error: 'NOT_FOUND', message: 'DFD não encontrado.' })
   }
 
-  // ISOLAMENTO RIGOROSO 1: Garantir que o DFD pertence ao mesmo tenant da chave
+  // ISOLAMENTO RIGOROSO 1: Garantir que o DFD pertence ao mesmo tenant da chave mestra
   if (dfdRec.getString('tenant') !== tenantId) {
     return e.json(404, {
       code: 404,
@@ -966,10 +961,11 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
   })
 })
 
-// --- 6. CONSULTAR PRAZOS (VENCIDOS, DA SEMANA, PRÓXIMOS — ESCOPADO POR PAPEL) ---
+// --- 6. GET /backend/v1/bot/deadlines ---
 routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
+
   var rawAuthHeader = String(headers['authorization'] || '').trim()
   var rawApiKeyHeader = String(headers['x_api_key'] || headers['x-api-key'] || '').trim()
   var rawKey = ''
@@ -1019,15 +1015,32 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
     })
   }
 
-  var userId = keyRecord.getString('user') || keyRecord.getString('created_by')
+  var rawActingUser = String(headers['x_acting_user'] || headers['x-acting-user'] || '').trim()
+  if (!rawActingUser) {
+    return e.json(401, {
+      code: 401,
+      error: 'ACTING_USER_REQUIRED',
+      message: 'Cabeçalho X-Acting-User obrigatório.',
+    })
+  }
+
   var userRec = null
-  if (userId) {
+  if (rawActingUser.indexOf('@') !== -1) {
     try {
-      userRec = $app.findFirstRecordByData('users', 'id', userId)
+      userRec = $app.findAuthRecordByEmail('users', rawActingUser.toLowerCase())
+    } catch (_) {}
+  } else {
+    try {
+      userRec = $app.findFirstRecordByData('users', 'id', rawActingUser)
     } catch (_) {}
   }
+
   if (!userRec || userRec.getString('status') === 'inativo') {
-    return e.json(403, { code: 403, error: 'USER_INACTIVE', message: 'Usuário inativo.' })
+    return e.json(403, {
+      code: 403,
+      error: 'ACTING_USER_NOT_FOUND',
+      message: 'Usuário operador não encontrado ou inativo.',
+    })
   }
 
   var memFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
@@ -1041,7 +1054,11 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
   } catch (_) {}
 
   if (!memRec) {
-    return e.json(403, { code: 403, error: 'MEMBERSHIP_INACTIVE', message: 'Vínculo inativo.' })
+    return e.json(403, {
+      code: 403,
+      error: 'ACTING_USER_TENANT_MISMATCH',
+      message: 'Usuário sem vínculo ativo com esta prefeitura.',
+    })
   }
 
   var liveRole = memRec.getString('role') || 'servidor'
@@ -1122,10 +1139,11 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
   }
 })
 
-// --- 7. CONSULTAR USUÁRIOS / SERVIDORES (EXCLUSIVO ADMIN / SUPERADMIN — 403 PARA COMUM) ---
+// --- 7. GET /backend/v1/bot/users (Exclusivo Admin / Superadmin com vínculo) ---
 routerAdd('GET', '/backend/v1/bot/users', (e) => {
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
+
   var rawAuthHeader = String(headers['authorization'] || '').trim()
   var rawApiKeyHeader = String(headers['x_api_key'] || headers['x-api-key'] || '').trim()
   var rawKey = ''
@@ -1175,15 +1193,32 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
     })
   }
 
-  var userId = keyRecord.getString('user') || keyRecord.getString('created_by')
+  var rawActingUser = String(headers['x_acting_user'] || headers['x-acting-user'] || '').trim()
+  if (!rawActingUser) {
+    return e.json(401, {
+      code: 401,
+      error: 'ACTING_USER_REQUIRED',
+      message: 'Cabeçalho X-Acting-User obrigatório.',
+    })
+  }
+
   var userRec = null
-  if (userId) {
+  if (rawActingUser.indexOf('@') !== -1) {
     try {
-      userRec = $app.findFirstRecordByData('users', 'id', userId)
+      userRec = $app.findAuthRecordByEmail('users', rawActingUser.toLowerCase())
+    } catch (_) {}
+  } else {
+    try {
+      userRec = $app.findFirstRecordByData('users', 'id', rawActingUser)
     } catch (_) {}
   }
+
   if (!userRec || userRec.getString('status') === 'inativo') {
-    return e.json(403, { code: 403, error: 'USER_INACTIVE', message: 'Usuário inativo.' })
+    return e.json(403, {
+      code: 403,
+      error: 'ACTING_USER_NOT_FOUND',
+      message: 'Usuário operador não encontrado ou inativo.',
+    })
   }
 
   var memFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
@@ -1197,14 +1232,17 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
   } catch (_) {}
 
   if (!memRec) {
-    return e.json(403, { code: 403, error: 'MEMBERSHIP_INACTIVE', message: 'Vínculo inativo.' })
+    return e.json(403, {
+      code: 403,
+      error: 'ACTING_USER_TENANT_MISMATCH',
+      message: 'Usuário sem vínculo ativo com esta prefeitura.',
+    })
   }
 
   var liveRole = memRec.getString('role') || 'servidor'
   var isSuperadmin = userRec.getString('role') === 'superadmin'
   var isAdmin = isSuperadmin || liveRole === 'admin'
 
-  // Decisão: Listagem geral de usuários do município é restrita a administradores
   if (!isAdmin) {
     return e.json(403, {
       code: 403,
@@ -1250,10 +1288,11 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
   }
 })
 
-// --- 8. CONSULTAR NOTIFICAÇÕES (ESCOPADO: ADMIN VÊ DO TENANT; SERVIDOR VÊ SUAS NOTIFICAÇÕES) ---
+// --- 8. GET /backend/v1/bot/notifications ---
 routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
+
   var rawAuthHeader = String(headers['authorization'] || '').trim()
   var rawApiKeyHeader = String(headers['x_api_key'] || headers['x-api-key'] || '').trim()
   var rawKey = ''
@@ -1303,15 +1342,32 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
     })
   }
 
-  var userId = keyRecord.getString('user') || keyRecord.getString('created_by')
+  var rawActingUser = String(headers['x_acting_user'] || headers['x-acting-user'] || '').trim()
+  if (!rawActingUser) {
+    return e.json(401, {
+      code: 401,
+      error: 'ACTING_USER_REQUIRED',
+      message: 'Cabeçalho X-Acting-User obrigatório.',
+    })
+  }
+
   var userRec = null
-  if (userId) {
+  if (rawActingUser.indexOf('@') !== -1) {
     try {
-      userRec = $app.findFirstRecordByData('users', 'id', userId)
+      userRec = $app.findAuthRecordByEmail('users', rawActingUser.toLowerCase())
+    } catch (_) {}
+  } else {
+    try {
+      userRec = $app.findFirstRecordByData('users', 'id', rawActingUser)
     } catch (_) {}
   }
+
   if (!userRec || userRec.getString('status') === 'inativo') {
-    return e.json(403, { code: 403, error: 'USER_INACTIVE', message: 'Usuário inativo.' })
+    return e.json(403, {
+      code: 403,
+      error: 'ACTING_USER_NOT_FOUND',
+      message: 'Usuário operador não encontrado ou inativo.',
+    })
   }
 
   var memFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
@@ -1325,7 +1381,11 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
   } catch (_) {}
 
   if (!memRec) {
-    return e.json(403, { code: 403, error: 'MEMBERSHIP_INACTIVE', message: 'Vínculo inativo.' })
+    return e.json(403, {
+      code: 403,
+      error: 'ACTING_USER_TENANT_MISMATCH',
+      message: 'Usuário sem vínculo ativo com esta prefeitura.',
+    })
   }
 
   var liveRole = memRec.getString('role') || 'servidor'
@@ -1340,8 +1400,6 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
   var params = { tenantId: tenantId }
 
   if (!isAdmin) {
-    // Servidor comum vê apenas notificações direcionadas a ele (target_user = userId)
-    // ou gerais da equipe sem destinatário exclusivo
     filter += ' && (target_user = {:ownerUserId} || target_user = null || target_user = "")'
     params.ownerUserId = userRec.id
   }

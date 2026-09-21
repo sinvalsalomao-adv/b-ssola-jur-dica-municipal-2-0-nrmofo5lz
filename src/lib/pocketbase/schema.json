@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-20T23:08:44.254Z",
+  "generatedAt": "2026-09-21T03:25:35.090Z",
   "collections": [
     {
       "name": "users",
@@ -2276,11 +2276,11 @@
       "name": "bot_api_keys",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
-        "view": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
-        "create": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.status ?= 'ativo'))",
-        "update": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
-        "delete": "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))"
+        "list": "@request.auth.id != '' && @request.auth.role = 'superadmin'",
+        "view": "@request.auth.id != '' && @request.auth.role = 'superadmin'",
+        "create": "@request.auth.id != '' && @request.auth.role = 'superadmin'",
+        "update": "@request.auth.id != '' && @request.auth.role = 'superadmin'",
+        "delete": "@request.auth.id != '' && @request.auth.role = 'superadmin'"
       },
       "fields": [
         {

@@ -1340,14 +1340,11 @@ export const CANONICAL_SCHEMA_CONTRACT: SchemaContractDefinition = {
       name: 'bot_api_keys',
       type: 'base',
       apiRules: {
-        list: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
-        view: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
-        create:
-          "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.status ?= 'ativo'))",
-        update:
-          "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
-        delete:
-          "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+        list: "@request.auth.id != '' && @request.auth.role = 'superadmin'",
+        view: "@request.auth.id != '' && @request.auth.role = 'superadmin'",
+        create: "@request.auth.id != '' && @request.auth.role = 'superadmin'",
+        update: "@request.auth.id != '' && @request.auth.role = 'superadmin'",
+        delete: "@request.auth.id != '' && @request.auth.role = 'superadmin'",
       },
       fields: [
         {
@@ -2290,11 +2287,11 @@ migrate((app) => {
   app.save(new Collection({
     name: "bot_api_keys",
     type: "base",
-    listRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
-    viewRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
-    createRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.status ?= 'ativo'))",
-    updateRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
-    deleteRule: "@request.auth.id != '' && (@request.auth.role = 'superadmin' || user = @request.auth.id || (@collection.user_memberships.user ?= @request.auth.id && @collection.user_memberships.tenant ?= tenant && @collection.user_memberships.role ?= 'admin' && @collection.user_memberships.status ?= 'ativo'))",
+    listRule: "@request.auth.id != '' && @request.auth.role = 'superadmin'",
+    viewRule: "@request.auth.id != '' && @request.auth.role = 'superadmin'",
+    createRule: "@request.auth.id != '' && @request.auth.role = 'superadmin'",
+    updateRule: "@request.auth.id != '' && @request.auth.role = 'superadmin'",
+    deleteRule: "@request.auth.id != '' && @request.auth.role = 'superadmin'",
     fields: [
       { name: "tenant", type: "relation", required: true, collectionId: tenantsId, cascadeDelete: true, maxSelect: 1 },
       { name: "name", type: "text", required: true },

@@ -54,6 +54,8 @@ export function BotIntegrationSection({
   hermesEnabled = true,
 }: BotIntegrationSectionProps) {
   const { user } = useAuth()
+  const isSuperadmin = user?.role === 'superadmin'
+
   const [keys, setKeys] = useState<BotApiKey[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -91,8 +93,9 @@ export function BotIntegrationSection({
     try {
       const data = await listBotApiKeys(tenantId)
       setKeys(data)
-    } catch (err) {
-      toast.error('Erro ao carregar chaves do bot: ' + getErrorMessage(err))
+    } catch {
+      // Usuários não-superadmin podem não ter permissão de listar chaves mestras no novo modelo
+      setKeys([])
     } finally {
       setLoading(false)
     }
@@ -103,26 +106,30 @@ export function BotIntegrationSection({
   }, [tenantId])
 
   const handleCreateKey = async () => {
-    if (!tenantId) return
+    if (!tenantId || !isSuperadmin) return
     setCreating(true)
     try {
-      const res = await createBotApiKey(tenantId, newKeyName.trim() || undefined)
+      const res = await createBotApiKey(
+        tenantId,
+        newKeyName.trim() || `Chave Mestra Hermes - ${tenantName || 'Prefeitura'}`,
+      )
       setCreatedKeyData(res)
       setCreateModalOpen(false)
       setNewKeyName('')
-      toast.success('Chave de API vinculada gerada com sucesso!')
+      toast.success('Chave mestra da prefeitura gerada com sucesso!')
       await loadKeys()
     } catch (err) {
-      toast.error('Falha ao gerar chave: ' + getErrorMessage(err))
+      toast.error('Falha ao gerar chave mestra: ' + getErrorMessage(err))
     } finally {
       setCreating(false)
     }
   }
 
   const handleRevokeKey = async (id: string) => {
+    if (!isSuperadmin) return
     if (
       !confirm(
-        'Tem certeza de que deseja revogar esta chave de API? O bot Hermes perderá acesso imediatamente.',
+        'Tem certeza de que deseja revogar a chave mestra desta prefeitura? O bot Hermes perderá acesso imediatamente.',
       )
     ) {
       return
@@ -130,7 +137,7 @@ export function BotIntegrationSection({
     setRevokingId(id)
     try {
       await revokeBotApiKey(id)
-      toast.success('Chave de API revogada com sucesso.')
+      toast.success('Chave mestra revogada com sucesso.')
       await loadKeys()
     } catch (err) {
       toast.error('Erro ao revogar chave: ' + getErrorMessage(err))
@@ -151,171 +158,167 @@ export function BotIntegrationSection({
     toast.success('Copiado para a área de transferência!')
   }
 
+  const actingUserExample = user?.email || user?.id || 'servidor@prefeitura.gov.br'
   const sampleToken = createdKeyData
     ? createdKeyData.raw_key
     : activeKey
       ? activeKey.key_prefix
-      : 'bjm_suaChaveSecreta...'
+      : 'bjm_chaveMestra...'
 
   const generateHermesFullConfigBlock = (): string => {
     const rawKeyAvailable = !!createdKeyData?.raw_key
     const apiKeyValue = rawKeyAvailable
       ? createdKeyData!.raw_key
       : activeKey
-        ? `[ATENÇÃO: Chave ativa detectada (prefixo ${activeKey.key_prefix}), mas o valor secreto completo só é exibido no momento da criação. Caso não tenha o segredo guardado, gere uma nova chave na aba "Integração Bot / Hermes" em /configuracoes para obter o token completo.]`
-        : `[ATENÇÃO: Nenhuma chave de API ativa encontrada. Acesse a aba "Integração Bot / Hermes" em /configuracoes e clique em "Nova Chave de API" para gerar seu token.]`
+        ? `[ATENÇÃO: Chave mestra ativa detectada (prefixo ${activeKey.key_prefix}). Como o segredo completo só aparece no momento da emissão, use a chave mestra armazenada pelo superadmin ou gere uma nova chave mestra no painel Superadmin > Prefeituras.]`
+        : `[ATENÇÃO: Nenhuma chave mestra ativa encontrada. Solicite ao Superadministrador a geração da chave mestra da prefeitura.]`
 
     const curlToken = rawKeyAvailable
       ? createdKeyData!.raw_key
       : activeKey
-        ? `<SUA_CHAVE_API_PREFIXO_${activeKey.key_prefix}>`
-        : '<SUA_CHAVE_API>'
+        ? `<SUA_CHAVE_MESTRA_PREFIXO_${activeKey.key_prefix}>`
+        : '<CHAVE_MESTRA_DA_PREFEITURA>'
 
     return `================================================================================
 CONFIGURAÇÃO COMPLETA DE INTEGRAÇÃO — AGENTE HERMES & BÚSSOLA JURÍDICA MUNICIPAL 2.0
 Município: ${tenantName || 'Prefeitura Vinculada'} (ID: ${tenantId})
-Usuário: ${user?.name || user?.email || 'Servidor Municipal'}
-Papel Efetivo: ${userRoleLabel} (${isUserAdminOrSuper ? 'Visão ampla da prefeitura' : 'Visão estrita do servidor'})
+Modelo de Chaves: Chave Mestra por Prefeitura (Gerada exclusivamente pelo Superadmin)
+Autenticação Dinâmica: Cabeçalho X-Acting-User (E-mail ou ID do usuário no Bússola)
+Gerado por: ${user?.name || user?.email || 'Servidor Municipal'} (${userRoleLabel})
 ================================================================================
 
 1. URL BASE DA API DO BOT
 --------------------------------------------------------------------------------
 URL Base: ${botApiBaseUrl}
 Status de Teste: ${botApiBaseUrl}/ping (responde {"status":"ok","message":"Bot Read API is active and healthy"})
-Autenticação: Header "Authorization: Bearer <chave>" ou "X-API-Key: <chave>"
-Isolamento: 100% Multi-tenant com RBAC embutido na chave. O município e o papel do usuário são resolvidos diretamente no servidor a partir da chave de API.
+Cabeçalhos de Autenticação Obrigatórios:
+  - Authorization: Bearer <chave_mestra_da_prefeitura>  (ou X-API-Key: <chave_mestra>)
+  - X-Acting-User: <email_ou_id_do_usuario>
+Isolamento: 100% Multi-tenant com RBAC ao vivo. O município é fixado pela chave mestra (nenhum dado cruza prefeituras) e o usuário operador é resolvido dinamicamente pelo cabeçalho X-Acting-User.
 
-2. CHAVE DE API (BUSSOLA_API_KEY)
+2. CHAVE MESTRA DA PREFEITURA (BUSSOLA_API_KEY)
 --------------------------------------------------------------------------------
-${rawKeyAvailable ? `Chave Gerada Nesta Sessão (Valor Completo):\n${createdKeyData!.raw_key}` : `Instrução para a Chave de API:\n${apiKeyValue}`}
+${rawKeyAvailable ? `Chave Mestra Gerada Nesta Sessão (Valor Completo):\n${createdKeyData!.raw_key}` : `Instrução para a Chave Mestra:\n${apiKeyValue}`}
 
-3. VARIÁVEIS DE AMBIENTE PARA O DOCKER DO HERMES
+3. VARIÁVEIS DE AMBIENTE PARA O DOCKER DO HERMES (HOSTINGER / .env)
 --------------------------------------------------------------------------------
 No painel do Gerenciador Docker do seu Hermes (ou arquivo docker-compose / .env), configure as variáveis em "Ambiente":
 
 BUSSOLA_API_URL=${botApiBaseUrl}
-BUSSOLA_API_KEY=${rawKeyAvailable ? createdKeyData!.raw_key : '<COLE_AQUI_A_CHAVE_GERADA_NA_ABA_CONFIGURACOES>'}
+BUSSOLA_API_KEY=${rawKeyAvailable ? createdKeyData!.raw_key : '<COLE_AQUI_A_CHAVE_MESTRA_GERADA_PELO_SUPERADMIN>'}
+BUSSOLA_TENANT_ID=${tenantId || ''}
 
-4. CATÁLOGO DOS 9 ENDPOINTS COM EXEMPLOS DE CURL
+4. DIRETRIZ CRÍTICA DE IDENTIDADE (CABEÇALHO X-Acting-User)
 --------------------------------------------------------------------------------
-Observação: A chave deriva automaticamente o município (${tenantName || tenantId}) e as permissões de ${userRoleLabel}.
+O Hermes deve enviar a identidade de QUEM PERGUNTA em cada requisição à API.
+Formato: e-mail ou ID do usuário cadastrado na prefeitura do Bússola Jurídica.
+Exemplo:
+  X-Acting-User: ${actingUserExample}
+
+Como funciona:
+- Ao conversar com o usuário no Telegram, o Hermes identifica o e-mail ou ID dele no Bússola.
+- Envia esse identificador no cabeçalho X-Acting-User.
+- A API do Bússola calcula as permissões AO VIVO:
+  * Admin Municipal ou Superadmin -> visão completa da prefeitura.
+  * Servidor Comum -> apenas o que é dele (projetos onde é responsável, seus prazos e notificações). Resumos municipais (/summary) e lista de servidores (/users) retornam 403 Forbidden.
+  * Usuário inexistente ou de outro município -> acesso negado (403 Forbidden).
+
+5. CATÁLOGO DOS 9 ENDPOINTS COM EXEMPLOS DE CURL
+--------------------------------------------------------------------------------
 
 [1] Healthcheck / Ping
 Endpoint: GET ${botApiBaseUrl}/ping
 Permissão: Público / Teste de conectividade
-Descrição: Verifica se o subsistema de bot da Bússola está ativo e saudável.
-Exemplo cURL:
 curl -X GET "${botApiBaseUrl}/ping"
 
-[2] Informações de Identidade e Escopo da Chave
+[2] Informações de Identidade e Escopo do Usuário Operador
 Endpoint: GET ${botApiBaseUrl}/info
-Permissão: Todas as chaves ativas
-Descrição: Retorna os dados do município vinculado, usuário emissor, papel RBAC em tempo real e colunas do Kanban.
-Exemplo cURL:
+Permissão: Todas as chaves mestras válidas com X-Acting-User ativo
 curl -X GET "${botApiBaseUrl}/info" \\
-  -H "Authorization: Bearer ${curlToken}"
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
 
 [3] Listagem de Projetos do Kanban
 Endpoint: GET ${botApiBaseUrl}/projects[?coluna=...&prioridade=...&busca=...]
-Permissão: Escopado por papel
-  - Admin/Superadmin: visualiza todos os projetos do município.
-  - Usuário Comum: visualiza exclusivamente os projetos onde é responsável direto.
-Filtros suportados:
-  - coluna: Ideação, Projeto Executivo, Elaborar DFD, Procedimentos Internos, Execução, Prestação de Contas, Marketing
-  - prioridade: Alta, Média, Baixa
-  - busca: termo de busca textual no título, objeto ou número de processo
-Exemplo cURL:
+Permissão: Escopado dinamicamente pelo X-Acting-User (Admin vê todos; Comum vê apenas os seus)
 curl -X GET "${botApiBaseUrl}/projects?coluna=Elaborar%20DFD" \\
-  -H "Authorization: Bearer ${curlToken}"
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
 
 [4] Resumo Agregado do Kanban (Totais por Coluna e Prioridade)
 Endpoint: GET ${botApiBaseUrl}/projects/summary
-Permissão: Exclusivo Administradores (Admin / Superadmin). Retorna 403 Forbidden para Usuário Comum.
-Descrição: Retorna contadores de cards por coluna, por prioridade e a matriz cruzada coluna x prioridade.
-Exemplo cURL:
+Permissão: Exclusivo Administradores Municipais. Servidor comum recebe 403 Forbidden.
 curl -X GET "${botApiBaseUrl}/projects/summary" \\
-  -H "Authorization: Bearer ${curlToken}"
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
 
 [5] Listagem de Documentos de Formalização de Demanda (DFDs)
 Endpoint: GET ${botApiBaseUrl}/dfds[?status=...]
-Permissão: Escopado por papel
-  - Admin/Superadmin: visualiza todos os DFDs do município.
-  - Usuário Comum: visualiza exclusivamente os DFDs sob sua responsabilidade.
-Filtros suportados:
-  - status: Em Elaboração, Aguardando Aprovação, Aprovado, Rejeitado, etc.
-Exemplo cURL:
+Permissão: Escopado dinamicamente pelo X-Acting-User (Admin vê todos; Comum vê os seus)
 curl -X GET "${botApiBaseUrl}/dfds" \\
-  -H "Authorization: Bearer ${curlToken}"
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
 
 [6] Detalhe de um DFD por ID
 Endpoint: GET ${botApiBaseUrl}/dfds/{id}
-Permissão: Escopado por papel
-  - Admin/Superadmin: visualiza qualquer DFD do município.
-  - Usuário Comum: visualiza somente se for o responsável direto pelo DFD. DFDs de outros usuários ou outros municípios retornam 404 Not Found.
-Exemplo cURL:
+Permissão: Admin vê qualquer um da prefeitura; Comum vê apenas se for o responsável
 curl -X GET "${botApiBaseUrl}/dfds/SEU_ID_DFD" \\
-  -H "Authorization: Bearer ${curlToken}"
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
 
 [7] Monitoramento de Prazos e Gargalos
 Endpoint: GET ${botApiBaseUrl}/deadlines
-Permissão: Escopado por papel
-  - Admin/Superadmin: analisa todos os prazos do município.
-  - Usuário Comum: analisa apenas os prazos dos seus processos atribuídos.
-Descrição: Retorna itens vencidos, prazos que vencem nos próximos 7 dias e contadores analíticos.
-Exemplo cURL:
+Permissão: Escopado dinamicamente pelo X-Acting-User
 curl -X GET "${botApiBaseUrl}/deadlines" \\
-  -H "Authorization: Bearer ${curlToken}"
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
 
 [8] Servidores e Usuários do Município
 Endpoint: GET ${botApiBaseUrl}/users
-Permissão: Exclusivo Administradores (Admin / Superadmin). Retorna 403 Forbidden para Usuário Comum.
-Descrição: Lista servidores com vínculo ativo no município, seus e-mails e respectivos papéis (admin / servidor).
-Exemplo cURL:
+Permissão: Exclusivo Administradores Municipais. Servidor comum recebe 403 Forbidden.
 curl -X GET "${botApiBaseUrl}/users" \\
-  -H "Authorization: Bearer ${curlToken}"
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
 
 [9] Notificações e Alertas Internos
 Endpoint: GET ${botApiBaseUrl}/notifications[?nao_lidas=true&tipo=...]
-Permissão: Escopado por papel
-  - Admin/Superadmin: visualiza notificações do município.
-  - Usuário Comum: visualiza exclusivamente notificações direcionadas a ele ou gerais da equipe.
-Filtros suportados:
-  - nao_lidas=true: filtra apenas pendentes de leitura
-  - tipo: alerta_gargalo, prazo_vencendo, etc.
-Exemplo cURL:
+Permissão: Escopado dinamicamente pelo X-Acting-User
 curl -X GET "${botApiBaseUrl}/notifications?nao_lidas=true" \\
-  -H "Authorization: Bearer ${curlToken}"
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
 
-5. SYSTEM PROMPT PRONTO PARA O AGENTE HERMES (EM PORTUGUÊS)
+6. SYSTEM PROMPT PRONTO PARA O AGENTE HERMES (EM PORTUGUÊS)
 --------------------------------------------------------------------------------
 Copie e cole as diretrizes abaixo no campo de System Prompt ou Instruções do seu Agente Hermes:
 
 """
-Você é o Hermes, o assistente oficial de inteligência operacional da plataforma Bússola Jurídica Municipal 2.0 para a Prefeitura de ${tenantName || 'seu município'}.
+Você é o Hermes, o assistente oficial de inteligência operacional da plataforma Bússola Jurídica Municipal 2.0 para a Prefeitura de ${tenantName || 'nosso município'}.
 
 DIRETRIZES FUNDAMENTAIS:
 1. IDIOMA E TONALIDADE:
    - Responda sempre em português brasileiro de forma clara, profissional, objetiva e segura.
    - Apresente informações organizadas com listas com marcadores, datas no padrão DD/MM/AAAA e destaques em negrito.
 
-2. COMUNICAÇÃO COM A API:
+2. COMUNICAÇÃO COM A API E CABEÇALHO DE IDENTIDADE:
    - Sua URL base é: ${botApiBaseUrl}
-   - Em todas as requisições HTTP, envie obrigatoriamente o cabeçalho:
+   - Em todas as requisições HTTP, envie obrigatoriamente os dois cabeçalhos:
      Authorization: Bearer ${rawKeyAvailable ? createdKeyData!.raw_key : '$BUSSOLA_API_KEY'}
-     (ou utilize o header equivalente: X-API-Key: ${rawKeyAvailable ? createdKeyData!.raw_key : '$BUSSOLA_API_KEY'})
-   - Para identificar o usuário conectado, prefeitura e limitações de acesso, realize primeiro uma chamada a:
-     GET ${botApiBaseUrl}/info
+     X-Acting-User: <e-mail ou ID do usuário que está perguntando>
+   - Identifique quem está conversando com você no Telegram (pelo e-mail do Bússola) e envie essa identidade em X-Acting-User.
+   - Para inspecionar as permissões do usuário antes de responder a consultas complexas, faça uma chamada prévia a:
+     GET ${botApiBaseUrl}/info com o header X-Acting-User correspondente.
 
 3. RESPEITO ESTRITO AO RBAC E ESCOPO DE SEGURANÇA:
-   - A Bússola Jurídica isola os dados por chave no servidor:
-     * Usuários com papel de Administrador Municipal ou Superadministrador têm acesso global aos dados da prefeitura (${botApiBaseUrl}/projects/summary e ${botApiBaseUrl}/users são permitidos).
-     * Usuários com papel Comum (Servidores) têm visão estrita. Eles visualizam apenas seus próprios processos em /projects, seus próprios DFDs em /dfds, seus prazos em /deadlines e suas notificações em /notifications.
-   - Se um endpoint retornar HTTP 403 Forbidden com mensagem de permissão, explique educadamente ao usuário em português que a consulta agregada municipal é restrita a administradores e ofereça a alternativa permitida para o perfil dele.
-   - Jamais invente ou alucine dados jurídicos ou números de processos. Todas as respostas com dados da prefeitura devem ser baseadas estritamente nos retornos JSON recebidos dos endpoints oficiais da Bússola.
+   - A Bússola Jurídica aplica as regras do usuário AO VIVO no banco de dados:
+     * Administradores municipais têm visão integral dos projetos, prazos e métricas da prefeitura.
+     * Servidores comuns visualizam apenas seus próprios projetos em /projects, seus DFDs em /dfds, seus prazos em /deadlines e suas notificações em /notifications.
+   - Se um endpoint retornar HTTP 403 Forbidden (como /projects/summary ou /users para servidor comum), explique educadamente em português que a consulta agregada municipal é restrita a administradores e forneça a alternativa voltada aos projetos dele.
+   - Nenhum dado cruza prefeituras: a prefeitura é fixada pela chave mestra. Usuários de outro município têm acesso negado automaticamente.
+   - Jamais invente ou deduza dados jurídicos. Todas as respostas com dados da prefeitura devem ser baseadas estritamente nos retornos JSON recebidos dos endpoints oficiais da Bússola.
 
 4. ENDPOINTS DISPONÍVEIS:
    - GET ${botApiBaseUrl}/ping -> Verificação de integridade
-   - GET ${botApiBaseUrl}/info -> Perfil do usuário autenticado, município e colunas
+   - GET ${botApiBaseUrl}/info -> Perfil do usuário operador, prefeitura e colunas
    - GET ${botApiBaseUrl}/projects -> Projetos no Kanban (filtros: coluna, prioridade, busca)
    - GET ${botApiBaseUrl}/projects/summary -> Resumo com contagem por coluna/prioridade (apenas Admins)
    - GET ${botApiBaseUrl}/dfds -> DFDs (Documentos de Formalização de Demanda)
@@ -397,23 +400,23 @@ DIRETRIZES FUNDAMENTAIS:
 
   return (
     <div className="space-y-6">
-      {/* Banner de Contexto RBAC da Sessão */}
+      {/* Banner de Contexto do Novo Modelo de Chave Mestra */}
       <div className="rounded-lg bg-slate-900 text-white p-4 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <UserCheck className="w-4 h-4 text-emerald-400" />
             <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">
-              Identidade RBAC de Emissão
+              Modelo Centralizado de Integração Hermes
             </span>
           </div>
           <p className="text-sm font-bold text-white">
-            Esta chave consulta como <span className="text-blue-300">{userRoleLabel}</span> de{' '}
-            <span className="text-blue-300">{tenantName || 'este município'}</span>
+            Chave mestra exclusiva para{' '}
+            <span className="text-blue-300">{tenantName || 'este município'}</span> com verificação
+            dinâmica por <span className="text-amber-300 font-mono text-xs">X-Acting-User</span>
           </p>
           <p className="text-xs text-slate-300">
-            {isUserAdminOrSuper
-              ? 'Permissão ampla: o bot Hermes consultará todos os projetos, prazos e resumos desta prefeitura.'
-              : 'Permissão estrita: o bot Hermes consultará apenas os projetos, prazos e notificações atribuídos a você.'}
+            Apenas o superadministrador gera a chave mestra da prefeitura. O Hermes envia a
+            identidade de quem pergunta no Telegram e o Bússola aplica as permissões dele ao vivo.
           </p>
         </div>
         <div className="shrink-0 flex items-center gap-2">
@@ -421,7 +424,7 @@ DIRETRIZES FUNDAMENTAIS:
             variant="outline"
             className="border-slate-700 bg-slate-800 text-slate-200 text-xs py-1"
           >
-            {user?.email}
+            Seu perfil: {userRoleLabel}
           </Badge>
         </div>
       </div>
@@ -435,11 +438,11 @@ DIRETRIZES FUNDAMENTAIS:
                 <Key className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-[#1c2a3e]">Chaves de API do Município</h3>
+                <h3 className="text-sm font-bold text-[#1c2a3e]">Chave Mestra da Prefeitura</h3>
                 <p className="text-xs text-gray-500">
                   {tenantName
-                    ? `Escopadas a ${tenantName} com credencial do usuário emissor`
-                    : 'Isolamento estrito por município e usuário'}
+                    ? `Uma chave mestra para ${tenantName}. Gerada exclusivamente pelo superadmin.`
+                    : 'Uma chave mestra por município.'}
                 </p>
               </div>
             </div>
@@ -449,7 +452,7 @@ DIRETRIZES FUNDAMENTAIS:
                 size="sm"
                 variant="outline"
                 className="border-indigo-200 text-indigo-700 bg-indigo-50/50 hover:bg-indigo-100 text-xs h-8 gap-1.5 font-medium shadow-none"
-                title="Copia URL base, chave, os 9 endpoints com cURL, variáveis Docker e o prompt do Hermes"
+                title="Copia URL base, chave, os 9 endpoints com cURL, instruções X-Acting-User e o prompt do Hermes"
               >
                 {copiedAllHermes ? (
                   <Check className="w-3.5 h-3.5 text-emerald-600" />
@@ -458,18 +461,22 @@ DIRETRIZES FUNDAMENTAIS:
                 )}
                 Copiar tudo para o Hermes
               </Button>
-              <Button
-                onClick={() => setCreateModalOpen(true)}
-                disabled={!hermesEnabled}
-                size="sm"
-                className="bg-[#1c2a3e] hover:bg-[#283b54] text-white text-xs h-8 gap-1.5 disabled:opacity-50"
-                title={
-                  !hermesEnabled ? 'Integração Hermes desativada para esta prefeitura.' : undefined
-                }
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Nova Chave de API
-              </Button>
+              {isSuperadmin && (
+                <Button
+                  onClick={() => setCreateModalOpen(true)}
+                  disabled={!hermesEnabled}
+                  size="sm"
+                  className="bg-[#1c2a3e] hover:bg-[#283b54] text-white text-xs h-8 gap-1.5 disabled:opacity-50"
+                  title={
+                    !hermesEnabled
+                      ? 'Integração Hermes desativada para esta prefeitura.'
+                      : undefined
+                  }
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  {activeKey ? 'Gerar Nova Chave Mestra' : 'Nova Chave Mestra'}
+                </Button>
+              )}
             </div>
           </div>
 
@@ -478,7 +485,7 @@ DIRETRIZES FUNDAMENTAIS:
               <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
               <span>
                 A integração Hermes está desativada para esta prefeitura pelo superadministrador.
-                Não é possível gerar novas chaves e as chaves existentes estão inoperantes.
+                Não é possível gerar chaves e os endpoints retornam 403 HERMES_DISABLED.
               </span>
             </div>
           )}
@@ -491,11 +498,13 @@ DIRETRIZES FUNDAMENTAIS:
             <div className="text-center py-6 border border-dashed border-gray-200 rounded-lg">
               <Key className="w-8 h-8 text-gray-300 mx-auto mb-2" />
               <p className="text-xs text-gray-500 font-medium">
-                Nenhuma chave de API gerada para este município.
+                {isSuperadmin
+                  ? 'Nenhuma chave mestra gerada para esta prefeitura. Clique em "Nova Chave Mestra" acima.'
+                  : 'Nenhuma chave mestra ativa gerada. Solicite ao Superadministrador a emissão da chave do município.'}
               </p>
               <p className="text-[11px] text-gray-400 mt-0.5">
-                Gere uma chave para permitir que o bot Hermes consulte dados com segurança e
-                isolamento por perfil.
+                Chaves pessoais por usuário deixaram de existir; o Hermes opera com uma chave mestra
+                municipal e identidade X-Acting-User.
               </p>
             </div>
           ) : (
@@ -518,24 +527,12 @@ DIRETRIZES FUNDAMENTAIS:
                       >
                         {k.status === 'ativa' ? 'Ativa' : 'Revogada'}
                       </Badge>
-                      {k.role_snapshot && (
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] px-2 py-0 h-4 border-gray-200 text-gray-600 bg-white"
-                        >
-                          Papel:{' '}
-                          {k.role_snapshot === 'admin'
-                            ? 'Admin'
-                            : k.role_snapshot === 'superadmin'
-                              ? 'Superadmin'
-                              : 'Servidor Comum'}
-                        </Badge>
-                      )}
-                      {k.user_name && (
-                        <span className="text-[11px] text-gray-500">
-                          (Criada por: <strong>{k.user_name}</strong>)
-                        </span>
-                      )}
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] px-2 py-0 h-4 border-indigo-200 text-indigo-700 bg-indigo-50 font-medium"
+                      >
+                        Chave Mestra Municipal
+                      </Badge>
                     </div>
                     <div className="flex items-center gap-3 text-[11px] text-gray-500 font-mono flex-wrap">
                       <span>Prefixo: {k.key_prefix}</span>
@@ -552,24 +549,26 @@ DIRETRIZES FUNDAMENTAIS:
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 self-end sm:self-center">
-                    {k.status === 'ativa' && (
-                      <Button
-                        onClick={() => handleRevokeKey(k.id)}
-                        disabled={revokingId === k.id}
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200"
-                      >
-                        {revokingId === k.id ? (
-                          <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                        ) : (
-                          <Ban className="w-3 h-3 mr-1" />
-                        )}
-                        Revogar
-                      </Button>
-                    )}
-                  </div>
+                  {isSuperadmin && (
+                    <div className="flex items-center gap-2 self-end sm:self-center">
+                      {k.status === 'ativa' && (
+                        <Button
+                          onClick={() => handleRevokeKey(k.id)}
+                          disabled={revokingId === k.id}
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200"
+                        >
+                          {revokingId === k.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                          ) : (
+                            <Ban className="w-3.5 h-3.5 mr-1" />
+                          )}
+                          Revogar
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -582,21 +581,22 @@ DIRETRIZES FUNDAMENTAIS:
                 <span>Isolamento Multi-Tenant Inviolável</span>
               </div>
               <p className="text-[11px] text-blue-700 leading-relaxed">
-                Toda chave tem escopo <strong>fixo ao município</strong>. As rotas do bot ignoram
-                parâmetros externos de município e derivam o contexto estritamente do registro da
-                chave. O Hermes nunca expõe dados de outra cidade.
+                Toda chave mestra pertence exclusivamente a{' '}
+                <strong>{tenantName || 'sua prefeitura'}</strong>. Mesmo que o Hermes envie um
+                usuário de outro município no <code>X-Acting-User</code>, o acesso é automaticamente
+                bloqueado com 403 Forbidden.
               </p>
             </div>
 
             <div className="rounded-lg bg-purple-50/60 border border-purple-100 p-3 text-xs text-purple-900 space-y-1">
               <div className="flex items-center gap-1.5 font-semibold">
                 <Lock className="w-4 h-4 text-purple-600 shrink-0" />
-                <span>Espelhamento de Papel (RBAC ao vivo)</span>
+                <span>Identidade Dinâmica (X-Acting-User ao vivo)</span>
               </div>
               <p className="text-[11px] text-purple-700 leading-relaxed">
-                A chave resolve as permissões <strong>ao vivo</strong> a partir do vínculo do
-                usuário no banco. Um servidor comum consulta apenas o que é dele; resumos gerenciais
-                e listagens globais retornam 403 Forbidden.
+                O Hermes passa o e-mail ou ID de quem pergunta. Admin municipal vê tudo da
+                prefeitura; servidor comum vê estritamente os projetos e prazos sob sua
+                responsabilidade.
               </p>
             </div>
           </div>
@@ -613,7 +613,7 @@ DIRETRIZES FUNDAMENTAIS:
             <div>
               <h3 className="text-sm font-bold text-[#1c2a3e]">Guia de Conexão com o Hermes</h3>
               <p className="text-xs text-gray-500">
-                Como configurar seu agente de linguagem natural no Telegram passo a passo
+                Como configurar seu bot no Telegram passo a passo com o modelo de chave mestra
               </p>
             </div>
           </div>
@@ -625,11 +625,11 @@ DIRETRIZES FUNDAMENTAIS:
                 <span className="w-5 h-5 rounded-full bg-[#1c2a3e] text-white text-[11px] font-bold flex items-center justify-center">
                   1
                 </span>
-                <span className="text-xs font-bold text-gray-800">Criar Bot no Telegram</span>
+                <span className="text-xs font-bold text-gray-800">Chave Mestra da Prefeitura</span>
               </div>
               <p className="text-[11px] text-gray-600 leading-relaxed">
-                Abra o Telegram, procure por <code>@BotFather</code>, envie o comando{' '}
-                <code>/newbot</code> e obtenha o <strong>Telegram Bot Token</strong>.
+                O superadmin gera a chave mestra em <strong>Superadmin &gt; Prefeituras</strong> e a
+                cadastra em <code>BUSSOLA_API_KEY</code> no Docker do Hermes.
               </p>
             </div>
 
@@ -638,11 +638,11 @@ DIRETRIZES FUNDAMENTAIS:
                 <span className="w-5 h-5 rounded-full bg-[#1c2a3e] text-white text-[11px] font-bold flex items-center justify-center">
                   2
                 </span>
-                <span className="text-xs font-bold text-gray-800">Configurar Agente Hermes</span>
+                <span className="text-xs font-bold text-gray-800">Capturar Usuário Operador</span>
               </div>
               <p className="text-[11px] text-gray-600 leading-relaxed">
-                Na plataforma Hermes, informe o Token do Bot e configure a chamada de API usando a
-                URL Base abaixo com o Header <code>Authorization: Bearer &lt;chave&gt;</code>.
+                No Telegram, o Hermes pergunta ou obtém o e-mail cadastrado do servidor no Bússola e
+                anexa o cabeçalho <code>X-Acting-User</code>.
               </p>
             </div>
 
@@ -651,11 +651,11 @@ DIRETRIZES FUNDAMENTAIS:
                 <span className="w-5 h-5 rounded-full bg-[#1c2a3e] text-white text-[11px] font-bold flex items-center justify-center">
                   3
                 </span>
-                <span className="text-xs font-bold text-gray-800">Conversar com Segurança</span>
+                <span className="text-xs font-bold text-gray-800">Permissões em Tempo Real</span>
               </div>
               <p className="text-[11px] text-gray-600 leading-relaxed">
-                Pergunte em português natural. As respostas serão rigorosamente escopadas ao seu
-                papel ({userRoleLabel}) e município ({tenantName}).
+                A API valida o usuário ao vivo no município. Cada resposta é estritamente
+                personalizada às atribuições dele.
               </p>
             </div>
           </div>
@@ -674,9 +674,10 @@ DIRETRIZES FUNDAMENTAIS:
                 </div>
                 <p className="text-xs text-indigo-900 leading-relaxed max-w-xl">
                   Gere o pacote unificado pronto para colar no Hermes: inclui a{' '}
-                  <strong>URL Base</strong> ({botApiBaseUrl}), a <strong>Chave de API</strong> (com
-                  o valor integral se gerada agora ou instrução de criação), o catálogo completo dos{' '}
-                  <strong>9 endpoints</strong> e o <strong>Prompt do Agente</strong> em português.
+                  <strong>URL Base</strong> ({botApiBaseUrl}), a <strong>Chave Mestra</strong>, o
+                  catálogo completo dos <strong>9 endpoints</strong> e o{' '}
+                  <strong>Prompt do Agente</strong> instruindo o envio de{' '}
+                  <strong>X-Acting-User</strong>.
                 </p>
               </div>
               <Button
@@ -704,7 +705,7 @@ DIRETRIZES FUNDAMENTAIS:
               </div>
               <p className="text-[11px] text-indigo-800/90 leading-relaxed">
                 No painel do Gerenciador Docker do seu Hermes (aba{' '}
-                <em>Editor visual &gt; Ambiente</em>), adicione as duas variáveis obrigatórias:
+                <em>Editor visual &gt; Ambiente</em>), configure:
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
                 <div className="p-2.5 rounded-lg bg-white/90 border border-indigo-100 flex items-center justify-between gap-2 shadow-2xs">
@@ -747,14 +748,14 @@ DIRETRIZES FUNDAMENTAIS:
                       title={
                         createdKeyData?.raw_key ||
                         (activeKey
-                          ? `Chave ativa (prefixo ${activeKey.key_prefix})`
-                          : 'Gere uma chave')
+                          ? `Chave mestra ativa (${activeKey.key_prefix}...)`
+                          : 'Gerada pelo Superadmin')
                       }
                     >
                       {createdKeyData?.raw_key ||
                         (activeKey
-                          ? `Chave ativa (${activeKey.key_prefix}...)`
-                          : 'Clique em "Nova Chave de API"')}
+                          ? `Chave mestra (${activeKey.key_prefix}...)`
+                          : '<CHAVE_MESTRA_DA_PREFEITURA>')}
                     </span>
                   </div>
                   <Button
@@ -768,13 +769,13 @@ DIRETRIZES FUNDAMENTAIS:
                       } else {
                         toast.info(
                           activeKey
-                            ? 'Copie a chave completa gerada ou gere uma nova chave nesta aba.'
-                            : 'Gere uma nova chave de API primeiro.',
+                            ? `Chave mestra ativa: ${activeKey.key_prefix}. O valor bruto completo só é visível ao superadmin no momento da criação.`
+                            : 'Solicite ao Superadmin a emissão da chave mestra da prefeitura.',
                         )
                       }
                     }}
                     title={
-                      createdKeyData?.raw_key ? 'Copiar chave completa' : 'Instrução sobre a chave'
+                      createdKeyData?.raw_key ? 'Copiar chave mestra' : 'Instrução sobre a chave'
                     }
                   >
                     {copiedSnippet === 'env_key' ? (
@@ -824,8 +825,8 @@ DIRETRIZES FUNDAMENTAIS:
               </a>
             </div>
             <p className="text-[11px] text-gray-500">
-              Autenticação aceita via Header <code>Authorization: Bearer &lt;chave&gt;</code> ou{' '}
-              <code>X-API-Key: &lt;chave&gt;</code>.
+              Autenticação: <code>Authorization: Bearer &lt;chave_mestra&gt;</code> e cabeçalho
+              obrigatório <code>X-Acting-User: &lt;email_ou_id_do_usuario&gt;</code>.
             </p>
           </div>
 
@@ -868,7 +869,7 @@ DIRETRIZES FUNDAMENTAIS:
                       type="button"
                       onClick={() =>
                         copyToClipboard(
-                          `curl -H "Authorization: Bearer ${sampleToken}" "${baseUrl}${q.endpoint}"`,
+                          `curl -H "Authorization: Bearer ${sampleToken}" -H "X-Acting-User: ${actingUserExample}" "${baseUrl}${q.endpoint}"`,
                           `q_${idx}`,
                         )
                       }
@@ -909,15 +910,20 @@ DIRETRIZES FUNDAMENTAIS:
                       {
                         status: 'ok',
                         sistema: 'Bússola Jurídica Municipal 2.0',
-                        versao: '0.0.107',
+                        versao: '0.0.109',
                         municipio: {
                           id: tenantId,
                           nome: tenantName || 'Prefeitura de Exemplo',
                           slug: 'prefeitura-exemplo',
+                          hermes_enabled: true,
                         },
-                        usuario: {
+                        chave_mestra: {
+                          tipo: 'chave_mestra_prefeitura',
+                        },
+                        usuario_operador: {
                           id: user?.id || 'usr_123',
                           nome: user?.name || 'Servidor Municipal',
+                          email: user?.email || 'servidor@prefeitura.gov.br',
                           papel_no_municipio: user?.role || 'servidor',
                           is_admin_ou_superior: isUserAdminOrSuper,
                         },
@@ -941,18 +947,23 @@ DIRETRIZES FUNDAMENTAIS:
                 )}
               </button>
               <pre className="text-[11px] text-gray-300">
-                {`// GET /backend/v1/bot/info
+                {`// GET /backend/v1/bot/info (com X-Acting-User: ${actingUserExample})
 {
   "status": "ok",
   "sistema": "Bússola Jurídica Municipal 2.0",
-  "versao": "0.0.107",
+  "versao": "0.0.109",
   "municipio": {
     "id": "${tenantId}",
-    "nome": "${tenantName || 'Prefeitura de Exemplo'}"
+    "nome": "${tenantName || 'Prefeitura de Exemplo'}",
+    "hermes_enabled": true
   },
-  "usuario": {
+  "chave_mestra": {
+    "tipo": "chave_mestra_prefeitura"
+  },
+  "usuario_operador": {
     "id": "${user?.id || 'usr_123'}",
     "nome": "${user?.name || 'Servidor'}",
+    "email": "${actingUserExample}",
     "papel_no_municipio": "${user?.role || 'servidor'}",
     "is_admin_ou_superior": ${isUserAdminOrSuper}
   },
@@ -966,61 +977,65 @@ DIRETRIZES FUNDAMENTAIS:
         </CardContent>
       </Card>
 
-      {/* Modal para Gerar Nova Chave */}
-      <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-sm font-bold text-[#1c2a3e]">
-              Gerar Nova Chave de API
-            </DialogTitle>
-            <DialogDescription className="text-xs text-gray-500">
-              Esta chave herdará seu papel de <strong>{userRoleLabel}</strong> e dará acesso{' '}
-              <strong>somente leitura</strong> aos dados de {tenantName || 'este município'}.
-            </DialogDescription>
-          </DialogHeader>
+      {/* Modal para Gerar Nova Chave Mestra (Exclusivo Superadmin) */}
+      {isSuperadmin && (
+        <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-sm font-bold text-[#1c2a3e]">
+                Gerar Chave Mestra da Prefeitura
+              </DialogTitle>
+              <DialogDescription className="text-xs text-gray-500">
+                Gera a chave mestra para <strong>{tenantName || 'esta prefeitura'}</strong>.
+                Qualquer chave mestra anterior ativa será <strong>revogada automaticamente</strong>.
+              </DialogDescription>
+            </DialogHeader>
 
-          <div className="space-y-3 py-2">
-            <div>
-              <Label className="text-xs font-semibold text-gray-700">Identificação da Chave</Label>
-              <Input
-                value={newKeyName}
-                onChange={(e) => setNewKeyName(e.target.value)}
-                placeholder="Ex.: Hermes Telegram Gabinete"
-                className="mt-1 text-xs"
-              />
+            <div className="space-y-3 py-2">
+              <div>
+                <Label className="text-xs font-semibold text-gray-700">
+                  Identificação da Chave
+                </Label>
+                <Input
+                  value={newKeyName}
+                  onChange={(e) => setNewKeyName(e.target.value)}
+                  placeholder={`Ex.: Chave Mestra Hermes - ${tenantName || 'Prefeitura'}`}
+                  className="mt-1 text-xs"
+                />
+              </div>
+
+              <div className="rounded-lg bg-blue-50 border border-blue-200 p-2.5 text-xs text-blue-800 space-y-1">
+                <p className="font-semibold text-blue-900">Modelo de Integração:</p>
+                <p className="text-[11px] text-blue-700">
+                  • Prefeituras: <strong>{tenantName || 'Selecionada'}</strong>
+                  <br />• Chave única mestra. O Hermes informará <strong>X-Acting-User</strong> a
+                  cada consulta.
+                </p>
+              </div>
             </div>
 
-            <div className="rounded-lg bg-blue-50 border border-blue-200 p-2.5 text-xs text-blue-800 space-y-1">
-              <p className="font-semibold text-blue-900">Vínculo Automático:</p>
-              <p className="text-[11px] text-blue-700">
-                • Usuário: <strong>{user?.name || user?.email}</strong>
-                <br />• Papel Efetivo: <strong>{userRoleLabel}</strong>
-                <br />• Município Fixo: <strong>{tenantName || 'Selecionado'}</strong>
-              </p>
-            </div>
-          </div>
-
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCreateModalOpen(false)}
-              className="text-xs"
-            >
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleCreateKey}
-              disabled={creating}
-              size="sm"
-              className="bg-[#1c2a3e] hover:bg-[#283b54] text-white text-xs"
-            >
-              {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
-              Gerar Chave
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCreateModalOpen(false)}
+                className="text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleCreateKey}
+                disabled={creating}
+                size="sm"
+                className="bg-[#1c2a3e] hover:bg-[#283b54] text-white text-xs"
+              >
+                {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+                Gerar Chave Mestra
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Modal para Exibição Única da Chave Secreta */}
       <Dialog open={!!createdKeyData} onOpenChange={() => setCreatedKeyData(null)}>
@@ -1030,11 +1045,11 @@ DIRETRIZES FUNDAMENTAIS:
               <Key className="w-5 h-5" />
             </div>
             <DialogTitle className="text-sm font-bold text-[#1c2a3e]">
-              Guarde sua Chave com Segurança
+              Guarde a Chave Mestra com Segurança
             </DialogTitle>
             <DialogDescription className="text-xs text-gray-500">
-              Esta chave <strong>não será exibida novamente</strong>. Copie-a agora e configure seu
-              agente Hermes.
+              Esta chave mestra <strong>não será exibida novamente</strong>. Copie-a agora e
+              configure no Hermes.
             </DialogDescription>
           </DialogHeader>
 
@@ -1042,7 +1057,7 @@ DIRETRIZES FUNDAMENTAIS:
             <div className="space-y-4 py-2">
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold text-gray-700">
-                  Chave de API (Secret Token)
+                  Chave Mestra de API (Secret Token)
                 </Label>
                 <div className="flex items-center gap-2">
                   <Input
@@ -1073,8 +1088,8 @@ DIRETRIZES FUNDAMENTAIS:
                     Pacote Completo para o Hermes
                   </span>
                   <p className="text-[11px] text-indigo-800">
-                    Copie a URL base, esta chave recém-gerada, variáveis Docker e o prompt do Hermes
-                    em um só bloco.
+                    Copie a URL base, esta chave mestra recém-gerada, variáveis Docker e o prompt do
+                    Hermes com instruções X-Acting-User.
                   </p>
                 </div>
                 <Button
@@ -1095,8 +1110,7 @@ DIRETRIZES FUNDAMENTAIS:
               <div className="rounded-lg bg-slate-50 border border-slate-200 p-2.5 text-xs text-slate-700 space-y-0.5">
                 <p className="font-semibold text-slate-800">Metadados da Chave:</p>
                 <p className="text-[11px] text-slate-600">
-                  Proprietário: <strong>{createdKeyData.user_name || createdKeyData.user}</strong> (
-                  {createdKeyData.role})
+                  Tipo: <strong>Chave Mestra Municipal</strong>
                 </p>
                 <p className="text-[11px] text-slate-600">
                   Município: <strong>{createdKeyData.tenant_name || tenantName}</strong>
@@ -1110,8 +1124,7 @@ DIRETRIZES FUNDAMENTAIS:
                 </div>
                 <p className="text-[11px] text-amber-700">
                   Após fechar esta janela, apenas o prefixo <code>{createdKeyData.key_prefix}</code>{' '}
-                  ficará visível para fins de identificação. Caso perca esta chave, basta revogá-la
-                  e gerar uma nova.
+                  ficará visível. Caso perca esta chave, o superadmin precisará gerar uma nova.
                 </p>
               </div>
             </div>

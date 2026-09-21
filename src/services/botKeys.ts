@@ -31,7 +31,8 @@ export interface CreateBotKeyResponse {
 }
 
 /**
- * Cria/gera uma nova chave de API vinculada ao usuário autenticado e ao município informado.
+ * Cria/gera a chave mestra de API para a prefeitura (exclusivo Superadmin).
+ * Gerar nova chave revoga automaticamente a chave anterior da prefeitura.
  * A chave em texto claro é retornada apenas nesta resposta e nunca mais.
  */
 export async function createBotApiKey(
@@ -42,15 +43,14 @@ export async function createBotApiKey(
     method: 'POST',
     body: {
       tenant: tenantId,
-      name: name || 'Chave Hermes Telegram',
+      name: name || 'Chave Mestra Hermes',
     },
   })
   return res
 }
 
 /**
- * Lista as chaves de API do município (apenas prefixos mascarados).
- * Admin vê as chaves do município; usuário comum vê as suas próprias.
+ * Lista as chaves mestras de API da prefeitura (exclusivo Superadmin).
  */
 export async function listBotApiKeys(tenantId: string): Promise<BotApiKey[]> {
   const res = await pb.send<BotApiKey[]>('/backend/v1/bot-keys/list', {
@@ -63,7 +63,7 @@ export async function listBotApiKeys(tenantId: string): Promise<BotApiKey[]> {
 }
 
 /**
- * Revoga uma chave de API existente.
+ * Revoga uma chave mestra existente (exclusivo Superadmin).
  */
 export async function revokeBotApiKey(
   keyId: string,
