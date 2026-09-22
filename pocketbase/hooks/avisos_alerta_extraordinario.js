@@ -11,14 +11,15 @@ onRecordAfterCreateSuccess((e) => {
         'marker_key',
         'telegram_avisos_bot_token',
       )
-      const details = rec.get('details')
-      if (details && typeof details === 'object' && details.token) {
-        token = String(details.token).trim()
-      } else if (typeof details === 'string') {
-        const parsed = JSON.parse(details)
-        if (parsed && parsed.token) token = String(parsed.token).trim()
-      }
+      const raw = rec.getString('details')
+      const parsed = JSON.parse(raw)
+      if (parsed && parsed.token) token = String(parsed.token).trim()
     } catch (_) {}
+  }
+  if (token) {
+    console.log('[AVISOS_TOKEN] token carregado do banco (len=' + token.length + ')')
+  } else {
+    console.log('[AVISOS_TOKEN] token não encontrado')
   }
   if (!token) return
 
@@ -176,14 +177,15 @@ onRecordAfterCreateSuccess((e) => {
         'marker_key',
         'telegram_avisos_bot_token',
       )
-      const details = rec.get('details')
-      if (details && typeof details === 'object' && details.token) {
-        token = String(details.token).trim()
-      } else if (typeof details === 'string') {
-        const parsed = JSON.parse(details)
-        if (parsed && parsed.token) token = String(parsed.token).trim()
-      }
+      const raw = rec.getString('details')
+      const parsed = JSON.parse(raw)
+      if (parsed && parsed.token) token = String(parsed.token).trim()
     } catch (_) {}
+  }
+  if (token) {
+    console.log('[AVISOS_TOKEN] token carregado do banco (len=' + token.length + ')')
+  } else {
+    console.log('[AVISOS_TOKEN] token não encontrado')
   }
   if (!token) return
 
