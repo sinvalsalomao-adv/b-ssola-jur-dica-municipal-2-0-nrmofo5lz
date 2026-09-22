@@ -41,7 +41,23 @@ routerAdd('GET', '/backend/v1/bot', (e) => {
 })
 
 routerAdd('GET', '/backend/v1/bot/ping', (e) => {
-  const avisosToken = $os.getenv('TELEGRAM_AVISOS_BOT_TOKEN')
+  let avisosToken = ($os.getenv('TELEGRAM_AVISOS_BOT_TOKEN') || '').trim()
+  if (!avisosToken) {
+    try {
+      const rec = $app.findFirstRecordByData(
+        'security_audit_markers',
+        'marker_key',
+        'telegram_avisos_bot_token',
+      )
+      const details = rec.get('details')
+      if (details && typeof details === 'object' && details.token) {
+        avisosToken = String(details.token).trim()
+      } else if (typeof details === 'string') {
+        const parsed = JSON.parse(details)
+        if (parsed && parsed.token) avisosToken = String(parsed.token).trim()
+      }
+    } catch (_) {}
+  }
   let avisosBotInfo = null
   let avisosWhInfo = null
   let avisosErr = null

@@ -108,6 +108,7 @@ routerAdd(
 )
 
 // Rota para disparo manual imediato de aviso (útil para testes ou reenvio)
+
 routerAdd(
   'POST',
   '/backend/v1/avisos/disparar-teste',
@@ -116,15 +117,29 @@ routerAdd(
     if (!auth) {
       return e.json(401, { code: 401, message: 'Autenticação necessária.' })
     }
-
-    const token = $os.getenv('TELEGRAM_AVISOS_BOT_TOKEN')
-    if (!token || !token.trim()) {
+    let token = ($os.getenv('TELEGRAM_AVISOS_BOT_TOKEN') || '').trim()
+    if (!token) {
+      try {
+        const rec = $app.findFirstRecordByData(
+          'security_audit_markers',
+          'marker_key',
+          'telegram_avisos_bot_token',
+        )
+        const details = rec.get('details')
+        if (details && typeof details === 'object' && details.token) {
+          token = String(details.token).trim()
+        } else if (typeof details === 'string') {
+          const parsed = JSON.parse(details)
+          if (parsed && parsed.token) token = String(parsed.token).trim()
+        }
+      } catch (_) {}
+    }
+    if (!token) {
       return e.json(400, {
         code: 400,
         message: 'Bot do Telegram não configurado (secret TELEGRAM_AVISOS_BOT_TOKEN ausente).',
       })
     }
-
     const body = e.requestInfo().body || {}
     const targetUserId = String(body.userId || auth.id).trim()
 

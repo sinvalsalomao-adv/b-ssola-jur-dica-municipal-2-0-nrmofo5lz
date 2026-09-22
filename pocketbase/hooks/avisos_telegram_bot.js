@@ -6,8 +6,24 @@
 
 // Rota para Webhook do Telegram (se configurado) ou chamada manual
 routerAdd('POST', '/backend/v1/telegram-avisos/webhook', (e) => {
-  const token = $os.getenv('TELEGRAM_AVISOS_BOT_TOKEN')
-  if (!token || !token.trim()) {
+  let token = ($os.getenv('TELEGRAM_AVISOS_BOT_TOKEN') || '').trim()
+  if (!token) {
+    try {
+      const rec = $app.findFirstRecordByData(
+        'security_audit_markers',
+        'marker_key',
+        'telegram_avisos_bot_token',
+      )
+      const details = rec.get('details')
+      if (details && typeof details === 'object' && details.token) {
+        token = String(details.token).trim()
+      } else if (typeof details === 'string') {
+        const parsed = JSON.parse(details)
+        if (parsed && parsed.token) token = String(parsed.token).trim()
+      }
+    } catch (_) {}
+  }
+  if (!token) {
     return e.json(200, { ok: true, message: 'Bot token não configurado.' })
   }
 
@@ -454,8 +470,24 @@ routerAdd('POST', '/backend/v1/telegram-avisos/webhook', (e) => {
 // Cron de sincronização / polling para updates do Telegram
 // Permite que o bot funcione no Skip Cloud mesmo se o webhook externo não estiver configurado
 cronAdd('avisos_telegram_polling', '* * * * *', () => {
-  const token = $os.getenv('TELEGRAM_AVISOS_BOT_TOKEN')
-  if (!token || !token.trim()) return
+  let token = ($os.getenv('TELEGRAM_AVISOS_BOT_TOKEN') || '').trim()
+  if (!token) {
+    try {
+      const rec = $app.findFirstRecordByData(
+        'security_audit_markers',
+        'marker_key',
+        'telegram_avisos_bot_token',
+      )
+      const details = rec.get('details')
+      if (details && typeof details === 'object' && details.token) {
+        token = String(details.token).trim()
+      } else if (typeof details === 'string') {
+        const parsed = JSON.parse(details)
+        if (parsed && parsed.token) token = String(parsed.token).trim()
+      }
+    } catch (_) {}
+  }
+  if (!token) return
 
   let lastUpdateId = 0
   try {

@@ -2,8 +2,24 @@
 // Executa periodicamente a cada minuto para checar horário de aviso diário, lembretes e limite de bloqueio
 
 cronAdd('avisos_motor_cron', '* * * * *', () => {
-  const token = $os.getenv('TELEGRAM_AVISOS_BOT_TOKEN')
-  if (!token || !token.trim()) {
+  let token = ($os.getenv('TELEGRAM_AVISOS_BOT_TOKEN') || '').trim()
+  if (!token) {
+    try {
+      const rec = $app.findFirstRecordByData(
+        'security_audit_markers',
+        'marker_key',
+        'telegram_avisos_bot_token',
+      )
+      const details = rec.get('details')
+      if (details && typeof details === 'object' && details.token) {
+        token = String(details.token).trim()
+      } else if (typeof details === 'string') {
+        const parsed = JSON.parse(details)
+        if (parsed && parsed.token) token = String(parsed.token).trim()
+      }
+    } catch (_) {}
+  }
+  if (!token) {
     return
   }
 
