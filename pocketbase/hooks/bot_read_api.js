@@ -307,6 +307,17 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
   }
 
   if (!roleAllowed) {
+    var rawStr = String(rawAllowedRoles || '').toLowerCase()
+    if (
+      rawStr.indexOf('"' + liveRole + '"') !== -1 ||
+      rawStr.indexOf("'" + liveRole + "'") !== -1 ||
+      rawStr.indexOf(liveRole) !== -1
+    ) {
+      roleAllowed = true
+    }
+  }
+
+  if (!roleAllowed) {
     console.log(
       '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/info | Falha: role_nao_permitida | key_prefix: ' +
         keyPrefixDb +
@@ -319,7 +330,9 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
         ' | allowedRoles: ' +
         JSON.stringify(allowedRoles) +
         ' | rawType: ' +
-        allowedRolesType,
+        allowedRolesType +
+        ' | rawAllowedRoles: ' +
+        String(rawAllowedRoles || '').slice(0, 200),
     )
     return e.json(403, GERAL_403)
   }
@@ -658,6 +671,17 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
   }
 
   if (!roleAllowed) {
+    var rawStr = String(rawAllowedRoles || '').toLowerCase()
+    if (
+      rawStr.indexOf('"' + liveRole + '"') !== -1 ||
+      rawStr.indexOf("'" + liveRole + "'") !== -1 ||
+      rawStr.indexOf(liveRole) !== -1
+    ) {
+      roleAllowed = true
+    }
+  }
+
+  if (!roleAllowed) {
     console.log(
       '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/projects | Falha: role_nao_permitida | key_prefix: ' +
         keyPrefixDb +
@@ -670,7 +694,9 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
         ' | allowedRoles: ' +
         JSON.stringify(allowedRoles) +
         ' | rawType: ' +
-        allowedRolesType,
+        allowedRolesType +
+        ' | rawAllowedRoles: ' +
+        String(rawAllowedRoles || '').slice(0, 200),
     )
     return e.json(403, GERAL_403)
   }
@@ -1053,6 +1079,17 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
   }
 
   if (!roleAllowed) {
+    var rawStr = String(rawAllowedRoles || '').toLowerCase()
+    if (
+      rawStr.indexOf('"' + liveRole + '"') !== -1 ||
+      rawStr.indexOf("'" + liveRole + "'") !== -1 ||
+      rawStr.indexOf(liveRole) !== -1
+    ) {
+      roleAllowed = true
+    }
+  }
+
+  if (!roleAllowed) {
     console.log(
       '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/projects/summary | Falha: role_nao_permitida | key_prefix: ' +
         keyPrefixDb +
@@ -1065,7 +1102,9 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
         ' | allowedRoles: ' +
         JSON.stringify(allowedRoles) +
         ' | rawType: ' +
-        allowedRolesType,
+        allowedRolesType +
+        ' | rawAllowedRoles: ' +
+        String(rawAllowedRoles || '').slice(0, 200),
     )
     return e.json(403, GERAL_403)
   }
@@ -1443,6 +1482,17 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
   }
 
   if (!roleAllowed) {
+    var rawStr = String(rawAllowedRoles || '').toLowerCase()
+    if (
+      rawStr.indexOf('"' + liveRole + '"') !== -1 ||
+      rawStr.indexOf("'" + liveRole + "'") !== -1 ||
+      rawStr.indexOf(liveRole) !== -1
+    ) {
+      roleAllowed = true
+    }
+  }
+
+  if (!roleAllowed) {
     console.log(
       '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/dfds | Falha: role_nao_permitida | key_prefix: ' +
         keyPrefixDb +
@@ -1455,7 +1505,9 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
         ' | allowedRoles: ' +
         JSON.stringify(allowedRoles) +
         ' | rawType: ' +
-        allowedRolesType,
+        allowedRolesType +
+        ' | rawAllowedRoles: ' +
+        String(rawAllowedRoles || '').slice(0, 200),
     )
     return e.json(403, GERAL_403)
   }
@@ -1820,6 +1872,17 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
   }
 
   if (!roleAllowed) {
+    var rawStr = String(rawAllowedRoles || '').toLowerCase()
+    if (
+      rawStr.indexOf('"' + liveRole + '"') !== -1 ||
+      rawStr.indexOf("'" + liveRole + "'") !== -1 ||
+      rawStr.indexOf(liveRole) !== -1
+    ) {
+      roleAllowed = true
+    }
+  }
+
+  if (!roleAllowed) {
     console.log(
       '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/dfds/{id} | Falha: role_nao_permitida | key_prefix: ' +
         keyPrefixDb +
@@ -1832,7 +1895,9 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
         ' | allowedRoles: ' +
         JSON.stringify(allowedRoles) +
         ' | rawType: ' +
-        allowedRolesType,
+        allowedRolesType +
+        ' | rawAllowedRoles: ' +
+        String(rawAllowedRoles || '').slice(0, 200),
     )
     return e.json(403, GERAL_403)
   }
@@ -2201,6 +2266,17 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
   }
 
   if (!roleAllowed) {
+    var rawStr = String(rawAllowedRoles || '').toLowerCase()
+    if (
+      rawStr.indexOf('"' + liveRole + '"') !== -1 ||
+      rawStr.indexOf("'" + liveRole + "'") !== -1 ||
+      rawStr.indexOf(liveRole) !== -1
+    ) {
+      roleAllowed = true
+    }
+  }
+
+  if (!roleAllowed) {
     console.log(
       '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/deadlines | Falha: role_nao_permitida | key_prefix: ' +
         keyPrefixDb +
@@ -2213,7 +2289,9 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
         ' | allowedRoles: ' +
         JSON.stringify(allowedRoles) +
         ' | rawType: ' +
-        allowedRolesType,
+        allowedRolesType +
+        ' | rawAllowedRoles: ' +
+        String(rawAllowedRoles || '').slice(0, 200),
     )
     return e.json(403, GERAL_403)
   }
@@ -2587,6 +2665,17 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
   }
 
   if (!roleAllowed) {
+    var rawStr = String(rawAllowedRoles || '').toLowerCase()
+    if (
+      rawStr.indexOf('"' + liveRole + '"') !== -1 ||
+      rawStr.indexOf("'" + liveRole + "'") !== -1 ||
+      rawStr.indexOf(liveRole) !== -1
+    ) {
+      roleAllowed = true
+    }
+  }
+
+  if (!roleAllowed) {
     console.log(
       '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/users | Falha: role_nao_permitida | key_prefix: ' +
         keyPrefixDb +
@@ -2599,7 +2688,9 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
         ' | allowedRoles: ' +
         JSON.stringify(allowedRoles) +
         ' | rawType: ' +
-        allowedRolesType,
+        allowedRolesType +
+        ' | rawAllowedRoles: ' +
+        String(rawAllowedRoles || '').slice(0, 200),
     )
     return e.json(403, GERAL_403)
   }
@@ -2954,6 +3045,17 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
   }
 
   if (!roleAllowed) {
+    var rawStr = String(rawAllowedRoles || '').toLowerCase()
+    if (
+      rawStr.indexOf('"' + liveRole + '"') !== -1 ||
+      rawStr.indexOf("'" + liveRole + "'") !== -1 ||
+      rawStr.indexOf(liveRole) !== -1
+    ) {
+      roleAllowed = true
+    }
+  }
+
+  if (!roleAllowed) {
     console.log(
       '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/notifications | Falha: role_nao_permitida | key_prefix: ' +
         keyPrefixDb +
@@ -2966,7 +3068,9 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
         ' | allowedRoles: ' +
         JSON.stringify(allowedRoles) +
         ' | rawType: ' +
-        allowedRolesType,
+        allowedRolesType +
+        ' | rawAllowedRoles: ' +
+        String(rawAllowedRoles || '').slice(0, 200),
     )
     return e.json(403, GERAL_403)
   }
