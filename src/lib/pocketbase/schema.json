@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-22T05:06:31.767Z",
+  "generatedAt": "2026-09-22T14:05:54.980Z",
   "collections": [
     {
       "name": "users",
@@ -58,12 +58,39 @@
           "required": false,
           "system": false,
           "selectValues": ["ativo", "inativo"]
+        },
+        {
+          "name": "telegram_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "receber_avisos_telegram",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status_bloqueio",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["ativo", "bloqueado_ciencia"]
+        },
+        {
+          "name": "telegram_pairing_code",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
         "CREATE UNIQUE INDEX `idx_tokenKey__pb_users_auth_` ON `users` (`tokenKey`)",
         "CREATE UNIQUE INDEX `idx_email__pb_users_auth_` ON `users` (`email`) WHERE `email` != ''",
-        "CREATE INDEX `idx_users_tenant` ON `users` (tenant)"
+        "CREATE INDEX `idx_users_tenant` ON `users` (tenant)",
+        "CREATE INDEX `idx_users_telegram_id` ON `users` (telegram_id)",
+        "CREATE INDEX `idx_users_status_bloqueio` ON `users` (status_bloqueio)"
       ]
     },
     {
@@ -751,7 +778,15 @@
             "Editou grupo educacional",
             "Excluiu grupo educacional",
             "Adicionou membro ao grupo",
-            "Removeu membro do grupo"
+            "Removeu membro do grupo",
+            "Aviso Telegram enviado",
+            "Lembrete Telegram enviado",
+            "Alerta extraordinário enviado",
+            "Confirmação de ciência registrada",
+            "Usuário bloqueado por ciência",
+            "Usuário desbloqueado por ciência",
+            "Telegram pareado com sucesso",
+            "Falha no envio de aviso Telegram"
           ]
         },
         {
@@ -2027,6 +2062,19 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "receber_avisos_telegram",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status_bloqueio",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["ativo", "bloqueado_ciencia"]
         }
       ],
       "indexes": [
@@ -2376,6 +2424,295 @@
         "CREATE UNIQUE INDEX idx_bot_api_keys_hash ON bot_api_keys (key_hash)",
         "CREATE INDEX idx_bot_api_keys_status ON bot_api_keys (status)",
         "CREATE INDEX `idx_bot_api_keys_user` ON `bot_api_keys` (user)"
+      ]
+    },
+    {
+      "name": "feriados",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (tenant = '' || tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "view": "@request.auth.id != '' && (tenant = '' || tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "create": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "update": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "delete": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')"
+      },
+      "fields": [
+        {
+          "name": "tenant",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "tenants"
+        },
+        {
+          "name": "data",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_feriados_tenant ON feriados (tenant)",
+        "CREATE INDEX idx_feriados_data ON feriados (data)"
+      ]
+    },
+    {
+      "name": "avisos_config",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "view": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "create": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "update": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "delete": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')"
+      },
+      "fields": [
+        {
+          "name": "tenant",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "tenants"
+        },
+        {
+          "name": "horario_aviso_diario",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "dias_antecedencia",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "horario_limite_confirmacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "intervalo_lembrete_horas",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "max_lembretes",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "bloqueio_automatico",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "exigir_confirmacao_sem_demandas",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "alerta_extraordinario_critica_vencida",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo_contagem_dias",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["dias_uteis", "dias_corridos"]
+        },
+        {
+          "name": "faixas_urgencia",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "mensagem_padrao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE UNIQUE INDEX idx_avisos_config_tenant ON avisos_config (tenant)"]
+    },
+    {
+      "name": "avisos",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "view": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "create": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "update": "@request.auth.id != '' && (tenant = @request.auth.tenant || @request.auth.role = 'superadmin')",
+        "delete": "@request.auth.id != '' && @request.auth.role = 'superadmin'"
+      },
+      "fields": [
+        {
+          "name": "codigo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "user",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "tenant",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "tenants"
+        },
+        {
+          "name": "telegram_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_hora_envio",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["diario", "lembrete", "alerta_extraordinario"]
+        },
+        {
+          "name": "demandas_vinculadas",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "qtd_demandas",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "pendente_envio",
+            "enviado",
+            "entregue",
+            "aguardando_confirmacao",
+            "confirmado",
+            "expirado",
+            "bloqueado"
+          ]
+        },
+        {
+          "name": "data_hora_confirmacao",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tentativas_envio",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ultimo_erro",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "telegram_message_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "parent_aviso",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_avisos_codigo ON avisos (codigo)",
+        "CREATE INDEX idx_avisos_tenant ON avisos (tenant)",
+        "CREATE INDEX idx_avisos_user ON avisos (user)",
+        "CREATE INDEX idx_avisos_telegram_id ON avisos (telegram_id)",
+        "CREATE INDEX idx_avisos_status ON avisos (status)",
+        "CREATE INDEX idx_avisos_tipo ON avisos (tipo)"
       ]
     }
   ]
