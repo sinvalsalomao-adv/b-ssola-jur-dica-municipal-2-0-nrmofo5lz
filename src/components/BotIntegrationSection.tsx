@@ -66,7 +66,7 @@ export function BotIntegrationSection({
   const [createdKeyData, setCreatedKeyData] = useState<CreateBotKeyResponse | null>(null)
   const [copiedKey, setCopiedKey] = useState(false)
 
-  // Revogação
+  // Revogação de chave mestra municipal
   const [revokingId, setRevokingId] = useState<string | null>(null)
 
   // Copiar curl de exemplo
