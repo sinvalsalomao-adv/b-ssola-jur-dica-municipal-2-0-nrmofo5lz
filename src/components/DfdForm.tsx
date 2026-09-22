@@ -110,39 +110,49 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
     return unregister
   }, [isEditing, dfd, title, objeto, descricao, justificativa, registerGuard])
 
+  const [loadingUsers, setLoadingUsers] = useState(false)
+
   // Load users and phrases whenever the effective tenant changes
   useEffect(() => {
-    const effectiveTenant = selectedTenantId || user?.tenantId || ''
+    const effectiveTenant = isSuperadmin ? selectedTenantId : user?.tenantId || selectedTenantId
     if (effectiveTenant) {
+      setLoadingUsers(true)
       getUsersByTenant(effectiveTenant)
         .then((data) => {
           const mapped = data.map((u) => ({ id: u.id, name: u.name }))
           setUsers(mapped)
-          if (!responsibleUserId && mapped.length > 0) {
-            setResponsibleUserId(mapped[0].id)
-          } else if (!responsibleUserId && user?.id) {
-            setResponsibleUserId(user.id)
-          }
+          // Se o responsável atual não pertencer à nova lista (ou estiver vazio),
+          // seleciona o primeiro se houver, ou se for usuário logado na lista
+          setResponsibleUserId((prev) => {
+            if (prev && mapped.some((m) => m.id === prev)) {
+              return prev
+            }
+            if (user?.id && mapped.some((m) => m.id === user.id)) {
+              return user.id
+            }
+            return mapped.length > 0 ? mapped[0].id : ''
+          })
         })
         .catch(() => {
-          if (!responsibleUserId && user?.id) {
-            setResponsibleUserId(user.id)
-          }
+          setUsers([])
         })
+        .finally(() => {
+          setLoadingUsers(false)
+        })
+
       getFrasesAsStrings(effectiveTenant, 'objeto')
         .then(setObjetoPhrases)
         .catch(() => {})
       getFrasesAsStrings(effectiveTenant, 'descricao')
         .then(setDescricaoPhrases)
         .catch(() => {})
-    } else if (user) {
-      // Fallback if tenant is not available yet
-      if (!responsibleUserId && user.id) {
-        setResponsibleUserId(user.id)
-      }
-      setUsers([{ id: user.id, name: user.name }])
+    } else {
+      // Sem tenant selecionado (ex: Superadmin sem selecionar prefeitura)
+      setUsers([])
+      setResponsibleUserId('')
+      setLoadingUsers(false)
     }
-  }, [selectedTenantId, user?.tenantId, user?.id, user?.name])
+  }, [selectedTenantId, user?.tenantId, user?.id, isSuperadmin])
 
   const addPhraseIfNew = (text: string, type: 'objeto' | 'descricao') => {
     const trimmed = text.trim()
@@ -409,19 +419,67 @@ export const DfdForm = ({ dfd, onDfdSaved, onSaved }: DfdFormProps) => {
             </div>
           )}
           <div className={isSuperadmin ? '' : 'sm:col-span-1'}>
-            <Label className="text-xs font-semibold text-gray-700">Responsável pelo DFD</Label>
-            <Select value={responsibleUserId} onValueChange={setResponsibleUserId}>
-              <SelectTrigger className="mt-1">
-                <SelectValue placeholder="Selecione..." />
-              </SelectTrigger>
-              <SelectContent>
-                {users.map((u) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-semibold text-gray-700">Responsável pelo DFD</Label>
+              {user?.id && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (user?.id) {
+                      setResponsibleUserId(user.id)
+                      // Se o usuário logado não estiver na lista visível (ex: superadmin atribuindo a si), adiciona temporariamente para seleção no select
+                      if (!users.some((u) => u.id === user.id)) {
+                        setUsers((prev) => [{ id: user.id, name: user.name || 'Você' }, ...prev])
+                      }
+                    }
+                  }}
+                  className="text-[11px] text-[#3b82f6] hover:underline font-medium"
+                >
+                  Atribuir a mim
+                </button>
+              )}
+            </div>
+
+            {isSuperadmin && !selectedTenantId ? (
+              <div className="mt-1 p-2 bg-slate-50 border border-slate-200 rounded-md text-xs text-gray-500">
+                Selecione a prefeitura acima para carregar os servidores disponíveis.
+              </div>
+            ) : loadingUsers ? (
+              <div className="mt-1 flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-md text-xs text-gray-500">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Carregando responsáveis...
+              </div>
+            ) : users.length === 0 ? (
+              <div className="mt-1 p-2.5 bg-amber-50 border border-amber-200 rounded-md text-xs text-amber-800 space-y-1.5">
+                <p>
+                  Nenhum usuário cadastrado nesta prefeitura — cadastre usuários para atribuir
+                  responsáveis.
+                </p>
+                <div className="flex items-center gap-2 pt-0.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate(isSuperadmin ? '/superadmin' : '/usuarios')}
+                    className="h-7 text-xs border-amber-300 bg-white hover:bg-amber-100/50 text-amber-900"
+                  >
+                    {isSuperadmin ? 'Ir para Superadmin (Usuários)' : 'Cadastrar Usuários'}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Select value={responsibleUserId} onValueChange={setResponsibleUserId}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Selecione..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {users.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.name} {user?.id === u.id ? '(Você)' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
           <div className={isSuperadmin ? '' : 'sm:col-span-1'}>
             <Label className="text-xs font-semibold text-gray-700">Prazo para Conclusão *</Label>

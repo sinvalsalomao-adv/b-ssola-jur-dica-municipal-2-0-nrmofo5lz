@@ -50,6 +50,7 @@ export default function DfdDetailPage() {
   const [editMode, setEditMode] = useState(false)
   const [saving, setSaving] = useState(false)
   const [users, setUsers] = useState<{ id: string; name: string }[]>([])
+  const [loadingUsers, setLoadingUsers] = useState(false)
 
   const [title, setTitle] = useState('')
   const [objeto, setObjeto] = useState('')
@@ -84,9 +85,14 @@ export default function DfdDetailPage() {
   useEffect(() => {
     const effectiveTenant = dfd?.tenantId || user?.tenantId
     if (effectiveTenant) {
+      setLoadingUsers(true)
       getUsersByTenant(effectiveTenant)
         .then((data) => setUsers(data.map((u) => ({ id: u.id, name: u.name }))))
-        .catch(() => {})
+        .catch(() => setUsers([]))
+        .finally(() => setLoadingUsers(false))
+    } else {
+      setUsers([])
+      setLoadingUsers(false)
     }
   }, [dfd?.tenantId, user?.tenantId])
 
@@ -254,19 +260,69 @@ export default function DfdDetailPage() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-xs font-semibold text-gray-700">Responsável</Label>
-                  <Select value={responsibleUserId} onValueChange={setResponsibleUserId}>
-                    <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Selecione..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {users.map((u) => (
-                        <SelectItem key={u.id} value={u.id}>
-                          {u.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-gray-700">Responsável</Label>
+                    {user?.id && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (user?.id) {
+                            setResponsibleUserId(user.id)
+                            if (!users.some((u) => u.id === user.id)) {
+                              setUsers((prev) => [
+                                { id: user.id, name: user.name || 'Você' },
+                                ...prev,
+                              ])
+                            }
+                          }
+                        }}
+                        className="text-[11px] text-[#3b82f6] hover:underline font-medium"
+                      >
+                        Atribuir a mim
+                      </button>
+                    )}
+                  </div>
+
+                  {loadingUsers ? (
+                    <div className="mt-1 flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-md text-xs text-gray-500">
+                      <Clock className="w-3.5 h-3.5 animate-spin" /> Carregando responsáveis...
+                    </div>
+                  ) : users.length === 0 ? (
+                    <div className="mt-1 p-2.5 bg-amber-50 border border-amber-200 rounded-md text-xs text-amber-800 space-y-1.5">
+                      <p>
+                        Nenhum usuário cadastrado nesta prefeitura — cadastre usuários para atribuir
+                        responsáveis.
+                      </p>
+                      <div className="flex items-center gap-2 pt-0.5">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            navigate(user?.role === 'superadmin' ? '/superadmin' : '/usuarios')
+                          }
+                          className="h-7 text-xs border-amber-300 bg-white hover:bg-amber-100/50 text-amber-900"
+                        >
+                          {user?.role === 'superadmin'
+                            ? 'Ir para Superadmin (Usuários)'
+                            : 'Cadastrar Usuários'}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Select value={responsibleUserId} onValueChange={setResponsibleUserId}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="Selecione..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {users.map((u) => (
+                          <SelectItem key={u.id} value={u.id}>
+                            {u.name} {user?.id === u.id ? '(Você)' : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
                 <div>
                   <Label className="text-xs font-semibold text-gray-700">Prazo</Label>
