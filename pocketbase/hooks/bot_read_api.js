@@ -59,16 +59,51 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
 
   function parseAllowedRoles(raw) {
     if (!raw) return []
-    if (Array.isArray(raw)) return raw
-    if (typeof raw === 'string') {
-      var trimmed = raw.trim()
+    var cur = raw
+    // Desembrulha JSON em camadas (ex.: string contendo JSON de string ou de array)
+    var maxDepth = 5
+    while (typeof cur === 'string' && maxDepth > 0) {
+      maxDepth--
+      var trimmed = cur.trim()
       if (!trimmed) return []
-      try {
-        var parsed = JSON.parse(trimmed)
-        if (Array.isArray(parsed)) return parsed
-      } catch (_) {}
+      if (
+        (trimmed.charAt(0) === '[' && trimmed.charAt(trimmed.length - 1) === ']') ||
+        (trimmed.charAt(0) === '"' && trimmed.charAt(trimmed.length - 1) === '"')
+      ) {
+        try {
+          cur = JSON.parse(trimmed)
+        } catch (_) {
+          break
+        }
+      } else {
+        break
+      }
     }
-    return []
+
+    var list = []
+    if (Array.isArray(cur)) {
+      list = cur
+    } else if (cur && typeof cur === 'object' && typeof cur.length === 'number') {
+      // Trata tipos.JsonArray ou objeto com length retornado pelo PocketBase / Goja
+      for (var idx = 0; idx < cur.length; idx++) {
+        list.push(cur[idx])
+      }
+    } else if (typeof cur === 'string') {
+      // Caso seja string separada por vírgula ou item único
+      list = [cur]
+    }
+
+    var result = []
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i]
+      if (item !== null && item !== undefined) {
+        var str = String(item).trim().toLowerCase()
+        if (str && result.indexOf(str) === -1) {
+          result.push(str)
+        }
+      }
+    }
+    return result
   }
 
   var reqInfo = e.requestInfo()
@@ -233,7 +268,7 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
     return e.json(403, GERAL_403)
   }
 
-  var liveRole = memRec.getString('role') || 'servidor'
+  var liveRole = (memRec.getString('role') || 'servidor').trim().toLowerCase()
   var rawAllowedRoles = tenantRec.get('hermes_allowed_roles')
   var allowedRolesType = typeof rawAllowedRoles
   if (Array.isArray(rawAllowedRoles)) {
@@ -356,16 +391,48 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
 
   function parseAllowedRoles(raw) {
     if (!raw) return []
-    if (Array.isArray(raw)) return raw
-    if (typeof raw === 'string') {
-      var trimmed = raw.trim()
+    var cur = raw
+    var maxDepth = 5
+    while (typeof cur === 'string' && maxDepth > 0) {
+      maxDepth--
+      var trimmed = cur.trim()
       if (!trimmed) return []
-      try {
-        var parsed = JSON.parse(trimmed)
-        if (Array.isArray(parsed)) return parsed
-      } catch (_) {}
+      if (
+        (trimmed.charAt(0) === '[' && trimmed.charAt(trimmed.length - 1) === ']') ||
+        (trimmed.charAt(0) === '"' && trimmed.charAt(trimmed.length - 1) === '"')
+      ) {
+        try {
+          cur = JSON.parse(trimmed)
+        } catch (_) {
+          break
+        }
+      } else {
+        break
+      }
     }
-    return []
+
+    var list = []
+    if (Array.isArray(cur)) {
+      list = cur
+    } else if (cur && typeof cur === 'object' && typeof cur.length === 'number') {
+      for (var idx = 0; idx < cur.length; idx++) {
+        list.push(cur[idx])
+      }
+    } else if (typeof cur === 'string') {
+      list = [cur]
+    }
+
+    var result = []
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i]
+      if (item !== null && item !== undefined) {
+        var str = String(item).trim().toLowerCase()
+        if (str && result.indexOf(str) === -1) {
+          result.push(str)
+        }
+      }
+    }
+    return result
   }
 
   var reqInfo = e.requestInfo()
@@ -530,7 +597,7 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
     return e.json(403, GERAL_403)
   }
 
-  var liveRole = memRec.getString('role') || 'servidor'
+  var liveRole = (memRec.getString('role') || 'servidor').trim().toLowerCase()
   var rawAllowedRoles = tenantRec.get('hermes_allowed_roles')
   var allowedRolesType = typeof rawAllowedRoles
   if (Array.isArray(rawAllowedRoles)) {
@@ -697,16 +764,48 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
 
   function parseAllowedRoles(raw) {
     if (!raw) return []
-    if (Array.isArray(raw)) return raw
-    if (typeof raw === 'string') {
-      var trimmed = raw.trim()
+    var cur = raw
+    var maxDepth = 5
+    while (typeof cur === 'string' && maxDepth > 0) {
+      maxDepth--
+      var trimmed = cur.trim()
       if (!trimmed) return []
-      try {
-        var parsed = JSON.parse(trimmed)
-        if (Array.isArray(parsed)) return parsed
-      } catch (_) {}
+      if (
+        (trimmed.charAt(0) === '[' && trimmed.charAt(trimmed.length - 1) === ']') ||
+        (trimmed.charAt(0) === '"' && trimmed.charAt(trimmed.length - 1) === '"')
+      ) {
+        try {
+          cur = JSON.parse(trimmed)
+        } catch (_) {
+          break
+        }
+      } else {
+        break
+      }
     }
-    return []
+
+    var list = []
+    if (Array.isArray(cur)) {
+      list = cur
+    } else if (cur && typeof cur === 'object' && typeof cur.length === 'number') {
+      for (var idx = 0; idx < cur.length; idx++) {
+        list.push(cur[idx])
+      }
+    } else if (typeof cur === 'string') {
+      list = [cur]
+    }
+
+    var result = []
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i]
+      if (item !== null && item !== undefined) {
+        var str = String(item).trim().toLowerCase()
+        if (str && result.indexOf(str) === -1) {
+          result.push(str)
+        }
+      }
+    }
+    return result
   }
 
   var reqInfo = e.requestInfo()
@@ -871,7 +970,7 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
     return e.json(403, GERAL_403)
   }
 
-  var liveRole = memRec.getString('role') || 'servidor'
+  var liveRole = (memRec.getString('role') || 'servidor').trim().toLowerCase()
   var rawAllowedRoles = tenantRec.get('hermes_allowed_roles')
   var allowedRolesType = typeof rawAllowedRoles
   if (Array.isArray(rawAllowedRoles)) {
@@ -1033,16 +1132,48 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
 
   function parseAllowedRoles(raw) {
     if (!raw) return []
-    if (Array.isArray(raw)) return raw
-    if (typeof raw === 'string') {
-      var trimmed = raw.trim()
+    var cur = raw
+    var maxDepth = 5
+    while (typeof cur === 'string' && maxDepth > 0) {
+      maxDepth--
+      var trimmed = cur.trim()
       if (!trimmed) return []
-      try {
-        var parsed = JSON.parse(trimmed)
-        if (Array.isArray(parsed)) return parsed
-      } catch (_) {}
+      if (
+        (trimmed.charAt(0) === '[' && trimmed.charAt(trimmed.length - 1) === ']') ||
+        (trimmed.charAt(0) === '"' && trimmed.charAt(trimmed.length - 1) === '"')
+      ) {
+        try {
+          cur = JSON.parse(trimmed)
+        } catch (_) {
+          break
+        }
+      } else {
+        break
+      }
     }
-    return []
+
+    var list = []
+    if (Array.isArray(cur)) {
+      list = cur
+    } else if (cur && typeof cur === 'object' && typeof cur.length === 'number') {
+      for (var idx = 0; idx < cur.length; idx++) {
+        list.push(cur[idx])
+      }
+    } else if (typeof cur === 'string') {
+      list = [cur]
+    }
+
+    var result = []
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i]
+      if (item !== null && item !== undefined) {
+        var str = String(item).trim().toLowerCase()
+        if (str && result.indexOf(str) === -1) {
+          result.push(str)
+        }
+      }
+    }
+    return result
   }
 
   var reqInfo = e.requestInfo()
@@ -1207,7 +1338,7 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
     return e.json(403, GERAL_403)
   }
 
-  var liveRole = memRec.getString('role') || 'servidor'
+  var liveRole = (memRec.getString('role') || 'servidor').trim().toLowerCase()
   var rawAllowedRoles = tenantRec.get('hermes_allowed_roles')
   var allowedRolesType = typeof rawAllowedRoles
   if (Array.isArray(rawAllowedRoles)) {
@@ -1356,16 +1487,48 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
 
   function parseAllowedRoles(raw) {
     if (!raw) return []
-    if (Array.isArray(raw)) return raw
-    if (typeof raw === 'string') {
-      var trimmed = raw.trim()
+    var cur = raw
+    var maxDepth = 5
+    while (typeof cur === 'string' && maxDepth > 0) {
+      maxDepth--
+      var trimmed = cur.trim()
       if (!trimmed) return []
-      try {
-        var parsed = JSON.parse(trimmed)
-        if (Array.isArray(parsed)) return parsed
-      } catch (_) {}
+      if (
+        (trimmed.charAt(0) === '[' && trimmed.charAt(trimmed.length - 1) === ']') ||
+        (trimmed.charAt(0) === '"' && trimmed.charAt(trimmed.length - 1) === '"')
+      ) {
+        try {
+          cur = JSON.parse(trimmed)
+        } catch (_) {
+          break
+        }
+      } else {
+        break
+      }
     }
-    return []
+
+    var list = []
+    if (Array.isArray(cur)) {
+      list = cur
+    } else if (cur && typeof cur === 'object' && typeof cur.length === 'number') {
+      for (var idx = 0; idx < cur.length; idx++) {
+        list.push(cur[idx])
+      }
+    } else if (typeof cur === 'string') {
+      list = [cur]
+    }
+
+    var result = []
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i]
+      if (item !== null && item !== undefined) {
+        var str = String(item).trim().toLowerCase()
+        if (str && result.indexOf(str) === -1) {
+          result.push(str)
+        }
+      }
+    }
+    return result
   }
 
   var reqInfo = e.requestInfo()
@@ -1530,7 +1693,7 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
     return e.json(403, GERAL_403)
   }
 
-  var liveRole = memRec.getString('role') || 'servidor'
+  var liveRole = (memRec.getString('role') || 'servidor').trim().toLowerCase()
   var rawAllowedRoles = tenantRec.get('hermes_allowed_roles')
   var allowedRolesType = typeof rawAllowedRoles
   if (Array.isArray(rawAllowedRoles)) {
@@ -1683,16 +1846,48 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
 
   function parseAllowedRoles(raw) {
     if (!raw) return []
-    if (Array.isArray(raw)) return raw
-    if (typeof raw === 'string') {
-      var trimmed = raw.trim()
+    var cur = raw
+    var maxDepth = 5
+    while (typeof cur === 'string' && maxDepth > 0) {
+      maxDepth--
+      var trimmed = cur.trim()
       if (!trimmed) return []
-      try {
-        var parsed = JSON.parse(trimmed)
-        if (Array.isArray(parsed)) return parsed
-      } catch (_) {}
+      if (
+        (trimmed.charAt(0) === '[' && trimmed.charAt(trimmed.length - 1) === ']') ||
+        (trimmed.charAt(0) === '"' && trimmed.charAt(trimmed.length - 1) === '"')
+      ) {
+        try {
+          cur = JSON.parse(trimmed)
+        } catch (_) {
+          break
+        }
+      } else {
+        break
+      }
     }
-    return []
+
+    var list = []
+    if (Array.isArray(cur)) {
+      list = cur
+    } else if (cur && typeof cur === 'object' && typeof cur.length === 'number') {
+      for (var idx = 0; idx < cur.length; idx++) {
+        list.push(cur[idx])
+      }
+    } else if (typeof cur === 'string') {
+      list = [cur]
+    }
+
+    var result = []
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i]
+      if (item !== null && item !== undefined) {
+        var str = String(item).trim().toLowerCase()
+        if (str && result.indexOf(str) === -1) {
+          result.push(str)
+        }
+      }
+    }
+    return result
   }
 
   var reqInfo = e.requestInfo()
@@ -1857,7 +2052,7 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
     return e.json(403, GERAL_403)
   }
 
-  var liveRole = memRec.getString('role') || 'servidor'
+  var liveRole = (memRec.getString('role') || 'servidor').trim().toLowerCase()
   var rawAllowedRoles = tenantRec.get('hermes_allowed_roles')
   var allowedRolesType = typeof rawAllowedRoles
   if (Array.isArray(rawAllowedRoles)) {
@@ -2015,16 +2210,48 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
 
   function parseAllowedRoles(raw) {
     if (!raw) return []
-    if (Array.isArray(raw)) return raw
-    if (typeof raw === 'string') {
-      var trimmed = raw.trim()
+    var cur = raw
+    var maxDepth = 5
+    while (typeof cur === 'string' && maxDepth > 0) {
+      maxDepth--
+      var trimmed = cur.trim()
       if (!trimmed) return []
-      try {
-        var parsed = JSON.parse(trimmed)
-        if (Array.isArray(parsed)) return parsed
-      } catch (_) {}
+      if (
+        (trimmed.charAt(0) === '[' && trimmed.charAt(trimmed.length - 1) === ']') ||
+        (trimmed.charAt(0) === '"' && trimmed.charAt(trimmed.length - 1) === '"')
+      ) {
+        try {
+          cur = JSON.parse(trimmed)
+        } catch (_) {
+          break
+        }
+      } else {
+        break
+      }
     }
-    return []
+
+    var list = []
+    if (Array.isArray(cur)) {
+      list = cur
+    } else if (cur && typeof cur === 'object' && typeof cur.length === 'number') {
+      for (var idx = 0; idx < cur.length; idx++) {
+        list.push(cur[idx])
+      }
+    } else if (typeof cur === 'string') {
+      list = [cur]
+    }
+
+    var result = []
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i]
+      if (item !== null && item !== undefined) {
+        var str = String(item).trim().toLowerCase()
+        if (str && result.indexOf(str) === -1) {
+          result.push(str)
+        }
+      }
+    }
+    return result
   }
 
   var reqInfo = e.requestInfo()
@@ -2189,7 +2416,7 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
     return e.json(403, GERAL_403)
   }
 
-  var liveRole = memRec.getString('role') || 'servidor'
+  var liveRole = (memRec.getString('role') || 'servidor').trim().toLowerCase()
   var rawAllowedRoles = tenantRec.get('hermes_allowed_roles')
   var allowedRolesType = typeof rawAllowedRoles
   if (Array.isArray(rawAllowedRoles)) {
@@ -2328,16 +2555,48 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
 
   function parseAllowedRoles(raw) {
     if (!raw) return []
-    if (Array.isArray(raw)) return raw
-    if (typeof raw === 'string') {
-      var trimmed = raw.trim()
+    var cur = raw
+    var maxDepth = 5
+    while (typeof cur === 'string' && maxDepth > 0) {
+      maxDepth--
+      var trimmed = cur.trim()
       if (!trimmed) return []
-      try {
-        var parsed = JSON.parse(trimmed)
-        if (Array.isArray(parsed)) return parsed
-      } catch (_) {}
+      if (
+        (trimmed.charAt(0) === '[' && trimmed.charAt(trimmed.length - 1) === ']') ||
+        (trimmed.charAt(0) === '"' && trimmed.charAt(trimmed.length - 1) === '"')
+      ) {
+        try {
+          cur = JSON.parse(trimmed)
+        } catch (_) {
+          break
+        }
+      } else {
+        break
+      }
     }
-    return []
+
+    var list = []
+    if (Array.isArray(cur)) {
+      list = cur
+    } else if (cur && typeof cur === 'object' && typeof cur.length === 'number') {
+      for (var idx = 0; idx < cur.length; idx++) {
+        list.push(cur[idx])
+      }
+    } else if (typeof cur === 'string') {
+      list = [cur]
+    }
+
+    var result = []
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i]
+      if (item !== null && item !== undefined) {
+        var str = String(item).trim().toLowerCase()
+        if (str && result.indexOf(str) === -1) {
+          result.push(str)
+        }
+      }
+    }
+    return result
   }
 
   var reqInfo = e.requestInfo()
@@ -2502,7 +2761,7 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
     return e.json(403, GERAL_403)
   }
 
-  var liveRole = memRec.getString('role') || 'servidor'
+  var liveRole = (memRec.getString('role') || 'servidor').trim().toLowerCase()
   var rawAllowedRoles = tenantRec.get('hermes_allowed_roles')
   var allowedRolesType = typeof rawAllowedRoles
   if (Array.isArray(rawAllowedRoles)) {

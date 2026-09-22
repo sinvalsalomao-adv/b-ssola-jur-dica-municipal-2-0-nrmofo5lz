@@ -4,18 +4,45 @@ import { sanitizeInput } from '@/lib/sanitize'
 
 function parseHermesAllowedRoles(raw: any): string[] {
   if (!raw) return []
-  if (Array.isArray(raw)) return raw.map(String)
-  if (typeof raw === 'string') {
-    const trimmed = raw.trim()
+  let cur = raw
+  let maxDepth = 5
+  while (typeof cur === 'string' && maxDepth > 0) {
+    maxDepth--
+    const trimmed = cur.trim()
     if (!trimmed) return []
-    try {
-      const parsed = JSON.parse(trimmed)
-      if (Array.isArray(parsed)) return parsed.map(String)
-    } catch {
-      /* intentionally ignored */
+    if (
+      (trimmed.startsWith('[') && trimmed.endsWith(']')) ||
+      (trimmed.startsWith('"') && trimmed.endsWith('"'))
+    ) {
+      try {
+        cur = JSON.parse(trimmed)
+      } catch {
+        break
+      }
+    } else {
+      break
     }
   }
-  return []
+
+  let list: any[] = []
+  if (Array.isArray(cur)) {
+    list = cur
+  } else if (cur && typeof cur === 'object' && typeof cur.length === 'number') {
+    list = Array.from(cur)
+  } else if (typeof cur === 'string') {
+    list = [cur]
+  }
+
+  const result: string[] = []
+  for (const item of list) {
+    if (item !== null && item !== undefined) {
+      const str = String(item).trim().toLowerCase()
+      if (str && !result.includes(str)) {
+        result.push(str)
+      }
+    }
+  }
+  return result
 }
 
 export function normalizeTenant(r: any): Prefeitura {
@@ -55,10 +82,10 @@ export const updateTenant = async (id: string, data: Record<string, any>) => {
     delete payload.hermesEnabled
   }
   if (payload.hermesAllowedRoles !== undefined && payload.hermes_allowed_roles === undefined) {
-    payload.hermes_allowed_roles = Array.isArray(payload.hermesAllowedRoles)
-      ? payload.hermesAllowedRoles
-      : []
+    payload.hermes_allowed_roles = parseHermesAllowedRoles(payload.hermesAllowedRoles)
     delete payload.hermesAllowedRoles
+  } else if (payload.hermes_allowed_roles !== undefined) {
+    payload.hermes_allowed_roles = parseHermesAllowedRoles(payload.hermes_allowed_roles)
   }
   return normalizeTenant(await pb.collection('tenants').update(id, payload))
 }
