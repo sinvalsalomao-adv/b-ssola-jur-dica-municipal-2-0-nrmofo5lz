@@ -226,20 +226,6 @@ export async function runIsolatedIntegrationSuite(): Promise<{
       previewUrlBlocked = true
     }
 
-    // Executar teste de carga de simulação e gerar artefatos e relatório
-    try {
-      const { runLoadSimulation } = await import('../../scripts/loadTestSimulation')
-      const loadReport = await runLoadSimulation()
-      fs.mkdirSync(path.join(process.cwd(), 'reports'), { recursive: true })
-      fs.writeFileSync(
-        path.join(process.cwd(), 'reports', 'load-test-simulation-result.json'),
-        JSON.stringify(loadReport, null, 2),
-        'utf-8',
-      )
-    } catch (loadErr: any) {
-      console.warn('Simulated load test inside isolated runner notice:', loadErr?.message || loadErr)
-    }
-
     // 5. Teste negativo do Runner sem nonce
     process.env.TEST_POCKETBASE_URL = 'http://127.0.0.1:8090'
     process.env.EPHEMERAL_TEST_NONCE = ''

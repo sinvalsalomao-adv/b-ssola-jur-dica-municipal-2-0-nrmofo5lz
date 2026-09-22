@@ -169,12 +169,12 @@ export async function runLoadSimulation(): Promise<SimulationReportData> {
   console.log('INICIANDO TESTE DE CARGA DE SIMULAÇÃO - BÚSSOLA JURÍDICA MUNICIPAL 2.0')
   console.log('='.repeat(80))
 
-  // 1. Investigar tentativa contra ambiente de preview
+  // 1. Investigar conectividade com o preview / backend do Skip Cloud
   const previewUrl = 'https://bussola-juridica-municipal-0e0e1--preview.goskip.app'
   let previewBlocked = false
   let previewBlockReason = ''
 
-  console.log(`\n[PREVIEW CHECK] Testando conectividade com ${previewUrl}...`)
+  console.log(`\n[PREVIEW CHECK] Verificando conectividade e guardrails com ${previewUrl}...`)
   try {
     const previewRes = await fetch(previewUrl, { signal: AbortSignal.timeout(3000) })
     console.log(`[PREVIEW CHECK] Resposta direta recebida: HTTP ${previewRes.status}`)
@@ -182,7 +182,7 @@ export async function runLoadSimulation(): Promise<SimulationReportData> {
     previewBlocked = true
     previewBlockReason = err?.message || String(err)
     console.log(
-      `[PREVIEW CHECK] Ambiente externo protegido ou inacessível no sandbox: ${previewBlockReason}`,
+      `[PREVIEW CHECK] Conexão externa bloqueada ou inacessível no sandbox/CI: ${previewBlockReason}`,
     )
   }
 
@@ -346,9 +346,9 @@ export async function runLoadSimulation(): Promise<SimulationReportData> {
 
   const readScenarios: OperationMetrics[] = []
 
-  // 1.1 - Login Simultâneo (Auth with password) - 50 VUs (comportamento de rate limiter / concorrência)
-  console.log('Executando teste de Login concorrente...')
-  const authResults = await runParallelBurst(50, async (i) => {
+  // 1.1 - Login Simultâneo (Auth with password) - 500 requisições concorrentes
+  console.log('Executando teste de Login concorrente (500 requisições)...')
+  const authResults = await runParallelBurst(500, async (i) => {
     const t0 = Date.now()
     try {
       const client = new PocketBase(ephemeral.url)
@@ -372,12 +372,12 @@ export async function runLoadSimulation(): Promise<SimulationReportData> {
     ),
   )
 
-  // 1.2 - Consulta Dashboard (Tenants + Preferences + Info) - 500 requisições simultâneas
+  // 1.2 - Consulta Dashboard (Tenants + Preferences + Info) - 500 VUs simultâneos com token de Miguel
   console.log('Executando 500 consultas simultâneas ao Dashboard...')
   const dashboardResults = await runParallelBurst(500, async (i) => {
     const t0 = Date.now()
     try {
-      await pb.collection('tenants').getOne(tenantFlorania.id)
+      await miguelClient.collection('tenants').getOne(tenantFlorania.id)
       return { status: 200, durationMs: Date.now() - t0 }
     } catch (err: any) {
       return {
@@ -396,12 +396,12 @@ export async function runLoadSimulation(): Promise<SimulationReportData> {
     ),
   )
 
-  // 1.3 - Consulta Kanban (Projetos filtrados por tenant) - 500 requisições simultâneas
+  // 1.3 - Consulta Kanban (Projetos filtrados por tenant) - 500 VUs simultâneos com token de Miguel
   console.log('Executando 500 consultas simultâneas ao Kanban de Projetos...')
   const kanbanResults = await runParallelBurst(500, async (i) => {
     const t0 = Date.now()
     try {
-      await pb.collection('projects').getList(1, 50, {
+      await miguelClient.collection('projects').getList(1, 50, {
         filter: `tenant = "${tenantFlorania.id}"`,
         sort: '-created',
       })
@@ -423,12 +423,12 @@ export async function runLoadSimulation(): Promise<SimulationReportData> {
     ),
   )
 
-  // 1.4 - Consulta Lista de DFDs - 500 requisições simultâneas
+  // 1.4 - Consulta Lista de DFDs - 500 VUs simultâneos com token de Miguel
   console.log('Executando 500 consultas simultâneas à Lista de DFDs...')
   const dfdsListResults = await runParallelBurst(500, async (i) => {
     const t0 = Date.now()
     try {
-      await pb.collection('dfds').getList(1, 50, {
+      await miguelClient.collection('dfds').getList(1, 50, {
         filter: `tenant = "${tenantFlorania.id}"`,
         sort: '-created',
       })
@@ -450,12 +450,12 @@ export async function runLoadSimulation(): Promise<SimulationReportData> {
     ),
   )
 
-  // 1.5 - Consulta Relatórios / Membros / Auditoria - 500 requisições simultâneas
+  // 1.5 - Consulta Relatórios / Membros / Auditoria - 500 VUs simultâneos com token de Miguel
   console.log('Executando 500 consultas simultâneas a Relatórios e Membros...')
   const reportResults = await runParallelBurst(500, async (i) => {
     const t0 = Date.now()
     try {
-      await pb.collection('user_memberships').getList(1, 50, {
+      await miguelClient.collection('user_memberships').getList(1, 50, {
         filter: `tenant = "${tenantFlorania.id}"`,
       })
       return { status: 200, durationMs: Date.now() - t0 }
@@ -487,12 +487,12 @@ export async function runLoadSimulation(): Promise<SimulationReportData> {
   const createdProjectIds: string[] = []
   const createdDfdIds: string[] = []
 
-  // 2.1 - Rajada de Criação de Projetos (100 cadastros simultâneos)
-  console.log('Executando rajada de cadastros de Projetos...')
+  // 2.1 - Rajada de Criação de Projetos (100 cadastros simultâneos pelo usuário autenticado Miguel)
+  console.log('Executando rajada de cadastros de Projetos com Miguel...')
   const createProjectResults = await runParallelBurst(100, async (i) => {
     const t0 = Date.now()
     try {
-      const rec = await pb.collection('projects').create({
+      const rec = await miguelClient.collection('projects').create({
         titulo: `Projeto Simulação Carga #${i + 1} - ${Date.now()}`,
         coluna_kanban: i % 2 === 0 ? 'Ideação' : 'Projeto Executivo',
         priority: i % 3 === 0 ? 'Alta' : i % 3 === 1 ? 'Média' : 'Baixa',
@@ -521,12 +521,12 @@ export async function runLoadSimulation(): Promise<SimulationReportData> {
   )
 
   // 2.2 - Rajada de Criação de DFDs vinculados aos projetos criados (100 cadastros simultâneos)
-  console.log('Executando rajada de cadastros de DFDs...')
+  console.log('Executando rajada de cadastros de DFDs com Miguel...')
   const createDfdResults = await runParallelBurst(100, async (i) => {
     const t0 = Date.now()
     const targetProjId = createdProjectIds[i % (createdProjectIds.length || 1)] || initialProject.id
     try {
-      const rec = await pb.collection('dfds').create({
+      const rec = await miguelClient.collection('dfds').create({
         titulo: `DFD Carga #${i + 1}`,
         objeto: `Objeto de DFD simulado #${i + 1}`,
         justificativa: `Justificativa formal do DFD de simulação #${i + 1}`,
