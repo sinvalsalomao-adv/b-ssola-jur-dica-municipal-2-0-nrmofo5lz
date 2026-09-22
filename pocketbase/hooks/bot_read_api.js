@@ -84,12 +84,25 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
     if (Array.isArray(cur)) {
       list = cur
     } else if (cur && typeof cur === 'object' && typeof cur.length === 'number') {
-      // Trata tipos.JsonArray ou objeto com length retornado pelo PocketBase / Goja
-      for (var idx = 0; idx < cur.length; idx++) {
-        list.push(cur[idx])
+      if (cur.length > 0 && typeof cur[0] !== 'string') {
+        try {
+          var parsedObj = JSON.parse(String(cur))
+          if (Array.isArray(parsedObj)) {
+            list = parsedObj
+          } else {
+            list = [parsedObj]
+          }
+        } catch (_) {
+          for (var idx = 0; idx < cur.length; idx++) {
+            list.push(cur[idx])
+          }
+        }
+      } else {
+        for (var idx = 0; idx < cur.length; idx++) {
+          list.push(cur[idx])
+        }
       }
     } else if (typeof cur === 'string') {
-      // Caso seja string separada por vírgula ou item único
       list = [cur]
     }
 
@@ -103,6 +116,14 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
         }
       }
     }
+
+    // Se após todo o processamento result contiver itens de 1 caractere (sinal de iteração em caracteres), retorna []
+    for (var k = 0; k < result.length; k++) {
+      if (result[k].length === 1) {
+        return []
+      }
+    }
+
     return result
   }
 
@@ -269,7 +290,7 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
   }
 
   var liveRole = (memRec.getString('role') || 'servidor').trim().toLowerCase()
-  var rawAllowedRoles = tenantRec.get('hermes_allowed_roles')
+  var rawAllowedRoles = tenantRec.getString('hermes_allowed_roles')
   var allowedRolesType = typeof rawAllowedRoles
   if (Array.isArray(rawAllowedRoles)) {
     allowedRolesType = 'array'
@@ -415,8 +436,23 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
     if (Array.isArray(cur)) {
       list = cur
     } else if (cur && typeof cur === 'object' && typeof cur.length === 'number') {
-      for (var idx = 0; idx < cur.length; idx++) {
-        list.push(cur[idx])
+      if (cur.length > 0 && typeof cur[0] !== 'string') {
+        try {
+          var parsedObj = JSON.parse(String(cur))
+          if (Array.isArray(parsedObj)) {
+            list = parsedObj
+          } else {
+            list = [parsedObj]
+          }
+        } catch (_) {
+          for (var idx = 0; idx < cur.length; idx++) {
+            list.push(cur[idx])
+          }
+        }
+      } else {
+        for (var idx = 0; idx < cur.length; idx++) {
+          list.push(cur[idx])
+        }
       }
     } else if (typeof cur === 'string') {
       list = [cur]
@@ -432,6 +468,13 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
         }
       }
     }
+
+    for (var k = 0; k < result.length; k++) {
+      if (result[k].length === 1) {
+        return []
+      }
+    }
+
     return result
   }
 
@@ -598,7 +641,7 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
   }
 
   var liveRole = (memRec.getString('role') || 'servidor').trim().toLowerCase()
-  var rawAllowedRoles = tenantRec.get('hermes_allowed_roles')
+  var rawAllowedRoles = tenantRec.getString('hermes_allowed_roles')
   var allowedRolesType = typeof rawAllowedRoles
   if (Array.isArray(rawAllowedRoles)) {
     allowedRolesType = 'array'
@@ -788,8 +831,23 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
     if (Array.isArray(cur)) {
       list = cur
     } else if (cur && typeof cur === 'object' && typeof cur.length === 'number') {
-      for (var idx = 0; idx < cur.length; idx++) {
-        list.push(cur[idx])
+      if (cur.length > 0 && typeof cur[0] !== 'string') {
+        try {
+          var parsedObj = JSON.parse(String(cur))
+          if (Array.isArray(parsedObj)) {
+            list = parsedObj
+          } else {
+            list = [parsedObj]
+          }
+        } catch (_) {
+          for (var idx = 0; idx < cur.length; idx++) {
+            list.push(cur[idx])
+          }
+        }
+      } else {
+        for (var idx = 0; idx < cur.length; idx++) {
+          list.push(cur[idx])
+        }
       }
     } else if (typeof cur === 'string') {
       list = [cur]
@@ -805,6 +863,13 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
         }
       }
     }
+
+    for (var k = 0; k < result.length; k++) {
+      if (result[k].length === 1) {
+        return []
+      }
+    }
+
     return result
   }
 
@@ -971,7 +1036,7 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
   }
 
   var liveRole = (memRec.getString('role') || 'servidor').trim().toLowerCase()
-  var rawAllowedRoles = tenantRec.get('hermes_allowed_roles')
+  var rawAllowedRoles = tenantRec.getString('hermes_allowed_roles')
   var allowedRolesType = typeof rawAllowedRoles
   if (Array.isArray(rawAllowedRoles)) {
     allowedRolesType = 'array'
@@ -1156,8 +1221,23 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
     if (Array.isArray(cur)) {
       list = cur
     } else if (cur && typeof cur === 'object' && typeof cur.length === 'number') {
-      for (var idx = 0; idx < cur.length; idx++) {
-        list.push(cur[idx])
+      if (cur.length > 0 && typeof cur[0] !== 'string') {
+        try {
+          var parsedObj = JSON.parse(String(cur))
+          if (Array.isArray(parsedObj)) {
+            list = parsedObj
+          } else {
+            list = [parsedObj]
+          }
+        } catch (_) {
+          for (var idx = 0; idx < cur.length; idx++) {
+            list.push(cur[idx])
+          }
+        }
+      } else {
+        for (var idx = 0; idx < cur.length; idx++) {
+          list.push(cur[idx])
+        }
       }
     } else if (typeof cur === 'string') {
       list = [cur]
@@ -1173,6 +1253,13 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
         }
       }
     }
+
+    for (var k = 0; k < result.length; k++) {
+      if (result[k].length === 1) {
+        return []
+      }
+    }
+
     return result
   }
 
@@ -1339,7 +1426,7 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
   }
 
   var liveRole = (memRec.getString('role') || 'servidor').trim().toLowerCase()
-  var rawAllowedRoles = tenantRec.get('hermes_allowed_roles')
+  var rawAllowedRoles = tenantRec.getString('hermes_allowed_roles')
   var allowedRolesType = typeof rawAllowedRoles
   if (Array.isArray(rawAllowedRoles)) {
     allowedRolesType = 'array'
@@ -1511,8 +1598,23 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
     if (Array.isArray(cur)) {
       list = cur
     } else if (cur && typeof cur === 'object' && typeof cur.length === 'number') {
-      for (var idx = 0; idx < cur.length; idx++) {
-        list.push(cur[idx])
+      if (cur.length > 0 && typeof cur[0] !== 'string') {
+        try {
+          var parsedObj = JSON.parse(String(cur))
+          if (Array.isArray(parsedObj)) {
+            list = parsedObj
+          } else {
+            list = [parsedObj]
+          }
+        } catch (_) {
+          for (var idx = 0; idx < cur.length; idx++) {
+            list.push(cur[idx])
+          }
+        }
+      } else {
+        for (var idx = 0; idx < cur.length; idx++) {
+          list.push(cur[idx])
+        }
       }
     } else if (typeof cur === 'string') {
       list = [cur]
@@ -1528,6 +1630,13 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
         }
       }
     }
+
+    for (var k = 0; k < result.length; k++) {
+      if (result[k].length === 1) {
+        return []
+      }
+    }
+
     return result
   }
 
@@ -1694,7 +1803,7 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
   }
 
   var liveRole = (memRec.getString('role') || 'servidor').trim().toLowerCase()
-  var rawAllowedRoles = tenantRec.get('hermes_allowed_roles')
+  var rawAllowedRoles = tenantRec.getString('hermes_allowed_roles')
   var allowedRolesType = typeof rawAllowedRoles
   if (Array.isArray(rawAllowedRoles)) {
     allowedRolesType = 'array'
@@ -1870,8 +1979,23 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
     if (Array.isArray(cur)) {
       list = cur
     } else if (cur && typeof cur === 'object' && typeof cur.length === 'number') {
-      for (var idx = 0; idx < cur.length; idx++) {
-        list.push(cur[idx])
+      if (cur.length > 0 && typeof cur[0] !== 'string') {
+        try {
+          var parsedObj = JSON.parse(String(cur))
+          if (Array.isArray(parsedObj)) {
+            list = parsedObj
+          } else {
+            list = [parsedObj]
+          }
+        } catch (_) {
+          for (var idx = 0; idx < cur.length; idx++) {
+            list.push(cur[idx])
+          }
+        }
+      } else {
+        for (var idx = 0; idx < cur.length; idx++) {
+          list.push(cur[idx])
+        }
       }
     } else if (typeof cur === 'string') {
       list = [cur]
@@ -1887,6 +2011,13 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
         }
       }
     }
+
+    for (var k = 0; k < result.length; k++) {
+      if (result[k].length === 1) {
+        return []
+      }
+    }
+
     return result
   }
 
@@ -2053,7 +2184,7 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
   }
 
   var liveRole = (memRec.getString('role') || 'servidor').trim().toLowerCase()
-  var rawAllowedRoles = tenantRec.get('hermes_allowed_roles')
+  var rawAllowedRoles = tenantRec.getString('hermes_allowed_roles')
   var allowedRolesType = typeof rawAllowedRoles
   if (Array.isArray(rawAllowedRoles)) {
     allowedRolesType = 'array'
@@ -2234,8 +2365,23 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
     if (Array.isArray(cur)) {
       list = cur
     } else if (cur && typeof cur === 'object' && typeof cur.length === 'number') {
-      for (var idx = 0; idx < cur.length; idx++) {
-        list.push(cur[idx])
+      if (cur.length > 0 && typeof cur[0] !== 'string') {
+        try {
+          var parsedObj = JSON.parse(String(cur))
+          if (Array.isArray(parsedObj)) {
+            list = parsedObj
+          } else {
+            list = [parsedObj]
+          }
+        } catch (_) {
+          for (var idx = 0; idx < cur.length; idx++) {
+            list.push(cur[idx])
+          }
+        }
+      } else {
+        for (var idx = 0; idx < cur.length; idx++) {
+          list.push(cur[idx])
+        }
       }
     } else if (typeof cur === 'string') {
       list = [cur]
@@ -2251,6 +2397,13 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
         }
       }
     }
+
+    for (var k = 0; k < result.length; k++) {
+      if (result[k].length === 1) {
+        return []
+      }
+    }
+
     return result
   }
 
@@ -2417,7 +2570,7 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
   }
 
   var liveRole = (memRec.getString('role') || 'servidor').trim().toLowerCase()
-  var rawAllowedRoles = tenantRec.get('hermes_allowed_roles')
+  var rawAllowedRoles = tenantRec.getString('hermes_allowed_roles')
   var allowedRolesType = typeof rawAllowedRoles
   if (Array.isArray(rawAllowedRoles)) {
     allowedRolesType = 'array'
@@ -2579,8 +2732,23 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
     if (Array.isArray(cur)) {
       list = cur
     } else if (cur && typeof cur === 'object' && typeof cur.length === 'number') {
-      for (var idx = 0; idx < cur.length; idx++) {
-        list.push(cur[idx])
+      if (cur.length > 0 && typeof cur[0] !== 'string') {
+        try {
+          var parsedObj = JSON.parse(String(cur))
+          if (Array.isArray(parsedObj)) {
+            list = parsedObj
+          } else {
+            list = [parsedObj]
+          }
+        } catch (_) {
+          for (var idx = 0; idx < cur.length; idx++) {
+            list.push(cur[idx])
+          }
+        }
+      } else {
+        for (var idx = 0; idx < cur.length; idx++) {
+          list.push(cur[idx])
+        }
       }
     } else if (typeof cur === 'string') {
       list = [cur]
@@ -2596,6 +2764,13 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
         }
       }
     }
+
+    for (var k = 0; k < result.length; k++) {
+      if (result[k].length === 1) {
+        return []
+      }
+    }
+
     return result
   }
 
@@ -2762,7 +2937,7 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
   }
 
   var liveRole = (memRec.getString('role') || 'servidor').trim().toLowerCase()
-  var rawAllowedRoles = tenantRec.get('hermes_allowed_roles')
+  var rawAllowedRoles = tenantRec.getString('hermes_allowed_roles')
   var allowedRolesType = typeof rawAllowedRoles
   if (Array.isArray(rawAllowedRoles)) {
     allowedRolesType = 'array'
