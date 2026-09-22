@@ -254,14 +254,14 @@ curl -X GET "${botApiBaseUrl}/projects/summary" \\
 
 [5] Listagem de Documentos de Formalização de Demanda (DFDs)
 Endpoint: GET ${botApiBaseUrl}/dfds[?status=...]
-Permissão: Escopado dinamicamente pelo X-Acting-User
+Permissão: Escopado dinamicamente pelo X-Acting-User (Admin vê todos do município; Servidor Comum vê os seus DFDs atribuídos)
 curl -X GET "${botApiBaseUrl}/dfds" \\
   -H "Authorization: Bearer ${curlToken}" \\
   -H "X-Acting-User: ${actingUserExample}"
 
 [6] Detalhe de um DFD por ID
 Endpoint: GET ${botApiBaseUrl}/dfds/{id}
-Permissão: Admin vê qualquer um da prefeitura; Servidor comum apenas se for responsável
+Permissão: Admin vê qualquer um da prefeitura; Servidor comum apenas se for responsável/atribuído
 curl -X GET "${botApiBaseUrl}/dfds/SEU_ID_DFD" \\
   -H "Authorization: Bearer ${curlToken}" \\
   -H "X-Acting-User: ${actingUserExample}"
@@ -317,20 +317,31 @@ DIRETRIZES FUNDAMENTAIS:
      "Acesso não autorizado ao Hermes para este município ou usuário."
    - Oriente a pessoa a procurar o administrador municipal ou o superadmin da plataforma para liberar o acesso do seu cargo.
 
-5. RESPEITO AO ESCOPO DOS DADOS:
+5. REGRAS DE ACESSO, ESCOPO E RESPOSTA POR PERFIL (REGRA CRÍTICA):
    - Jamais invente ou deduza dados municipais ou jurídicos. Toda informação deve vir estritamente dos retornos oficiais dos endpoints da Bússola.
-   - Respeite o perfil do usuário retornado por GET /info (administradores têm visão completa; servidores comuns têm visão focada nos seus projetos e prazos).
+   - O endpoint GET /info retorna o perfil e o escopo do usuário operador.
+   - SERVIDOR COMUM / DEMAIS CARGOS AUTORIZADOS:
+     * Pode usar TODAS as consultas normais da API (DFDs, projetos, prazos e notificações), mas com visão escopada: vê SOMENTE seus próprios DFDs, projetos e prazos (registros onde é o responsável ou participante atribuído).
+     * Ao responder a um servidor, NUNCA diga que a consulta de DFDs, projetos ou prazos é "restrita a administradores" ou que seu acesso não permite consultar. O servidor TEM permissão de consultar, com visão focada nos seus próprios registros.
+     * Diga com clareza que está exibindo os registros atribuídos a ele.
+     * Se a lista de DFDs ou projetos vier vazia para um servidor, responda amigavelmente: "Você não possui DFDs/projetos atribuídos a você no momento." (ou frase equivalente clara), e NUNCA afirme que ele não tem permissão para consultar DFDs.
+   - EXCLUSIVO DE ADMINISTRADORES MUNICIPAIS (retornam 403 para servidor comum):
+     * GET /projects/summary: resumo geral agregado do kanban (totais por coluna e prioridade).
+     * GET /users: listagem de todos os usuários e servidores municipais.
+     * Visão global irrestrita de todos os projetos e DFDs do município.
+   - TRATAMENTO DE HTTP 403 (ACESSO NÃO AUTORIZADO):
+     * Em qualquer situação em que a API retornar HTTP 403, responda SEMPRE E APENAS com a frase fixa exata: "Acesso não autorizado ao Hermes para este município ou usuário." sem dar detalhes técnicos ou deduções.
 
 6. ENDPOINTS DISPONÍVEIS:
-   - GET ${botApiBaseUrl}/ping -> Verificação de integridade da API
-   - GET ${botApiBaseUrl}/info -> Perfil do usuário operador, prefeitura e status
-   - GET ${botApiBaseUrl}/projects -> Projetos no Kanban (filtros: coluna, prioridade, busca)
-   - GET ${botApiBaseUrl}/projects/summary -> Resumo com contagem por coluna/prioridade (exclusivo Admins)
-   - GET ${botApiBaseUrl}/dfds -> DFDs (Documentos de Formalização de Demanda)
-   - GET ${botApiBaseUrl}/dfds/{id} -> Detalhes de um DFD específico
-   - GET ${botApiBaseUrl}/deadlines -> Prazos vencidos, da semana e futuros
-   - GET ${botApiBaseUrl}/users -> Lista de servidores municipais (exclusivo Admins)
-   - GET ${botApiBaseUrl}/notifications -> Notificações e avisos de gargalo
+   - GET ${botApiBaseUrl}/ping -> Verificação de integridade da API (livre)
+   - GET ${botApiBaseUrl}/info -> Perfil do usuário operador, prefeitura e escopo (todos os autorizados)
+   - GET ${botApiBaseUrl}/projects -> Projetos no Kanban (Admin vê município; Servidor vê seus projetos atribuídos)
+   - GET ${botApiBaseUrl}/projects/summary -> Resumo quantitativo do Kanban por coluna/prioridade (exclusivo Administradores Municipais)
+   - GET ${botApiBaseUrl}/dfds -> DFDs (Admin vê município; Servidor vê seus DFDs atribuídos)
+   - GET ${botApiBaseUrl}/dfds/{id} -> Detalhe de um DFD (Admin vê qualquer um; Servidor vê os seus)
+   - GET ${botApiBaseUrl}/deadlines -> Prazos vencidos e futuros (Admin vê município; Servidor vê seus prazos)
+   - GET ${botApiBaseUrl}/users -> Lista de servidores e usuários municipais (exclusivo Administradores Municipais)
+   - GET ${botApiBaseUrl}/notifications -> Notificações e avisos internos (escopado por usuário)
 """
 ================================================================================`
   }
@@ -985,7 +996,8 @@ DIRETRIZES FUNDAMENTAIS:
                     <code className="text-xs font-bold text-gray-800">/dfds</code>
                   </div>
                   <span className="text-[11px] text-gray-500">
-                    Documentos de Formalização de Demanda (DFDs)
+                    Documentos de Formalização de Demanda (DFDs) — Escopado (Admin vê todos;
+                    Servidor vê os seus)
                   </span>
                 </div>
                 <div className="relative group">
@@ -1022,7 +1034,9 @@ DIRETRIZES FUNDAMENTAIS:
                     <Badge className="bg-emerald-600 text-white text-[10px] h-5 px-1.5">GET</Badge>
                     <code className="text-xs font-bold text-gray-800">/dfds/:id</code>
                   </div>
-                  <span className="text-[11px] text-gray-500">Detalhe Completo de um DFD</span>
+                  <span className="text-[11px] text-gray-500">
+                    Detalhe Completo de um DFD (Admin vê todos; Servidor vê os seus)
+                  </span>
                 </div>
                 <div className="relative group">
                   <pre className="p-2.5 rounded bg-slate-900 text-slate-100 text-[11px] font-mono overflow-x-auto">
