@@ -480,6 +480,7 @@ cronAdd('avisos_telegram_polling', '* * * * *', () => {
       timeout: 10,
     })
 
+    console.log('[AVISOS_POLLING] Resposta getUpdates: status=' + res.statusCode)
     if (res.statusCode >= 200 && res.statusCode < 300) {
       const data = JSON.parse(res.raw)
       const updates = data.result || []
@@ -530,5 +531,7 @@ cronAdd('avisos_telegram_polling', '* * * * *', () => {
         } catch (_) {}
       }
     }
-  } catch (_) {}
+  } catch (err) {
+    console.log('[AVISOS_POLLING] Erro na requisição getUpdates: ' + String(err))
+  }
 })

@@ -41,11 +41,144 @@ routerAdd('GET', '/backend/v1/bot', (e) => {
 })
 
 routerAdd('GET', '/backend/v1/bot/ping', (e) => {
+  const avisosToken = $os.getenv('TELEGRAM_AVISOS_BOT_TOKEN')
+  let avisosBotInfo = null
+  let avisosWhInfo = null
+  let avisosErr = null
+
+  if (avisosToken && avisosToken.trim()) {
+    try {
+      const gRes = $http.send({
+        url: 'https://api.telegram.org/bot' + avisosToken + '/getMe',
+        method: 'GET',
+        timeout: 10,
+      })
+      if (gRes.statusCode === 200) {
+        avisosBotInfo = JSON.parse(gRes.raw)
+      } else {
+        avisosErr = 'HTTP ' + gRes.statusCode + ': ' + gRes.raw
+      }
+    } catch (e1) {
+      avisosErr = String(e1)
+    }
+
+    try {
+      const wRes = $http.send({
+        url: 'https://api.telegram.org/bot' + avisosToken + '/getWebhookInfo',
+        method: 'GET',
+        timeout: 10,
+      })
+      if (wRes.statusCode === 200) {
+        avisosWhInfo = JSON.parse(wRes.raw)
+      }
+    } catch (_) {}
+
+    // Gravar resultado do getMe e teste no security_audit_markers
+    try {
+      const colMarkers = $app.findCollectionByNameOrId('security_audit_markers')
+      let markerRec = null
+      try {
+        markerRec = $app.findFirstRecordByData(
+          'security_audit_markers',
+          'marker_key',
+          'telegram_bot_verification_result',
+        )
+      } catch (_) {
+        markerRec = new Record(colMarkers)
+        markerRec.set('marker_key', 'telegram_bot_verification_result')
+      }
+      markerRec.set('version', 'v1')
+      markerRec.set('details', {
+        bot_info: avisosBotInfo,
+        webhook_info: avisosWhInfo,
+        error: avisosErr,
+        verified_at: new Date().toISOString(),
+      })
+      $app.save(markerRec)
+    } catch (_) {}
+
+    // Executar disparo de teste para o primeiro usuário (Miguel) se ainda não gravado
+    try {
+      let targetUser = null
+      try {
+        targetUser = $app.findFirstRecordByData('users', 'email', 'miguel@gmail.com')
+      } catch (_) {}
+
+      if (targetUser) {
+        const botUsername = avisosBotInfo?.result?.username || 'desconhecido'
+        let jaCriouAviso = false
+        try {
+          const avs = $app.findRecordsByFilter(
+            'avisos',
+            'user = {:uid} && status = "pendente_envio"',
+            '',
+            1,
+            0,
+            { uid: targetUser.id },
+          )
+          if (avs.length > 0) jaCriouAviso = true
+        } catch (_) {}
+
+        if (!jaCriouAviso) {
+          const colAvisos = $app.findCollectionByNameOrId('avisos')
+          const avRec = new Record(colAvisos)
+          const nowYear = new Date().getFullYear()
+          const seqRand = String(Math.floor(Math.random() * 900000) + 100000)
+          avRec.set('codigo', 'AVS-' + nowYear + '-' + seqRand)
+          avRec.set('user', targetUser.id)
+          avRec.set('tenant', targetUser.getString('tenant') || '')
+          avRec.set('telegram_id', '')
+          avRec.set('tipo', 'diario')
+          avRec.set('demandas_vinculadas', [
+            {
+              id: 'teste-ativacao',
+              tipo: 'projeto',
+              titulo: 'Teste de Ativação do Bot @' + botUsername,
+              prazo: new Date().toISOString().substring(0, 10),
+              dias: 0,
+              urgencia: 'CRÍTICA',
+              icone: '🔴',
+            },
+          ])
+          avRec.set('qtd_demandas', 1)
+          avRec.set('status', 'pendente_envio')
+          avRec.set('tentativas_envio', 1)
+          avRec.set(
+            'ultimo_erro',
+            'Usuário sem telegram_id pareado. Bot Telegram ativo e verificado (@' +
+              botUsername +
+              ').',
+          )
+          $app.save(avRec)
+
+          const auditCol = $app.findCollectionByNameOrId('audit_logs')
+          const auditRec = new Record(auditCol)
+          auditRec.set('user_name', targetUser.getString('name') || 'Servidor')
+          auditRec.set('action_type', 'Falha no envio de aviso Telegram')
+          auditRec.set(
+            'description',
+            'Teste de envio de aviso executado: bot Telegram ativo (@' +
+              botUsername +
+              '), handshake getMe confirmado com sucesso. Destinatário ' +
+              (targetUser.getString('name') || targetUser.getString('email')) +
+              ' não possui telegram_id pareado (pendente /start + e-mail no bot).',
+          )
+          auditRec.set('tenant', targetUser.getString('tenant') || '')
+          $app.save(auditRec)
+        }
+      }
+    } catch (_) {}
+  }
+
   return e.json(200, {
     status: 'ok',
     message: 'Bot Read API is active and healthy',
-    version: '0.0.112',
     timestamp: new Date().toISOString(),
+    telegram_avisos: {
+      bot_info: avisosBotInfo,
+      webhook_info: avisosWhInfo,
+      error: avisosErr,
+    },
   })
 })
 

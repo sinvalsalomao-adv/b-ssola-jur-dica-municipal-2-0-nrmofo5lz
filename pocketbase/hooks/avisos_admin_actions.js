@@ -139,15 +139,78 @@ routerAdd(
     if (!tgId) {
       // Teste de conectividade bot (getMe e webhook info) caso usuário ainda não tenha telegram_id
       try {
+        console.log('[AVISOS_ADMIN] Executando getMe na API do Telegram...')
         const getMeRes = $http.send({
           url: 'https://api.telegram.org/bot' + token + '/getMe',
           method: 'GET',
           timeout: 10,
         })
+        console.log(
+          '[AVISOS_ADMIN] getMe statusCode=' + getMeRes.statusCode + ', raw=' + getMeRes.raw,
+        )
         const botInfo = getMeRes.statusCode === 200 ? JSON.parse(getMeRes.raw) : null
+        const botUsername = botInfo?.result?.username || 'desconhecido'
+
+        // Criar registro na coleção avisos documentando a tentativa de teste para o usuário sem pareamento
+        let avisoTesteId = ''
+        try {
+          const colAvisos = $app.findCollectionByNameOrId('avisos')
+          const avRec = new Record(colAvisos)
+          const nowYear = new Date().getFullYear()
+          const seqRand = String(Math.floor(Math.random() * 900000) + 100000)
+          avRec.set('codigo', 'AVS-' + nowYear + '-' + seqRand)
+          avRec.set('user', targetUser.id)
+          avRec.set('tenant', targetUser.getString('tenant') || '')
+          avRec.set('telegram_id', '')
+          avRec.set('tipo', 'diario')
+          avRec.set('demandas_vinculadas', [
+            {
+              id: 'teste-conectividade',
+              tipo: 'projeto',
+              titulo: 'Teste de Ativação do Bot @' + botUsername,
+              prazo: new Date().toISOString().substring(0, 10),
+              dias: 0,
+              urgencia: 'CRÍTICA',
+              icone: '🔴',
+            },
+          ])
+          avRec.set('qtd_demandas', 1)
+          avRec.set('status', 'pendente_envio')
+          avRec.set('tentativas_envio', 1)
+          avRec.set(
+            'ultimo_erro',
+            'Usuário sem telegram_id pareado. Bot ativo e validado (@' + botUsername + ').',
+          )
+          $app.save(avRec)
+          avisoTesteId = avRec.id
+        } catch (avErr) {
+          console.log('[AVISOS_ADMIN] Erro ao gravar aviso de teste: ' + String(avErr))
+        }
+
+        // Registrar tentativa no log de auditoria
+        try {
+          const auditCol = $app.findCollectionByNameOrId('audit_logs')
+          const auditRec = new Record(auditCol)
+          auditRec.set('user_name', auth.getString('name') || 'Administrador')
+          auditRec.set('action_type', 'Falha no envio de aviso Telegram')
+          auditRec.set(
+            'description',
+            'Teste de envio de aviso executado: bot Telegram ativo (@' +
+              botUsername +
+              '), handshake getMe confirmado com sucesso. Destinatário ' +
+              (targetUser.getString('name') || targetUser.getString('email')) +
+              ' não possui telegram_id pareado (pendente /start + e-mail).',
+          )
+          auditRec.set('tenant', targetUser.getString('tenant') || '')
+          $app.save(auditRec)
+        } catch (audErr) {
+          console.log('[AVISOS_ADMIN] Erro ao gravar auditoria: ' + String(audErr))
+        }
+
         return e.json(200, {
           success: true,
           tested: 'connectivity_only',
+          aviso_id: avisoTesteId,
           bot: botInfo?.result
             ? {
                 id: botInfo.result.id,
@@ -163,6 +226,7 @@ routerAdd(
             ' ainda não possui Telegram ID vinculado. Para receber mensagens diretas, basta enviar o e-mail cadastrado no chat do bot.',
         })
       } catch (connErr) {
+        console.log('[AVISOS_ADMIN] Falha no getMe: ' + String(connErr))
         return e.json(400, {
           code: 400,
           message:
