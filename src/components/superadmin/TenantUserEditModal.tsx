@@ -32,11 +32,13 @@ interface Props {
 }
 
 const ROLES: { value: UserRole; label: string }[] = [
+  { value: 'prefeito', label: 'Prefeito' },
+  { value: 'vice-prefeito', label: 'Vice-Prefeito' },
   { value: 'admin', label: 'Admin' },
-  { value: 'servidor', label: 'Servidor' },
-  { value: 'gestor', label: 'Gestor' },
   { value: 'secretario', label: 'Secretário' },
+  { value: 'gestor', label: 'Gestor' },
   { value: 'procurador', label: 'Procurador' },
+  { value: 'servidor', label: 'Servidor' },
 ]
 
 export function TenantUserEditModal({ user, tenantId, open, onOpenChange, onSaved }: Props) {

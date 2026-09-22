@@ -165,6 +165,316 @@ export function BotIntegrationSection({
       ? activeKey.key_prefix
       : 'bjm_chaveMestra...'
 
+
+1. URL BASE DA API DO BOT
+--------------------------------------------------------------------------------
+URL Base: ${botApiBaseUrl}
+Status de Teste: ${botApiBaseUrl}/ping (responde {"status":"ok","message":"Bot Read API is active and healthy"})
+Cabeçalhos de Autenticação Obrigatórios:
+  - Authorization: Bearer <chave_mestra_da_prefeitura>  (ou X-API-Key: <chave_mestra>)
+  - X-Acting-User: <email_do_usuario_no_bussola>
+Isolamento: 100% Multi-tenant com validação ao vivo de prefeitura ativa + vínculo ativo + cargo liberado. O município é fixado pela chave mestra (nenhum dado cruza prefeituras).
+
+2. CHAVE MESTRA DA PREFEITURA (BUSSOLA_API_KEY)
+--------------------------------------------------------------------------------
+${rawKeyAvailable ? `Chave Mestra Gerada Nesta Sessão (Valor Completo):\n${createdKeyData!.raw_key}` : `Instrução para a Chave Mestra:\n${apiKeyValue}`}
+
+3. VARIÁVEIS DE AMBIENTE PARA O DOCKER DO HERMES (SEM TELEGRAM_ALLOWED_USERS)
+--------------------------------------------------------------------------------
+No painel do Gerenciador Docker do seu Hermes (ou arquivo docker-compose / .env), configure as variáveis em "Ambiente".
+NÃO use TELEGRAM_ALLOWED_USERS: o Hermes aceita qualquer usuário no Telegram e a validação de acesso é feita ao vivo pela API do Bússola via X-Acting-User.
+
+BUSSOLA_API_URL=${botApiBaseUrl}
+BUSSOLA_API_KEY=${rawKeyAvailable ? createdKeyData!.raw_key : '<COLE_AQUI_A_CHAVE_MESTRA_GERADA_PELO_SUPERADMIN>'}
+BUSSOLA_TENANT_ID=${tenantId || ''}
+
+4. DIRETRIZ CRÍTICA DE IDENTIDADE E AUTORIZAÇÃO (X-Acting-User)
+--------------------------------------------------------------------------------
+Como funciona o fluxo de autorização:
+- O bot Hermes aceita qualquer usuário que iniciar uma conversa no Telegram.
+- Na primeira mensagem / primeiro contato, o Hermes pergunta qual é o e-mail cadastrado pelo usuário na plataforma Bússola Jurídica.
+- O Hermes confirma o e-mail informado e passa a usá-lo no cabeçalho HTTP "X-Acting-User" em todas as chamadas à API da prefeitura.
+- Em cada requisição, a API do Bússola valida AO VIVO:
+  1. Se a integração Hermes está ativada na prefeitura (hermes_enabled).
+  2. Se o usuário existe, está ativo e possui vínculo ativo no município da chave mestra.
+  3. Se o papel do vínculo ativo (prefeito, vice-prefeito, secretário, gestor, procurador, servidor ou admin) está marcado nas permissões da prefeitura (tenants.hermes_allowed_roles).
+- Se qualquer uma dessas condições falhar, a API retorna HTTP 403 com a seguinte MENSAGEM GENÉRICA FIXA (sem diferenciar o motivo):
+  "Acesso não autorizado ao Hermes para este município ou usuário."
+- Sempre que receber HTTP 403 com essa mensagem genérica, o bot Hermes deve responder ao usuário no Telegram estritamente com essa mesma mensagem genérica:
+  "Acesso não autorizado ao Hermes para este município ou usuário."
+
+Exemplo de cabeçalho:
+  X-Acting-User: ${actingUserExample}
+
+5. CATÁLOGO DOS 9 ENDPOINTS COM EXEMPLOS DE CURL
+--------------------------------------------------------------------------------
+
+[1] Healthcheck / Ping
+Endpoint: GET ${botApiBaseUrl}/ping
+Permissão: Livre / Teste de conectividade da API
+curl -X GET "${botApiBaseUrl}/ping"
+
+[2] Informações de Identidade e Escopo do Usuário Operador
+Endpoint: GET ${botApiBaseUrl}/info
+Permissão: Chave mestra ativa + usuário com vínculo e cargo liberado
+curl -X GET "${botApiBaseUrl}/info" \
+  -H "Authorization: Bearer ${curlToken}" \
+  -H "X-Acting-User: ${actingUserExample}"
+
+[3] Listagem de Projetos do Kanban
+Endpoint: GET ${botApiBaseUrl}/projects[?coluna=...&prioridade=...&busca=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User (Admin/Prefeito/Secretário conforme RBAC; Servidor Comum vê os seus)
+curl -X GET "${botApiBaseUrl}/projects?coluna=Elaborar%20DFD" \
+  -H "Authorization: Bearer ${curlToken}" \
+  -H "X-Acting-User: ${actingUserExample}"
+
+[4] Resumo Agregado do Kanban (Totais por Coluna e Prioridade)
+Endpoint: GET ${botApiBaseUrl}/projects/summary
+Permissão: Exclusivo Administradores Municipais. Outros usuários recebem 403.
+curl -X GET "${botApiBaseUrl}/projects/summary" \
+  -H "Authorization: Bearer ${curlToken}" \
+  -H "X-Acting-User: ${actingUserExample}"
+
+[5] Listagem de Documentos de Formalização de Demanda (DFDs)
+Endpoint: GET ${botApiBaseUrl}/dfds[?status=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/dfds" \
+  -H "Authorization: Bearer ${curlToken}" \
+  -H "X-Acting-User: ${actingUserExample}"
+
+[6] Detalhe de um DFD por ID
+Endpoint: GET ${botApiBaseUrl}/dfds/{id}
+Permissão: Admin vê qualquer um da prefeitura; Servidor comum apenas se for responsável
+curl -X GET "${botApiBaseUrl}/dfds/SEU_ID_DFD" \
+  -H "Authorization: Bearer ${curlToken}" \
+  -H "X-Acting-User: ${actingUserExample}"
+
+[7] Monitoramento de Prazos e Gargalos
+Endpoint: GET ${botApiBaseUrl}/deadlines
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/deadlines" \
+  -H "Authorization: Bearer ${curlToken}" \
+  -H "X-Acting-User: ${actingUserExample}"
+
+[8] Servidores e Usuários do Município
+Endpoint: GET ${botApiBaseUrl}/users
+Permissão: Exclusivo Administradores Municipais. Outros perfis recebem 403.
+curl -X GET "${botApiBaseUrl}/users" \
+  -H "Authorization: Bearer ${curlToken}" \
+  -H "X-Acting-User: ${actingUserExample}"
+
+[9] Notificações e Alertas Internos
+Endpoint: GET ${botApiBaseUrl}/notifications[?nao_lidas=true&tipo=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/notifications?nao_lidas=true" \
+  -H "Authorization: Bearer ${curlToken}" \
+  -H "X-Acting-User: ${actingUserExample}"
+
+6. SYSTEM PROMPT PRONTO PARA O AGENTE HERMES (EM PORTUGUÊS)
+--------------------------------------------------------------------------------
+Copie e cole as diretrizes abaixo no campo de System Prompt ou Instruções do seu Agente Hermes:
+
+"""
+Você é o Hermes, o assistente oficial de inteligência operacional da plataforma Bússola Jurídica Municipal 2.0 para a Prefeitura de ${tenantName || 'nosso município'}.
+
+DIRETRIZES FUNDAMENTAIS:
+1. IDIOMA E TONALIDADE:
+   - Responda sempre em português brasileiro de forma clara, profissional, objetiva e segura.
+   - Apresente informações organizadas com listas com marcadores, datas no padrão DD/MM/AAAA e destaques em negrito.
+
+2. FLUXO DE IDENTIFICAÇÃO E TELEGRAM (SEM LISTA FIXA DE IDs):
+   - Você aceita qualquer usuário que inicie conversa com você no Telegram.
+   - Na primeira conversa com uma pessoa (ou se ainda não souber o e-mail dela), pergunte educadamente qual é o seu e-mail cadastrado na plataforma Bússola Jurídica Municipal.
+   - Após a pessoa informar o e-mail, confirme-o e guarde-o na memória da sessão/conversa dessa pessoa.
+   - Utilize esse e-mail no cabeçalho HTTP "X-Acting-User" em TODAS as chamadas que fizer à API da prefeitura.
+
+3. COMUNICAÇÃO COM A API E CABEÇALHOS:
+   - Sua URL base é: ${botApiBaseUrl}
+   - Em todas as requisições HTTP aos endpoints da prefeitura, envie obrigatoriamente:
+     Authorization: Bearer ${rawKeyAvailable ? createdKeyData!.raw_key : '$BUSSOLA_API_KEY'}
+     X-Acting-User: <e-mail confirmado do usuário>
+
+4. TRATAMENTO DE ACESSO E HTTP 403 (REGRA CRÍTICA):
+   - A plataforma Bússola valida ao vivo no banco de dados se a prefeitura está ativada, se o usuário possui vínculo ativo neste município e se o seu cargo está autorizado pelo superadministrador (tenants.hermes_allowed_roles).
+   - Se a API retornar HTTP 403 (ou mensagem contendo 'Acesso não autorizado ao Hermes para este município ou usuário.'), você DEVE responder ao usuário no Telegram EXATAMENTE com esta frase fixa, sem inventar explicações detalhadas ou deduções:
+     "Acesso não autorizado ao Hermes para este município ou usuário."
+   - Oriente a pessoa a procurar o administrador municipal ou o superadmin da plataforma para liberar o acesso do seu cargo.
+
+5. RESPEITO AO ESCOPO DOS DADOS:
+   - Jamais invente ou deduza dados municipais ou jurídicos. Toda informação deve vir estritamente dos retornos oficiais dos endpoints da Bússola.
+   - Respeite o perfil do usuário retornado por GET /info (administradores têm visão completa; servidores comuns têm visão focada nos seus projetos e prazos).
+
+6. ENDPOINTS DISPONÍVEIS:
+   - GET ${botApiBaseUrl}/ping -> Verificação de integridade da API
+   - GET ${botApiBaseUrl}/info -> Perfil do usuário operador, prefeitura e status
+   - GET ${botApiBaseUrl}/projects -> Projetos no Kanban (filtros: coluna, prioridade, busca)
+   - GET ${botApiBaseUrl}/projects/summary -> Resumo com contagem por coluna/prioridade (exclusivo Admins)
+   - GET ${botApiBaseUrl}/dfds -> DFDs (Documentos de Formalização de Demanda)
+   - GET ${botApiBaseUrl}/dfds/{id} -> Detalhes de um DFD específico
+   - GET ${botApiBaseUrl}/deadlines -> Prazos vencidos, da semana e futuros
+   - GET ${botApiBaseUrl}/users -> Lista de servidores municipais (exclusivo Admins)
+   - GET ${botApiBaseUrl}/notifications -> Notificações e avisos de gargalo
+"""
+================================================================================`
+  }
+
+  const handleCopyAllHermes = () => {
+=======
+
+1. URL BASE DA API DO BOT
+--------------------------------------------------------------------------------
+URL Base: ${botApiBaseUrl}
+Status de Teste: ${botApiBaseUrl}/ping (responde {"status":"ok","message":"Bot Read API is active and healthy"})
+Cabeçalhos de Autenticação Obrigatórios:
+  - Authorization: Bearer <chave_mestra_da_prefeitura>  (ou X-API-Key: <chave_mestra>)
+  - X-Acting-User: <email_do_usuario_no_bussola>
+Isolamento: 100% Multi-tenant com validação ao vivo de prefeitura ativa + vínculo ativo + cargo liberado. O município é fixado pela chave mestra (nenhum dado cruza prefeituras).
+
+2. CHAVE MESTRA DA PREFEITURA (BUSSOLA_API_KEY)
+--------------------------------------------------------------------------------
+${rawKeyAvailable ? `Chave Mestra Gerada Nesta Sessão (Valor Completo):\n${createdKeyData!.raw_key}` : `Instrução para a Chave Mestra:\n${apiKeyValue}`}
+
+3. VARIÁVEIS DE AMBIENTE PARA O DOCKER DO HERMES (SEM TELEGRAM_ALLOWED_USERS)
+--------------------------------------------------------------------------------
+No painel do Gerenciador Docker do seu Hermes (ou arquivo docker-compose / .env), configure as variáveis em "Ambiente".
+NÃO use TELEGRAM_ALLOWED_USERS: o Hermes aceita qualquer usuário no Telegram e a validação de acesso é feita ao vivo pela API do Bússola via X-Acting-User.
+
+BUSSOLA_API_URL=${botApiBaseUrl}
+BUSSOLA_API_KEY=${rawKeyAvailable ? createdKeyData!.raw_key : '<COLE_AQUI_A_CHAVE_MESTRA_GERADA_PELO_SUPERADMIN>'}
+BUSSOLA_TENANT_ID=${tenantId || ''}
+
+4. DIRETRIZ CRÍTICA DE IDENTIDADE E AUTORIZAÇÃO (X-Acting-User)
+--------------------------------------------------------------------------------
+Como funciona o fluxo de autorização:
+- O bot Hermes aceita qualquer usuário que iniciar uma conversa no Telegram.
+- Na primeira mensagem / primeiro contato, o Hermes pergunta qual é o e-mail cadastrado pelo usuário na plataforma Bússola Jurídica.
+- O Hermes confirma o e-mail informado e passa a usá-lo no cabeçalho HTTP "X-Acting-User" em todas as chamadas à API da prefeitura.
+- Em cada requisição, a API do Bússola valida AO VIVO:
+  1. Se a integração Hermes está ativada na prefeitura (hermes_enabled).
+  2. Se o usuário existe, está ativo e possui vínculo ativo no município da chave mestra.
+  3. Se o papel do vínculo ativo (prefeito, vice-prefeito, secretário, gestor, procurador, servidor ou admin) está marcado nas permissões da prefeitura (tenants.hermes_allowed_roles).
+- Se qualquer uma dessas condições falhar, a API retorna HTTP 403 com a seguinte MENSAGEM GENÉRICA FIXA (sem diferenciar o motivo):
+  "Acesso não autorizado ao Hermes para este município ou usuário."
+- Sempre que receber HTTP 403 com essa mensagem genérica, o bot Hermes deve responder ao usuário no Telegram estritamente com essa mesma mensagem genérica:
+  "Acesso não autorizado ao Hermes para este município ou usuário."
+
+Exemplo de cabeçalho:
+  X-Acting-User: ${actingUserExample}
+
+5. CATÁLOGO DOS 9 ENDPOINTS COM EXEMPLOS DE CURL
+--------------------------------------------------------------------------------
+
+[1] Healthcheck / Ping
+Endpoint: GET ${botApiBaseUrl}/ping
+Permissão: Livre / Teste de conectividade da API
+curl -X GET "${botApiBaseUrl}/ping"
+
+[2] Informações de Identidade e Escopo do Usuário Operador
+Endpoint: GET ${botApiBaseUrl}/info
+Permissão: Chave mestra ativa + usuário com vínculo e cargo liberado
+curl -X GET "${botApiBaseUrl}/info" \
+  -H "Authorization: Bearer ${curlToken}" \
+  -H "X-Acting-User: ${actingUserExample}"
+
+[3] Listagem de Projetos do Kanban
+Endpoint: GET ${botApiBaseUrl}/projects[?coluna=...&prioridade=...&busca=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User (Admin/Prefeito/Secretário conforme RBAC; Servidor Comum vê os seus)
+curl -X GET "${botApiBaseUrl}/projects?coluna=Elaborar%20DFD" \
+  -H "Authorization: Bearer ${curlToken}" \
+  -H "X-Acting-User: ${actingUserExample}"
+
+[4] Resumo Agregado do Kanban (Totais por Coluna e Prioridade)
+Endpoint: GET ${botApiBaseUrl}/projects/summary
+Permissão: Exclusivo Administradores Municipais. Outros usuários recebem 403.
+curl -X GET "${botApiBaseUrl}/projects/summary" \
+  -H "Authorization: Bearer ${curlToken}" \
+  -H "X-Acting-User: ${actingUserExample}"
+
+[5] Listagem de Documentos de Formalização de Demanda (DFDs)
+Endpoint: GET ${botApiBaseUrl}/dfds[?status=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/dfds" \
+  -H "Authorization: Bearer ${curlToken}" \
+  -H "X-Acting-User: ${actingUserExample}"
+
+[6] Detalhe de um DFD por ID
+Endpoint: GET ${botApiBaseUrl}/dfds/{id}
+Permissão: Admin vê qualquer um da prefeitura; Servidor comum apenas se for responsável
+curl -X GET "${botApiBaseUrl}/dfds/SEU_ID_DFD" \
+  -H "Authorization: Bearer ${curlToken}" \
+  -H "X-Acting-User: ${actingUserExample}"
+
+[7] Monitoramento de Prazos e Gargalos
+Endpoint: GET ${botApiBaseUrl}/deadlines
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/deadlines" \
+  -H "Authorization: Bearer ${curlToken}" \
+  -H "X-Acting-User: ${actingUserExample}"
+
+[8] Servidores e Usuários do Município
+Endpoint: GET ${botApiBaseUrl}/users
+Permissão: Exclusivo Administradores Municipais. Outros perfis recebem 403.
+curl -X GET "${botApiBaseUrl}/users" \
+  -H "Authorization: Bearer ${curlToken}" \
+  -H "X-Acting-User: ${actingUserExample}"
+
+[9] Notificações e Alertas Internos
+Endpoint: GET ${botApiBaseUrl}/notifications[?nao_lidas=true&tipo=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/notifications?nao_lidas=true" \
+  -H "Authorization: Bearer ${curlToken}" \
+  -H "X-Acting-User: ${actingUserExample}"
+
+6. SYSTEM PROMPT PRONTO PARA O AGENTE HERMES (EM PORTUGUÊS)
+--------------------------------------------------------------------------------
+Copie e cole as diretrizes abaixo no campo de System Prompt ou Instruções do seu Agente Hermes:
+
+"""
+Você é o Hermes, o assistente oficial de inteligência operacional da plataforma Bússola Jurídica Municipal 2.0 para a Prefeitura de ${tenantName || 'nosso município'}.
+
+DIRETRIZES FUNDAMENTAIS:
+1. IDIOMA E TONALIDADE:
+   - Responda sempre em português brasileiro de forma clara, profissional, objetiva e segura.
+   - Apresente informações organizadas com listas com marcadores, datas no padrão DD/MM/AAAA e destaques em negrito.
+
+2. FLUXO DE IDENTIFICAÇÃO E TELEGRAM (SEM LISTA FIXA DE IDs):
+   - Você aceita qualquer usuário que inicie conversa com você no Telegram.
+   - Na primeira conversa com uma pessoa (ou se ainda não souber o e-mail dela), pergunte educadamente qual é o seu e-mail cadastrado na plataforma Bússola Jurídica Municipal.
+   - Após a pessoa informar o e-mail, confirme-o e guarde-o na memória da sessão/conversa dessa pessoa.
+   - Utilize esse e-mail no cabeçalho HTTP "X-Acting-User" em TODAS as chamadas que fizer à API da prefeitura.
+
+3. COMUNICAÇÃO COM A API E CABEÇALHOS:
+   - Sua URL base é: ${botApiBaseUrl}
+   - Em todas as requisições HTTP aos endpoints da prefeitura, envie obrigatoriamente:
+     Authorization: Bearer ${rawKeyAvailable ? createdKeyData!.raw_key : '$BUSSOLA_API_KEY'}
+     X-Acting-User: <e-mail confirmado do usuário>
+
+4. TRATAMENTO DE ACESSO E HTTP 403 (REGRA CRÍTICA):
+   - A plataforma Bússola valida ao vivo no banco de dados se a prefeitura está ativada, se o usuário possui vínculo ativo neste município e se o seu cargo está autorizado pelo superadministrador (tenants.hermes_allowed_roles).
+   - Se a API retornar HTTP 403 (ou mensagem contendo 'Acesso não autorizado ao Hermes para este município ou usuário.'), você DEVE responder ao usuário no Telegram EXATAMENTE com esta frase fixa, sem inventar explicações detalhadas ou deduções:
+     "Acesso não autorizado ao Hermes para este município ou usuário."
+   - Oriente a pessoa a procurar o administrador municipal ou o superadmin da plataforma para liberar o acesso do seu cargo.
+
+5. RESPEITO AO ESCOPO DOS DADOS:
+   - Jamais invente ou deduza dados municipais ou jurídicos. Toda informação deve vir estritamente dos retornos oficiais dos endpoints da Bússola.
+   - Respeite o perfil do usuário retornado por GET /info (administradores têm visão completa; servidores comuns têm visão focada nos seus projetos e prazos).
+
+6. ENDPOINTS DISPONÍVEIS:
+   - GET ${botApiBaseUrl}/ping -> Verificação de integridade da API
+   - GET ${botApiBaseUrl}/info -> Perfil do usuário operador, prefeitura e status
+   - GET ${botApiBaseUrl}/projects -> Projetos no Kanban (filtros: coluna, prioridade, busca)
+   - GET ${botApiBaseUrl}/projects/summary -> Resumo com contagem por coluna/prioridade (exclusivo Admins)
+   - GET ${botApiBaseUrl}/dfds -> DFDs (Documentos de Formalização de Demanda)
+   - GET ${botApiBaseUrl}/dfds/{id} -> Detalhes de um DFD específico
+   - GET ${botApiBaseUrl}/deadlines -> Prazos vencidos, da semana e futuros
+   - GET ${botApiBaseUrl}/users -> Lista de servidores municipais (exclusivo Admins)
+   - GET ${botApiBaseUrl}/notifications -> Notificações e avisos de gargalo
+"""
+================================================================================`
+  }
+
+  const handleCopyAllHermes = () => {
+=======
   const generateHermesFullConfigBlock = (): string => {
     const rawKeyAvailable = !!createdKeyData?.raw_key
     const apiKeyValue = rawKeyAvailable
@@ -183,8 +493,1080 @@ export function BotIntegrationSection({
 CONFIGURAÇÃO COMPLETA DE INTEGRAÇÃO — AGENTE HERMES & BÚSSOLA JURÍDICA MUNICIPAL 2.0
 Município: ${tenantName || 'Prefeitura Vinculada'} (ID: ${tenantId})
 Modelo de Chaves: Chave Mestra por Prefeitura (Gerada exclusivamente pelo Superadmin)
-Autenticação Dinâmica: Cabeçalho X-Acting-User (E-mail ou ID do usuário no Bússola)
+Autenticação Dinâmica: Cabeçalho X-Acting-User (E-mail cadastrado no Bússola)
+Autorização: Validada ao vivo no Bússola por cargo permitido (tenants.hermes_allowed_roles)
 Gerado por: ${user?.name || user?.email || 'Servidor Municipal'} (${userRoleLabel})
+================================================================================
+
+1. URL BASE DA API DO BOT
+--------------------------------------------------------------------------------
+URL Base: ${botApiBaseUrl}
+Status de Teste: ${botApiBaseUrl}/ping (responde {"status":"ok","message":"Bot Read API is active and healthy"})
+Cabeçalhos de Autenticação Obrigatórios:
+  - Authorization: Bearer <chave_mestra_da_prefeitura>  (ou X-API-Key: <chave_mestra>)
+  - X-Acting-User: <email_do_usuario_no_bussola>
+Isolamento: 100% Multi-tenant com validação ao vivo de prefeitura ativa + vínculo ativo + cargo liberado. O município é fixado pela chave mestra (nenhum dado cruza prefeituras).
+
+2. CHAVE MESTRA DA PREFEITURA (BUSSOLA_API_KEY)
+--------------------------------------------------------------------------------
+${rawKeyAvailable ? `Chave Mestra Gerada Nesta Sessão (Valor Completo):\n${createdKeyData!.raw_key}` : `Instrução para a Chave Mestra:\n${apiKeyValue}`}
+
+3. VARIÁVEIS DE AMBIENTE PARA O DOCKER DO HERMES (SEM TELEGRAM_ALLOWED_USERS)
+--------------------------------------------------------------------------------
+No painel do Gerenciador Docker do seu Hermes (ou arquivo docker-compose / .env), configure as variáveis em "Ambiente".
+NÃO use TELEGRAM_ALLOWED_USERS: o Hermes aceita qualquer usuário no Telegram e a validação de acesso é feita ao vivo pela API do Bússola via X-Acting-User.
+
+BUSSOLA_API_URL=${botApiBaseUrl}
+BUSSOLA_API_KEY=${rawKeyAvailable ? createdKeyData!.raw_key : '<COLE_AQUI_A_CHAVE_MESTRA_GERADA_PELO_SUPERADMIN>'}
+BUSSOLA_TENANT_ID=${tenantId || ''}
+
+4. DIRETRIZ CRÍTICA DE IDENTIDADE E AUTORIZAÇÃO (X-Acting-User)
+--------------------------------------------------------------------------------
+Como funciona o fluxo de autorização:
+- O bot Hermes aceita qualquer usuário que iniciar uma conversa no Telegram.
+- Na primeira mensagem / primeiro contato, o Hermes pergunta qual é o e-mail cadastrado pelo usuário na plataforma Bússola Jurídica.
+- O Hermes confirma o e-mail informado e passa a usá-lo no cabeçalho HTTP "X-Acting-User" em todas as chamadas à API da prefeitura.
+- Em cada requisição, a API do Bússola valida AO VIVO:
+  1. Se a integração Hermes está ativada na prefeitura (hermes_enabled).
+  2. Se o usuário existe, está ativo e possui vínculo ativo no município da chave mestra.
+  3. Se o papel do vínculo ativo (prefeito, vice-prefeito, secretário, gestor, procurador, servidor ou admin) está marcado nas permissões da prefeitura (tenants.hermes_allowed_roles).
+- Se qualquer uma dessas condições falhar, a API retorna HTTP 403 com a seguinte MENSAGEM GENÉRICA FIXA (sem diferenciar o motivo):
+  "Acesso não autorizado ao Hermes para este município ou usuário."
+- Sempre que receber HTTP 403 com essa mensagem genérica, o bot Hermes deve responder ao usuário no Telegram estritamente com essa mesma mensagem genérica:
+  "Acesso não autorizado ao Hermes para este município ou usuário."
+
+Exemplo de cabeçalho:
+  X-Acting-User: ${actingUserExample}
+
+5. CATÁLOGO DOS 9 ENDPOINTS COM EXEMPLOS DE CURL
+--------------------------------------------------------------------------------
+
+[1] Healthcheck / Ping
+Endpoint: GET ${botApiBaseUrl}/ping
+Permissão: Livre / Teste de conectividade da API
+curl -X GET "${botApiBaseUrl}/ping"
+
+[2] Informações de Identidade e Escopo do Usuário Operador
+Endpoint: GET ${botApiBaseUrl}/info
+Permissão: Chave mestra ativa + usuário com vínculo e cargo liberado
+curl -X GET "${botApiBaseUrl}/info" \
+  -H "Authorization: Bearer ${curlToken}" \
+  -H "X-Acting-User: ${actingUserExample}"
+
+[3] Listagem de Projetos do Kanban
+Endpoint: GET ${botApiBaseUrl}/projects[?coluna=...&prioridade=...&busca=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User (Admin/Prefeito/Secretário conforme RBAC; Servidor Comum vê os seus)
+curl -X GET "${botApiBaseUrl}/projects?coluna=Elaborar%20DFD" \
+  -H "Authorization: Bearer ${curlToken}" \
+  -H "X-Acting-User: ${actingUserExample}"
+
+[4] Resumo Agregado do Kanban (Totais por Coluna e Prioridade)
+Endpoint: GET ${botApiBaseUrl}/projects/summary
+Permissão: Exclusivo Administradores Municipais. Outros usuários recebem 403.
+curl -X GET "${botApiBaseUrl}/projects/summary" \
+  -H "Authorization: Bearer ${curlToken}" \
+  -H "X-Acting-User: ${actingUserExample}"
+
+[5] Listagem de Documentos de Formalização de Demanda (DFDs)
+Endpoint: GET ${botApiBaseUrl}/dfds[?status=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/dfds" \
+  -H "Authorization: Bearer ${curlToken}" \
+  -H "X-Acting-User: ${actingUserExample}"
+
+[6] Detalhe de um DFD por ID
+Endpoint: GET ${botApiBaseUrl}/dfds/{id}
+Permissão: Admin vê qualquer um da prefeitura; Servidor comum apenas se for responsável
+curl -X GET "${botApiBaseUrl}/dfds/SEU_ID_DFD" \
+  -H "Authorization: Bearer ${curlToken}" \
+  -H "X-Acting-User: ${actingUserExample}"
+
+[7] Monitoramento de Prazos e Gargalos
+Endpoint: GET ${botApiBaseUrl}/deadlines
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/deadlines" \
+  -H "Authorization: Bearer ${curlToken}" \
+  -H "X-Acting-User: ${actingUserExample}"
+
+[8] Servidores e Usuários do Município
+Endpoint: GET ${botApiBaseUrl}/users
+Permissão: Exclusivo Administradores Municipais. Outros perfis recebem 403.
+curl -X GET "${botApiBaseUrl}/users" \
+  -H "Authorization: Bearer ${curlToken}" \
+  -H "X-Acting-User: ${actingUserExample}"
+
+[9] Notificações e Alertas Internos
+Endpoint: GET ${botApiBaseUrl}/notifications[?nao_lidas=true&tipo=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/notifications?nao_lidas=true" \
+  -H "Authorization: Bearer ${curlToken}" \
+  -H "X-Acting-User: ${actingUserExample}"
+
+6. SYSTEM PROMPT PRONTO PARA O AGENTE HERMES (EM PORTUGUÊS)
+--------------------------------------------------------------------------------
+Copie e cole as diretrizes abaixo no campo de System Prompt ou Instruções do seu Agente Hermes:
+
+"""
+Você é o Hermes, o assistente oficial de inteligência operacional da plataforma Bússola Jurídica Municipal 2.0 para a Prefeitura de ${tenantName || 'nosso município'}.
+
+DIRETRIZES FUNDAMENTAIS:
+1. IDIOMA E TONALIDADE:
+   - Responda sempre em português brasileiro de forma clara, profissional, objetiva e segura.
+   - Apresente informações organizadas com listas com marcadores, datas no padrão DD/MM/AAAA e destaques em negrito.
+
+2. FLUXO DE IDENTIFICAÇÃO E TELEGRAM (SEM LISTA FIXA DE IDs):
+   - Você aceita qualquer usuário que inicie conversa com você no Telegram.
+   - Na primeira conversa com uma pessoa (ou se ainda não souber o e-mail dela), pergunte educadamente qual é o seu e-mail cadastrado na plataforma Bússola Jurídica Municipal.
+   - Após a pessoa informar o e-mail, confirme-o e guarde-o na memória da sessão/conversa dessa pessoa.
+   - Utilize esse e-mail no cabeçalho HTTP "X-Acting-User" em TODAS as chamadas que fizer à API da prefeitura.
+
+3. COMUNICAÇÃO COM A API E CABEÇALHOS:
+   - Sua URL base é: ${botApiBaseUrl}
+   - Em todas as requisições HTTP aos endpoints da prefeitura, envie obrigatoriamente:
+     Authorization: Bearer ${rawKeyAvailable ? createdKeyData!.raw_key : '$BUSSOLA_API_KEY'}
+     X-Acting-User: <e-mail confirmado do usuário>
+
+4. TRATAMENTO DE ACESSO E HTTP 403 (REGRA CRÍTICA):
+   - A plataforma Bússola valida ao vivo no banco de dados se a prefeitura está ativada, se o usuário possui vínculo ativo neste município e se o seu cargo está autorizado pelo superadministrador (tenants.hermes_allowed_roles).
+   - Se a API retornar HTTP 403 (ou mensagem contendo 'Acesso não autorizado ao Hermes para este município ou usuário.'), você DEVE responder ao usuário no Telegram EXATAMENTE com esta frase fixa, sem inventar explicações detalhadas ou deduções:
+     "Acesso não autorizado ao Hermes para este município ou usuário."
+   - Oriente a pessoa a procurar o administrador municipal ou o superadmin da plataforma para liberar o acesso do seu cargo.
+
+5. RESPEITO AO ESCOPO DOS DADOS:
+   - Jamais invente ou deduza dados municipais ou jurídicos. Toda informação deve vir estritamente dos retornos oficiais dos endpoints da Bússola.
+   - Respeite o perfil do usuário retornado por GET /info (administradores têm visão completa; servidores comuns têm visão focada nos seus projetos e prazos).
+
+6. ENDPOINTS DISPONÍVEIS:
+   - GET ${botApiBaseUrl}/ping -> Verificação de integridade da API
+   - GET ${botApiBaseUrl}/info -> Perfil do usuário operador, prefeitura e status
+   - GET ${botApiBaseUrl}/projects -> Projetos no Kanban (filtros: coluna, prioridade, busca)
+   - GET ${botApiBaseUrl}/projects/summary -> Resumo com contagem por coluna/prioridade (exclusivo Admins)
+   - GET ${botApiBaseUrl}/dfds -> DFDs (Documentos de Formalização de Demanda)
+   - GET ${botApiBaseUrl}/dfds/{id} -> Detalhes de um DFD específico
+   - GET ${botApiBaseUrl}/deadlines -> Prazos vencidos, da semana e futuros
+   - GET ${botApiBaseUrl}/users -> Lista de servidores municipais (exclusivo Admins)
+   - GET ${botApiBaseUrl}/notifications -> Notificações e avisos de gargalo
+"""
+================================================================================`
+  }
+=======
+================================================================================
+
+1. URL BASE DA API DO BOT
+--------------------------------------------------------------------------------
+URL Base: ${botApiBaseUrl}
+Status de Teste: ${botApiBaseUrl}/ping (responde {"status":"ok","message":"Bot Read API is active and healthy"})
+Cabeçalhos de Autenticação Obrigatórios:
+  - Authorization: Bearer <chave_mestra_da_prefeitura>  (ou X-API-Key: <chave_mestra>)
+  - X-Acting-User: <email_do_usuario_no_bussola>
+Isolamento: 100% Multi-tenant com validação ao vivo de prefeitura ativa + vínculo ativo + cargo liberado. O município é fixado pela chave mestra (nenhum dado cruza prefeituras).
+
+2. CHAVE MESTRA DA PREFEITURA (BUSSOLA_API_KEY)
+--------------------------------------------------------------------------------
+${rawKeyAvailable ? `Chave Mestra Gerada Nesta Sessão (Valor Completo):\n${createdKeyData!.raw_key}` : `Instrução para a Chave Mestra:\n${apiKeyValue}`}
+
+3. VARIÁVEIS DE AMBIENTE PARA O DOCKER DO HERMES (SEM TELEGRAM_ALLOWED_USERS)
+--------------------------------------------------------------------------------
+No painel do Gerenciador Docker do seu Hermes (ou arquivo docker-compose / .env), configure as variáveis em "Ambiente".
+NÃO use TELEGRAM_ALLOWED_USERS: o Hermes aceita qualquer usuário no Telegram e a validação de acesso é feita ao vivo pela API do Bússola via X-Acting-User.
+
+BUSSOLA_API_URL=${botApiBaseUrl}
+BUSSOLA_API_KEY=${rawKeyAvailable ? createdKeyData!.raw_key : '<COLE_AQUI_A_CHAVE_MESTRA_GERADA_PELO_SUPERADMIN>'}
+BUSSOLA_TENANT_ID=${tenantId || ''}
+
+4. DIRETRIZ CRÍTICA DE IDENTIDADE E AUTORIZAÇÃO (X-Acting-User)
+--------------------------------------------------------------------------------
+Como funciona o fluxo de autorização:
+- O bot Hermes aceita qualquer usuário que iniciar uma conversa no Telegram.
+- Na primeira mensagem / primeiro contato, o Hermes pergunta qual é o e-mail cadastrado pelo usuário na plataforma Bússola Jurídica.
+- O Hermes confirma o e-mail informado e passa a usá-lo no cabeçalho HTTP "X-Acting-User" em todas as chamadas à API da prefeitura.
+- Em cada requisição, a API do Bússola valida AO VIVO:
+  1. Se a integração Hermes está ativada na prefeitura (hermes_enabled).
+  2. Se o usuário existe, está ativo e possui vínculo ativo no município da chave mestra.
+  3. Se o papel do vínculo ativo (prefeito, vice-prefeito, secretário, gestor, procurador, servidor ou admin) está marcado nas permissões da prefeitura (tenants.hermes_allowed_roles).
+- Se qualquer uma dessas condições falhar, a API retorna HTTP 403 com a seguinte MENSAGEM GENÉRICA FIXA (sem diferenciar o motivo):
+  "Acesso não autorizado ao Hermes para este município ou usuário."
+- Sempre que receber HTTP 403 com essa mensagem genérica, o bot Hermes deve responder ao usuário no Telegram estritamente com essa mesma mensagem genérica:
+  "Acesso não autorizado ao Hermes para este município ou usuário."
+
+Exemplo de cabeçalho:
+  X-Acting-User: ${actingUserExample}
+
+5. CATÁLOGO DOS 9 ENDPOINTS COM EXEMPLOS DE CURL
+--------------------------------------------------------------------------------
+
+[1] Healthcheck / Ping
+Endpoint: GET ${botApiBaseUrl}/ping
+Permissão: Livre / Teste de conectividade da API
+curl -X GET "${botApiBaseUrl}/ping"
+
+[2] Informações de Identidade e Escopo do Usuário Operador
+Endpoint: GET ${botApiBaseUrl}/info
+Permissão: Chave mestra ativa + usuário com vínculo e cargo liberado
+curl -X GET "${botApiBaseUrl}/info" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[3] Listagem de Projetos do Kanban
+Endpoint: GET ${botApiBaseUrl}/projects[?coluna=...&prioridade=...&busca=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User (Admin/Prefeito/Secretário conforme RBAC; Servidor Comum vê os seus)
+curl -X GET "${botApiBaseUrl}/projects?coluna=Elaborar%20DFD" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[4] Resumo Agregado do Kanban (Totais por Coluna e Prioridade)
+Endpoint: GET ${botApiBaseUrl}/projects/summary
+Permissão: Exclusivo Administradores Municipais. Outros usuários recebem 403.
+curl -X GET "${botApiBaseUrl}/projects/summary" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[5] Listagem de Documentos de Formalização de Demanda (DFDs)
+Endpoint: GET ${botApiBaseUrl}/dfds[?status=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/dfds" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[6] Detalhe de um DFD por ID
+Endpoint: GET ${botApiBaseUrl}/dfds/{id}
+Permissão: Admin vê qualquer um da prefeitura; Servidor comum apenas se for responsável
+curl -X GET "${botApiBaseUrl}/dfds/SEU_ID_DFD" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[7] Monitoramento de Prazos e Gargalos
+Endpoint: GET ${botApiBaseUrl}/deadlines
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/deadlines" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[8] Servidores e Usuários do Município
+Endpoint: GET ${botApiBaseUrl}/users
+Permissão: Exclusivo Administradores Municipais. Outros perfis recebem 403.
+curl -X GET "${botApiBaseUrl}/users" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[9] Notificações e Alertas Internos
+Endpoint: GET ${botApiBaseUrl}/notifications[?nao_lidas=true&tipo=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/notifications?nao_lidas=true" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+6. SYSTEM PROMPT PRONTO PARA O AGENTE HERMES (EM PORTUGUÊS)
+--------------------------------------------------------------------------------
+Copie e cole as diretrizes abaixo no campo de System Prompt ou Instruções do seu Agente Hermes:
+
+"""
+Você é o Hermes, o assistente oficial de inteligência operacional da plataforma Bússola Jurídica Municipal 2.0 para a Prefeitura de ${tenantName || 'nosso município'}.
+
+DIRETRIZES FUNDAMENTAIS:
+1. IDIOMA E TONALIDADE:
+   - Responda sempre em português brasileiro de forma clara, profissional, objetiva e segura.
+   - Apresente informações organizadas com listas com marcadores, datas no padrão DD/MM/AAAA e destaques em negrito.
+
+2. FLUXO DE IDENTIFICAÇÃO E TELEGRAM (SEM LISTA FIXA DE IDs):
+   - Você aceita qualquer usuário que inicie conversa com você no Telegram.
+   - Na primeira conversa com uma pessoa (ou se ainda não souber o e-mail dela), pergunte educadamente qual é o seu e-mail cadastrado na plataforma Bússola Jurídica Municipal.
+   - Após a pessoa informar o e-mail, confirme-o e guarde-o na memória da sessão/conversa dessa pessoa.
+   - Utilize esse e-mail no cabeçalho HTTP "X-Acting-User" em TODAS as chamadas que fizer à API da prefeitura.
+
+3. COMUNICAÇÃO COM A API E CABEÇALHOS:
+   - Sua URL base é: ${botApiBaseUrl}
+   - Em todas as requisições HTTP aos endpoints da prefeitura, envie obrigatoriamente:
+     Authorization: Bearer ${rawKeyAvailable ? createdKeyData!.raw_key : '$BUSSOLA_API_KEY'}
+     X-Acting-User: <e-mail confirmado do usuário>
+
+4. TRATAMENTO DE ACESSO E HTTP 403 (REGRA CRÍTICA):
+   - A plataforma Bússola valida ao vivo no banco de dados se a prefeitura está ativada, se o usuário possui vínculo ativo neste município e se o seu cargo está autorizado pelo superadministrador (tenants.hermes_allowed_roles).
+   - Se a API retornar HTTP 403 (ou mensagem contendo 'Acesso não autorizado ao Hermes para este município ou usuário.'), você DEVE responder ao usuário no Telegram EXATAMENTE com esta frase fixa, sem inventar explicações detalhadas ou deduções:
+     "Acesso não autorizado ao Hermes para este município ou usuário."
+   - Oriente a pessoa a procurar o administrador municipal ou o superadmin da plataforma para liberar o acesso do seu cargo.
+
+5. RESPEITO AO ESCOPO DOS DADOS:
+   - Jamais invente ou deduza dados municipais ou jurídicos. Toda informação deve vir estritamente dos retornos oficiais dos endpoints da Bússola.
+   - Respeite o perfil do usuário retornado por GET /info (administradores têm visão completa; servidores comuns têm visão focada nos seus projetos e prazos).
+
+6. ENDPOINTS DISPONÍVEIS:
+   - GET ${botApiBaseUrl}/ping -> Verificação de integridade da API
+   - GET ${botApiBaseUrl}/info -> Perfil do usuário operador, prefeitura e status
+   - GET ${botApiBaseUrl}/projects -> Projetos no Kanban (filtros: coluna, prioridade, busca)
+   - GET ${botApiBaseUrl}/projects/summary -> Resumo com contagem por coluna/prioridade (exclusivo Admins)
+   - GET ${botApiBaseUrl}/dfds -> DFDs (Documentos de Formalização de Demanda)
+   - GET ${botApiBaseUrl}/dfds/{id} -> Detalhes de um DFD específico
+   - GET ${botApiBaseUrl}/deadlines -> Prazos vencidos, da semana e futuros
+   - GET ${botApiBaseUrl}/users -> Lista de servidores municipais (exclusivo Admins)
+   - GET ${botApiBaseUrl}/notifications -> Notificações e avisos de gargalo
+"""
+================================================================================`
+  }
+
+  const handleCopyAllHermes = () => {
+================================================================================
+
+1. URL BASE DA API DO BOT
+--------------------------------------------------------------------------------
+URL Base: ${botApiBaseUrl}
+Status de Teste: ${botApiBaseUrl}/ping (responde {"status":"ok","message":"Bot Read API is active and healthy"})
+Cabeçalhos de Autenticação Obrigatórios:
+  - Authorization: Bearer <chave_mestra_da_prefeitura>  (ou X-API-Key: <chave_mestra>)
+  - X-Acting-User: <email_do_usuario_no_bussola>
+Isolamento: 100% Multi-tenant com validação ao vivo de prefeitura ativa + vínculo ativo + cargo liberado. O município é fixado pela chave mestra (nenhum dado cruza prefeituras).
+
+2. CHAVE MESTRA DA PREFEITURA (BUSSOLA_API_KEY)
+--------------------------------------------------------------------------------
+${rawKeyAvailable ? `Chave Mestra Gerada Nesta Sessão (Valor Completo):\n${createdKeyData!.raw_key}` : `Instrução para a Chave Mestra:\n${apiKeyValue}`}
+
+3. VARIÁVEIS DE AMBIENTE PARA O DOCKER DO HERMES (SEM TELEGRAM_ALLOWED_USERS)
+--------------------------------------------------------------------------------
+No painel do Gerenciador Docker do seu Hermes (ou arquivo docker-compose / .env), configure as variáveis em "Ambiente".
+NÃO use TELEGRAM_ALLOWED_USERS: o Hermes aceita qualquer usuário no Telegram e a validação de acesso é feita ao vivo pela API do Bússola via X-Acting-User.
+
+BUSSOLA_API_URL=${botApiBaseUrl}
+BUSSOLA_API_KEY=${rawKeyAvailable ? createdKeyData!.raw_key : '<COLE_AQUI_A_CHAVE_MESTRA_GERADA_PELO_SUPERADMIN>'}
+BUSSOLA_TENANT_ID=${tenantId || ''}
+
+4. DIRETRIZ CRÍTICA DE IDENTIDADE E AUTORIZAÇÃO (X-Acting-User)
+--------------------------------------------------------------------------------
+Como funciona o fluxo de autorização:
+- O bot Hermes aceita qualquer usuário que iniciar uma conversa no Telegram.
+- Na primeira mensagem / primeiro contato, o Hermes pergunta qual é o e-mail cadastrado pelo usuário na plataforma Bússola Jurídica.
+- O Hermes confirma o e-mail informado e passa a usá-lo no cabeçalho HTTP "X-Acting-User" em todas as chamadas à API da prefeitura.
+- Em cada requisição, a API do Bússola valida AO VIVO:
+  1. Se a integração Hermes está ativada na prefeitura (hermes_enabled).
+  2. Se o usuário existe, está ativo e possui vínculo ativo no município da chave mestra.
+  3. Se o papel do vínculo ativo (prefeito, vice-prefeito, secretário, gestor, procurador, servidor ou admin) está marcado nas permissões da prefeitura (tenants.hermes_allowed_roles).
+- Se qualquer uma dessas condições falhar, a API retorna HTTP 403 com a seguinte MENSAGEM GENÉRICA FIXA (sem diferenciar o motivo):
+  "Acesso não autorizado ao Hermes para este município ou usuário."
+- Sempre que receber HTTP 403 com essa mensagem genérica, o bot Hermes deve responder ao usuário no Telegram estritamente com essa mesma mensagem genérica:
+  "Acesso não autorizado ao Hermes para este município ou usuário."
+
+Exemplo de cabeçalho:
+  X-Acting-User: ${actingUserExample}
+
+5. CATÁLOGO DOS 9 ENDPOINTS COM EXEMPLOS DE CURL
+--------------------------------------------------------------------------------
+
+[1] Healthcheck / Ping
+Endpoint: GET ${botApiBaseUrl}/ping
+Permissão: Livre / Teste de conectividade da API
+curl -X GET "${botApiBaseUrl}/ping"
+
+[2] Informações de Identidade e Escopo do Usuário Operador
+Endpoint: GET ${botApiBaseUrl}/info
+Permissão: Chave mestra ativa + usuário com vínculo e cargo liberado
+curl -X GET "${botApiBaseUrl}/info" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[3] Listagem de Projetos do Kanban
+Endpoint: GET ${botApiBaseUrl}/projects[?coluna=...&prioridade=...&busca=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User (Admin/Prefeito/Secretário conforme RBAC; Servidor Comum vê os seus)
+curl -X GET "${botApiBaseUrl}/projects?coluna=Elaborar%20DFD" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[4] Resumo Agregado do Kanban (Totais por Coluna e Prioridade)
+Endpoint: GET ${botApiBaseUrl}/projects/summary
+Permissão: Exclusivo Administradores Municipais. Outros usuários recebem 403.
+curl -X GET "${botApiBaseUrl}/projects/summary" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[5] Listagem de Documentos de Formalização de Demanda (DFDs)
+Endpoint: GET ${botApiBaseUrl}/dfds[?status=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/dfds" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[6] Detalhe de um DFD por ID
+Endpoint: GET ${botApiBaseUrl}/dfds/{id}
+Permissão: Admin vê qualquer um da prefeitura; Servidor comum apenas se for responsável
+curl -X GET "${botApiBaseUrl}/dfds/SEU_ID_DFD" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[7] Monitoramento de Prazos e Gargalos
+Endpoint: GET ${botApiBaseUrl}/deadlines
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/deadlines" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[8] Servidores e Usuários do Município
+Endpoint: GET ${botApiBaseUrl}/users
+Permissão: Exclusivo Administradores Municipais. Outros perfis recebem 403.
+curl -X GET "${botApiBaseUrl}/users" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[9] Notificações e Alertas Internos
+Endpoint: GET ${botApiBaseUrl}/notifications[?nao_lidas=true&tipo=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/notifications?nao_lidas=true" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+6. SYSTEM PROMPT PRONTO PARA O AGENTE HERMES (EM PORTUGUÊS)
+--------------------------------------------------------------------------------
+Copie e cole as diretrizes abaixo no campo de System Prompt ou Instruções do seu Agente Hermes:
+
+"""
+Você é o Hermes, o assistente oficial de inteligência operacional da plataforma Bússola Jurídica Municipal 2.0 para a Prefeitura de ${tenantName || 'nosso município'}.
+
+DIRETRIZES FUNDAMENTAIS:
+1. IDIOMA E TONALIDADE:
+   - Responda sempre em português brasileiro de forma clara, profissional, objetiva e segura.
+   - Apresente informações organizadas com listas com marcadores, datas no padrão DD/MM/AAAA e destaques em negrito.
+
+2. FLUXO DE IDENTIFICAÇÃO E TELEGRAM (SEM LISTA FIXA DE IDs):
+   - Você aceita qualquer usuário que inicie conversa com você no Telegram.
+   - Na primeira conversa com uma pessoa (ou se ainda não souber o e-mail dela), pergunte educadamente qual é o seu e-mail cadastrado na plataforma Bússola Jurídica Municipal.
+   - Após a pessoa informar o e-mail, confirme-o e guarde-o na memória da sessão/conversa dessa pessoa.
+   - Utilize esse e-mail no cabeçalho HTTP "X-Acting-User" em TODAS as chamadas que fizer à API da prefeitura.
+
+3. COMUNICAÇÃO COM A API E CABEÇALHOS:
+   - Sua URL base é: ${botApiBaseUrl}
+   - Em todas as requisições HTTP aos endpoints da prefeitura, envie obrigatoriamente:
+     Authorization: Bearer ${rawKeyAvailable ? createdKeyData!.raw_key : '$BUSSOLA_API_KEY'}
+     X-Acting-User: <e-mail confirmado do usuário>
+
+4. TRATAMENTO DE ACESSO E HTTP 403 (REGRA CRÍTICA):
+   - A plataforma Bússola valida ao vivo no banco de dados se a prefeitura está ativada, se o usuário possui vínculo ativo neste município e se o seu cargo está autorizado pelo superadministrador (tenants.hermes_allowed_roles).
+   - Se a API retornar HTTP 403 (ou mensagem contendo 'Acesso não autorizado ao Hermes para este município ou usuário.'), você DEVE responder ao usuário no Telegram EXATAMENTE com esta frase fixa, sem inventar explicações detalhadas ou deduções:
+     "Acesso não autorizado ao Hermes para este município ou usuário."
+   - Oriente a pessoa a procurar o administrador municipal ou o superadmin da plataforma para liberar o acesso do seu cargo.
+
+5. RESPEITO AO ESCOPO DOS DADOS:
+   - Jamais invente ou deduza dados municipais ou jurídicos. Toda informação deve vir estritamente dos retornos oficiais dos endpoints da Bússola.
+   - Respeite o perfil do usuário retornado por GET /info (administradores têm visão completa; servidores comuns têm visão focada nos seus projetos e prazos).
+
+
+1. URL BASE DA API DO BOT
+--------------------------------------------------------------------------------
+URL Base: ${botApiBaseUrl}
+Status de Teste: ${botApiBaseUrl}/ping (responde {"status":"ok","message":"Bot Read API is active and healthy"})
+Cabeçalhos de Autenticação Obrigatórios:
+  - Authorization: Bearer <chave_mestra_da_prefeitura>  (ou X-API-Key: <chave_mestra>)
+  - X-Acting-User: <email_ou_id_do_usuario>
+Isolamento: 100% Multi-tenant com RBAC ao vivo. O município é fixado pela chave mestra (nenhum dado cruza prefeituras) e o usuário operador é resolvido dinamicamente pelo cabeçalho X-Acting-User.
+
+2. CHAVE MESTRA DA PREFEITURA (BUSSOLA_API_KEY)
+--------------------------------------------------------------------------------
+${rawKeyAvailable ? `Chave Mestra Gerada Nesta Sessão (Valor Completo):\n${createdKeyData!.raw_key}` : `Instrução para a Chave Mestra:\n${apiKeyValue}`}
+
+3. VARIÁVEIS DE AMBIENTE PARA O DOCKER DO HERMES (HOSTINGER / .env)
+--------------------------------------------------------------------------------
+No painel do Gerenciador Docker do seu Hermes (ou arquivo docker-compose / .env), configure as variáveis em "Ambiente":
+
+BUSSOLA_API_URL=${botApiBaseUrl}
+BUSSOLA_API_KEY=${rawKeyAvailable ? createdKeyData!.raw_key : '<COLE_AQUI_A_CHAVE_MESTRA_GERADA_PELO_SUPERADMIN>'}
+BUSSOLA_TENANT_ID=${tenantId || ''}
+
+4. DIRETRIZ CRÍTICA DE IDENTIDADE (CABEÇALHO X-Acting-User)
+--------------------------------------------------------------------------------
+O Hermes deve enviar a identidade de QUEM PERGUNTA em cada requisição à API.
+Formato: e-mail ou ID do usuário cadastrado na prefeitura do Bússola Jurídica.
+Exemplo:
+  X-Acting-User: ${actingUserExample}
+
+Como funciona:
+- Ao conversar com o usuário no Telegram, o Hermes identifica o e-mail ou ID dele no Bússola.
+- Envia esse identificador no cabeçalho X-Acting-User.
+- A API do Bússola calcula as permissões AO VIVO:
+  * Admin Municipal ou Superadmin -> visão completa da prefeitura.
+  * Servidor Comum -> apenas o que é dele (projetos onde é responsável, seus prazos e notificações). Resumos municipais (/summary) e lista de servidores (/users) retornam 403 Forbidden.
+  * Usuário inexistente ou de outro município -> acesso negado (403 Forbidden).
+
+5. CATÁLOGO DOS 9 ENDPOINTS COM EXEMPLOS DE CURL
+--------------------------------------------------------------------------------
+
+[1] Healthcheck / Ping
+Endpoint: GET ${botApiBaseUrl}/ping
+Permissão: Público / Teste de conectividade
+curl -X GET "${botApiBaseUrl}/ping"
+
+[2] Informações de Identidade e Escopo do Usuário Operador
+Endpoint: GET ${botApiBaseUrl}/info
+Permissão: Todas as chaves mestras válidas com X-Acting-User ativo
+curl -X GET "${botApiBaseUrl}/info" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[3] Listagem de Projetos do Kanban
+Endpoint: GET ${botApiBaseUrl}/projects[?coluna=...&prioridade=...&busca=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User (Admin vê todos; Comum vê apenas os seus)
+curl -X GET "${botApiBaseUrl}/projects?coluna=Elaborar%20DFD" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[4] Resumo Agregado do Kanban (Totais por Coluna e Prioridade)
+Endpoint: GET ${botApiBaseUrl}/projects/summary
+Permissão: Exclusivo Administradores Municipais. Servidor comum recebe 403 Forbidden.
+curl -X GET "${botApiBaseUrl}/projects/summary" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[5] Listagem de Documentos de Formalização de Demanda (DFDs)
+Endpoint: GET ${botApiBaseUrl}/dfds[?status=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User (Admin vê todos; Comum vê os seus)
+curl -X GET "${botApiBaseUrl}/dfds" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[6] Detalhe de um DFD por ID
+Endpoint: GET ${botApiBaseUrl}/dfds/{id}
+Permissão: Admin vê qualquer um da prefeitura; Comum vê apenas se for o responsável
+curl -X GET "${botApiBaseUrl}/dfds/SEU_ID_DFD" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[7] Monitoramento de Prazos e Gargalos
+Endpoint: GET ${botApiBaseUrl}/deadlines
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/deadlines" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[8] Servidores e Usuários do Município
+Endpoint: GET ${botApiBaseUrl}/users
+Permissão: Exclusivo Administradores Municipais. Servidor comum recebe 403 Forbidden.
+curl -X GET "${botApiBaseUrl}/users" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[9] Notificações e Alertas Internos
+Endpoint: GET ${botApiBaseUrl}/notifications[?nao_lidas=true&tipo=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/notifications?nao_lidas=true" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+6. SYSTEM PROMPT PRONTO PARA O AGENTE HERMES (EM PORTUGUÊS)
+--------------------------------------------------------------------------------
+Copie e cole as diretrizes abaixo no campo de System Prompt ou Instruções do seu Agente Hermes:
+
+"""
+Você é o Hermes, o assistente oficial de inteligência operacional da plataforma Bússola Jurídica Municipal 2.0 para a Prefeitura de ${tenantName || 'nosso município'}.
+
+DIRETRIZES FUNDAMENTAIS:
+1. IDIOMA E TONALIDADE:
+   - Responda sempre em português brasileiro de forma clara, profissional, objetiva e segura.
+   - Apresente informações organizadas com listas com marcadores, datas no padrão DD/MM/AAAA e destaques em negrito.
+
+2. COMUNICAÇÃO COM A API E CABEÇALHO DE IDENTIDADE:
+   - Sua URL base é: ${botApiBaseUrl}
+   - Em todas as requisições HTTP, envie obrigatoriamente os dois cabeçalhos:
+     Authorization: Bearer ${rawKeyAvailable ? createdKeyData!.raw_key : '$BUSSOLA_API_KEY'}
+     X-Acting-User: <e-mail ou ID do usuário que está perguntando>
+   - Identifique quem está conversando com você no Telegram (pelo e-mail do Bússola) e envie essa identidade em X-Acting-User.
+   - Para inspecionar as permissões do usuário antes de responder a consultas complexas, faça uma chamada prévia a:
+     GET ${botApiBaseUrl}/info com o header X-Acting-User correspondente.
+
+3. RESPEITO ESTRITO AO RBAC E ESCOPO DE SEGURANÇA:
+   - A Bússola Jurídica aplica as regras do usuário AO VIVO no banco de dados:
+     * Administradores municipais têm visão integral dos projetos, prazos e métricas da prefeitura.
+     * Servidores comuns visualizam apenas seus próprios projetos em /projects, seus DFDs em /dfds, seus prazos em /deadlines e suas notificações em /notifications.
+   - Se um endpoint retornar HTTP 403 Forbidden (como /projects/summary ou /users para servidor comum), explique educadamente em português que a consulta agregada municipal é restrita a administradores e forneça a alternativa voltada aos projetos dele.
+   - Nenhum dado cruza prefeituras: a prefeitura é fixada pela chave mestra. Usuários de outro município têm acesso negado automaticamente.
+   - Jamais invente ou deduza dados jurídicos. Todas as respostas com dados da prefeitura devem ser baseadas estritamente nos retornos JSON recebidos dos endpoints oficiais da Bússola.
+
+4. ENDPOINTS DISPONÍVEIS:
+   - GET ${botApiBaseUrl}/ping -> Verificação de integridade
+   - GET ${botApiBaseUrl}/info -> Perfil do usuário operador, prefeitura e colunas
+   - GET ${botApiBaseUrl}/projects -> Projetos no Kanban (filtros: coluna, prioridade, busca)
+   - GET ${botApiBaseUrl}/projects/summary -> Resumo com contagem por coluna/prioridade (apenas Admins)
+   - GET ${botApiBaseUrl}/dfds -> DFDs (Documentos de Formalização de Demanda)
+   - GET ${botApiBaseUrl}/dfds/{id} -> Detalhes de um DFD específico
+   - GET ${botApiBaseUrl}/deadlines -> Prazos vencidos, da semana e futuros
+   - GET ${botApiBaseUrl}/users -> Lista de servidores municipais (apenas Admins)
+   - GET ${botApiBaseUrl}/notifications -> Notificações e avisos de gargalo
+"""
+================================================================================`
+  }
+=======
+6. ENDPOINTS DISPONÍVEIS:
+   - GET ${botApiBaseUrl}/ping -> Verificação de integridade da API
+   - GET ${botApiBaseUrl}/info -> Perfil do usuário operador, prefeitura e status
+   - GET ${botApiBaseUrl}/projects -> Projetos no Kanban (filtros: coluna, prioridade, busca)
+   - GET ${botApiBaseUrl}/projects/summary -> Resumo com contagem por coluna/prioridade (exclusivo Admins)
+   - GET ${botApiBaseUrl}/dfds -> DFDs (Documentos de Formalização de Demanda)
+   - GET ${botApiBaseUrl}/dfds/{id} -> Detalhes de um DFD específico
+   - GET ${botApiBaseUrl}/deadlines -> Prazos vencidos, da semana e futuros
+   - GET ${botApiBaseUrl}/users -> Lista de servidores municipais (exclusivo Admins)
+   - GET ${botApiBaseUrl}/notifications -> Notificações e avisos de gargalo
+"""
+================================================================================`
+  }
+================================================================================
+
+1. URL BASE DA API DO BOT
+--------------------------------------------------------------------------------
+URL Base: ${botApiBaseUrl}
+Status de Teste: ${botApiBaseUrl}/ping (responde {"status":"ok","message":"Bot Read API is active and healthy"})
+Cabeçalhos de Autenticação Obrigatórios:
+  - Authorization: Bearer <chave_mestra_da_prefeitura>  (ou X-API-Key: <chave_mestra>)
+  - X-Acting-User: <email_ou_id_do_usuario>
+Isolamento: 100% Multi-tenant com RBAC ao vivo. O município é fixado pela chave mestra (nenhum dado cruza prefeituras) e o usuário operador é resolvido dinamicamente pelo cabeçalho X-Acting-User.
+
+2. CHAVE MESTRA DA PREFEITURA (BUSSOLA_API_KEY)
+--------------------------------------------------------------------------------
+${rawKeyAvailable ? `Chave Mestra Gerada Nesta Sessão (Valor Completo):\n${createdKeyData!.raw_key}` : `Instrução para a Chave Mestra:\n${apiKeyValue}`}
+
+3. VARIÁVEIS DE AMBIENTE PARA O DOCKER DO HERMES (HOSTINGER / .env)
+--------------------------------------------------------------------------------
+No painel do Gerenciador Docker do seu Hermes (ou arquivo docker-compose / .env), configure as variáveis em "Ambiente":
+
+BUSSOLA_API_URL=${botApiBaseUrl}
+BUSSOLA_API_KEY=${rawKeyAvailable ? createdKeyData!.raw_key : '<COLE_AQUI_A_CHAVE_MESTRA_GERADA_PELO_SUPERADMIN>'}
+BUSSOLA_TENANT_ID=${tenantId || ''}
+
+4. DIRETRIZ CRÍTICA DE IDENTIDADE (CABEÇALHO X-Acting-User)
+--------------------------------------------------------------------------------
+O Hermes deve enviar a identidade de QUEM PERGUNTA em cada requisição à API.
+Formato: e-mail ou ID do usuário cadastrado na prefeitura do Bússola Jurídica.
+Exemplo:
+  X-Acting-User: ${actingUserExample}
+
+Como funciona:
+- Ao conversar com o usuário no Telegram, o Hermes identifica o e-mail ou ID dele no Bússola.
+- Envia esse identificador no cabeçalho X-Acting-User.
+- A API do Bússola calcula as permissões AO VIVO:
+  * Admin Municipal ou Superadmin -> visão completa da prefeitura.
+  * Servidor Comum -> apenas o que é dele (projetos onde é responsável, seus prazos e notificações). Resumos municipais (/summary) e lista de servidores (/users) retornam 403 Forbidden.
+  * Usuário inexistente ou de outro município -> acesso negado (403 Forbidden).
+
+5. CATÁLOGO DOS 9 ENDPOINTS COM EXEMPLOS DE CURL
+--------------------------------------------------------------------------------
+
+[1] Healthcheck / Ping
+Endpoint: GET ${botApiBaseUrl}/ping
+Permissão: Público / Teste de conectividade
+curl -X GET "${botApiBaseUrl}/ping"
+
+[2] Informações de Identidade e Escopo do Usuário Operador
+Endpoint: GET ${botApiBaseUrl}/info
+Permissão: Todas as chaves mestras válidas com X-Acting-User ativo
+curl -X GET "${botApiBaseUrl}/info" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[3] Listagem de Projetos do Kanban
+Endpoint: GET ${botApiBaseUrl}/projects[?coluna=...&prioridade=...&busca=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User (Admin vê todos; Comum vê apenas os seus)
+curl -X GET "${botApiBaseUrl}/projects?coluna=Elaborar%20DFD" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[4] Resumo Agregado do Kanban (Totais por Coluna e Prioridade)
+Endpoint: GET ${botApiBaseUrl}/projects/summary
+Permissão: Exclusivo Administradores Municipais. Servidor comum recebe 403 Forbidden.
+curl -X GET "${botApiBaseUrl}/projects/summary" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[5] Listagem de Documentos de Formalização de Demanda (DFDs)
+Endpoint: GET ${botApiBaseUrl}/dfds[?status=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User (Admin vê todos; Comum vê os seus)
+curl -X GET "${botApiBaseUrl}/dfds" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[6] Detalhe de um DFD por ID
+Endpoint: GET ${botApiBaseUrl}/dfds/{id}
+Permissão: Admin vê qualquer um da prefeitura; Comum vê apenas se for o responsável
+curl -X GET "${botApiBaseUrl}/dfds/SEU_ID_DFD" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[7] Monitoramento de Prazos e Gargalos
+Endpoint: GET ${botApiBaseUrl}/deadlines
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/deadlines" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[8] Servidores e Usuários do Município
+Endpoint: GET ${botApiBaseUrl}/users
+Permissão: Exclusivo Administradores Municipais. Servidor comum recebe 403 Forbidden.
+curl -X GET "${botApiBaseUrl}/users" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[9] Notificações e Alertas Internos
+Endpoint: GET ${botApiBaseUrl}/notifications[?nao_lidas=true&tipo=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/notifications?nao_lidas=true" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+6. SYSTEM PROMPT PRONTO PARA O AGENTE HERMES (EM PORTUGUÊS)
+--------------------------------------------------------------------------------
+Copie e cole as diretrizes abaixo no campo de System Prompt ou Instruções do seu Agente Hermes:
+
+"""
+Você é o Hermes, o assistente oficial de inteligência operacional da plataforma Bússola Jurídica Municipal 2.0 para a Prefeitura de ${tenantName || 'nosso município'}.
+
+DIRETRIZES FUNDAMENTAIS:
+1. IDIOMA E TONALIDADE:
+   - Responda sempre em português brasileiro de forma clara, profissional, objetiva e segura.
+   - Apresente informações organizadas com listas com marcadores, datas no padrão DD/MM/AAAA e destaques em negrito.
+
+2. COMUNICAÇÃO COM A API E CABEÇALHO DE IDENTIDADE:
+   - Sua URL base é: ${botApiBaseUrl}
+   - Em todas as requisições HTTP, envie obrigatoriamente os dois cabeçalhos:
+     Authorization: Bearer ${rawKeyAvailable ? createdKeyData!.raw_key : '$BUSSOLA_API_KEY'}
+     X-Acting-User: <e-mail ou ID do usuário que está perguntando>
+   - Identifique quem está conversando com você no Telegram (pelo e-mail do Bússola) e envie essa identidade em X-Acting-User.
+   - Para inspecionar as permissões do usuário antes de responder a consultas complexas, faça uma chamada prévia a:
+     GET ${botApiBaseUrl}/info com o header X-Acting-User correspondente.
+
+3. RESPEITO ESTRITO AO RBAC E ESCOPO DE SEGURANÇA:
+   - A Bússola Jurídica aplica as regras do usuário AO VIVO no banco de dados:
+     * Administradores municipais têm visão integral dos projetos, prazos e métricas da prefeitura.
+     * Servidores comuns visualizam apenas seus próprios projetos em /projects, seus DFDs em /dfds, seus prazos em /deadlines e suas notificações em /notifications.
+   - Se um endpoint retornar HTTP 403 Forbidden (como /projects/summary ou /users para servidor comum), explique educadamente em português que a consulta agregada municipal é restrita a administradores e forneça a alternativa voltada aos projetos dele.
+   - Nenhum dado cruza prefeituras: a prefeitura é fixada pela chave mestra. Usuários de outro município têm acesso negado automaticamente.
+   - Jamais invente ou deduza dados jurídicos. Todas as respostas com dados da prefeitura devem ser baseadas estritamente nos retornos JSON recebidos dos endpoints oficiais da Bússola.
+
+4. ENDPOINTS DISPONÍVEIS:
+   - GET ${botApiBaseUrl}/ping -> Verificação de integridade
+   - GET ${botApiBaseUrl}/info -> Perfil do usuário operador, prefeitura e colunas
+   - GET ${botApiBaseUrl}/projects -> Projetos no Kanban (filtros: coluna, prioridade, busca)
+   - GET ${botApiBaseUrl}/projects/summary -> Resumo com contagem por coluna/prioridade (apenas Admins)
+   - GET ${botApiBaseUrl}/dfds -> DFDs (Documentos de Formalização de Demanda)
+   - GET ${botApiBaseUrl}/dfds/{id} -> Detalhes de um DFD específico
+   - GET ${botApiBaseUrl}/deadlines -> Prazos vencidos, da semana e futuros
+   - GET ${botApiBaseUrl}/users -> Lista de servidores municipais (apenas Admins)
+   - GET ${botApiBaseUrl}/notifications -> Notificações e avisos de gargalo
+"""
+================================================================================`
+  }
+=======
+    return `================================================================================
+CONFIGURAÇÃO COMPLETA DE INTEGRAÇÃO — AGENTE HERMES & BÚSSOLA JURÍDICA MUNICIPAL 2.0
+Município: ${tenantName || 'Prefeitura Vinculada'} (ID: ${tenantId})
+Modelo de Chaves: Chave Mestra por Prefeitura (Gerada exclusivamente pelo Superadmin)
+Autenticação Dinâmica: Cabeçalho X-Acting-User (E-mail cadastrado no Bússola)
+Autorização: Validada ao vivo no Bússola por cargo permitido (tenants.hermes_allowed_roles)
+Gerado por: ${user?.name || user?.email || 'Servidor Municipal'} (${userRoleLabel})
+================================================================================
+
+1. URL BASE DA API DO BOT
+--------------------------------------------------------------------------------
+URL Base: ${botApiBaseUrl}
+Status de Teste: ${botApiBaseUrl}/ping (responde {"status":"ok","message":"Bot Read API is active and healthy"})
+Cabeçalhos de Autenticação Obrigatórios:
+  - Authorization: Bearer <chave_mestra_da_prefeitura>  (ou X-API-Key: <chave_mestra>)
+  - X-Acting-User: <email_do_usuario_no_bussola>
+Isolamento: 100% Multi-tenant com validação ao vivo de prefeitura ativa + vínculo ativo + cargo liberado. O município é fixado pela chave mestra (nenhum dado cruza prefeituras).
+
+2. CHAVE MESTRA DA PREFEITURA (BUSSOLA_API_KEY)
+--------------------------------------------------------------------------------
+${rawKeyAvailable ? `Chave Mestra Gerada Nesta Sessão (Valor Completo):\n${createdKeyData!.raw_key}` : `Instrução para a Chave Mestra:\n${apiKeyValue}`}
+
+3. VARIÁVEIS DE AMBIENTE PARA O DOCKER DO HERMES (SEM TELEGRAM_ALLOWED_USERS)
+--------------------------------------------------------------------------------
+No painel do Gerenciador Docker do seu Hermes (ou arquivo docker-compose / .env), configure as variáveis em "Ambiente".
+NÃO use TELEGRAM_ALLOWED_USERS: o Hermes aceita qualquer usuário no Telegram e a validação de acesso é feita ao vivo pela API do Bússola via X-Acting-User.
+
+BUSSOLA_API_URL=${botApiBaseUrl}
+BUSSOLA_API_KEY=${rawKeyAvailable ? createdKeyData!.raw_key : '<COLE_AQUI_A_CHAVE_MESTRA_GERADA_PELO_SUPERADMIN>'}
+BUSSOLA_TENANT_ID=${tenantId || ''}
+
+4. DIRETRIZ CRÍTICA DE IDENTIDADE E AUTORIZAÇÃO (X-Acting-User)
+--------------------------------------------------------------------------------
+Como funciona o fluxo de autorização:
+- O bot Hermes aceita qualquer usuário que iniciar uma conversa no Telegram.
+- Na primeira mensagem / primeiro contato, o Hermes pergunta qual é o e-mail cadastrado pelo usuário na plataforma Bússola Jurídica.
+- O Hermes confirma o e-mail informado e passa a usá-lo no cabeçalho HTTP "X-Acting-User" em todas as chamadas à API da prefeitura.
+- Em cada requisição, a API do Bússola valida AO VIVO:
+  1. Se a integração Hermes está ativada na prefeitura (hermes_enabled).
+  2. Se o usuário existe, está ativo e possui vínculo ativo no município da chave mestra.
+  3. Se o papel do vínculo ativo (prefeito, vice-prefeito, secretário, gestor, procurador, servidor ou admin) está marcado nas permissões da prefeitura (tenants.hermes_allowed_roles).
+- Se qualquer uma dessas condições falhar, a API retorna HTTP 403 com a seguinte MENSAGEM GENÉRICA FIXA (sem diferenciar o motivo):
+  "Acesso não autorizado ao Hermes para este município ou usuário."
+- Sempre que receber HTTP 403 com essa mensagem genérica, o bot Hermes deve responder ao usuário no Telegram estritamente com essa mesma mensagem genérica:
+  "Acesso não autorizado ao Hermes para este município ou usuário."
+
+Exemplo de cabeçalho:
+  X-Acting-User: ${actingUserExample}
+
+5. CATÁLOGO DOS 9 ENDPOINTS COM EXEMPLOS DE CURL
+--------------------------------------------------------------------------------
+
+[1] Healthcheck / Ping
+Endpoint: GET ${botApiBaseUrl}/ping
+Permissão: Livre / Teste de conectividade da API
+curl -X GET "${botApiBaseUrl}/ping"
+
+[2] Informações de Identidade e Escopo do Usuário Operador
+Endpoint: GET ${botApiBaseUrl}/info
+Permissão: Chave mestra ativa + usuário com vínculo e cargo liberado
+curl -X GET "${botApiBaseUrl}/info" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[3] Listagem de Projetos do Kanban
+Endpoint: GET ${botApiBaseUrl}/projects[?coluna=...&prioridade=...&busca=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User (Admin/Prefeito/Secretário conforme RBAC; Servidor Comum vê os seus)
+curl -X GET "${botApiBaseUrl}/projects?coluna=Elaborar%20DFD" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[4] Resumo Agregado do Kanban (Totais por Coluna e Prioridade)
+Endpoint: GET ${botApiBaseUrl}/projects/summary
+Permissão: Exclusivo Administradores Municipais. Outros usuários recebem 403.
+curl -X GET "${botApiBaseUrl}/projects/summary" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[5] Listagem de Documentos de Formalização de Demanda (DFDs)
+Endpoint: GET ${botApiBaseUrl}/dfds[?status=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/dfds" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[6] Detalhe de um DFD por ID
+Endpoint: GET ${botApiBaseUrl}/dfds/{id}
+Permissão: Admin vê qualquer um da prefeitura; Servidor comum apenas se for responsável
+curl -X GET "${botApiBaseUrl}/dfds/SEU_ID_DFD" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[7] Monitoramento de Prazos e Gargalos
+Endpoint: GET ${botApiBaseUrl}/deadlines
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/deadlines" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[8] Servidores e Usuários do Município
+Endpoint: GET ${botApiBaseUrl}/users
+Permissão: Exclusivo Administradores Municipais. Outros perfis recebem 403.
+curl -X GET "${botApiBaseUrl}/users" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[9] Notificações e Alertas Internos
+Endpoint: GET ${botApiBaseUrl}/notifications[?nao_lidas=true&tipo=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/notifications?nao_lidas=true" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+6. SYSTEM PROMPT PRONTO PARA O AGENTE HERMES (EM PORTUGUÊS)
+--------------------------------------------------------------------------------
+Copie e cole as diretrizes abaixo no campo de System Prompt ou Instruções do seu Agente Hermes:
+
+"""
+Você é o Hermes, o assistente oficial de inteligência operacional da plataforma Bússola Jurídica Municipal 2.0 para a Prefeitura de ${tenantName || 'nosso município'}.
+
+DIRETRIZES FUNDAMENTAIS:
+1. IDIOMA E TONALIDADE:
+   - Responda sempre em português brasileiro de forma clara, profissional, objetiva e segura.
+   - Apresente informações organizadas com listas com marcadores, datas no padrão DD/MM/AAAA e destaques em negrito.
+
+2. FLUXO DE IDENTIFICAÇÃO E TELEGRAM (SEM LISTA FIXA DE IDs):
+   - Você aceita qualquer usuário que inicie conversa com você no Telegram.
+   - Na primeira conversa com uma pessoa (ou se ainda não souber o e-mail dela), pergunte educadamente qual é o seu e-mail cadastrado na plataforma Bússola Jurídica Municipal.
+   - Após a pessoa informar o e-mail, confirme-o e guarde-o na memória da sessão/conversa dessa pessoa.
+   - Utilize esse e-mail no cabeçalho HTTP "X-Acting-User" em TODAS as chamadas que fizer à API da prefeitura.
+
+3. COMUNICAÇÃO COM A API E CABEÇALHOS:
+   - Sua URL base é: ${botApiBaseUrl}
+   - Em todas as requisições HTTP aos endpoints da prefeitura, envie obrigatoriamente:
+     Authorization: Bearer ${rawKeyAvailable ? createdKeyData!.raw_key : '$BUSSOLA_API_KEY'}
+     X-Acting-User: <e-mail confirmado do usuário>
+
+4. TRATAMENTO DE ACESSO E HTTP 403 (REGRA CRÍTICA):
+   - A plataforma Bússola valida ao vivo no banco de dados se a prefeitura está ativada, se o usuário possui vínculo ativo neste município e se o seu cargo está autorizado pelo superadministrador (tenants.hermes_allowed_roles).
+   - Se a API retornar HTTP 403 (ou mensagem contendo 'Acesso não autorizado ao Hermes para este município ou usuário.'), você DEVE responder ao usuário no Telegram EXATAMENTE com esta frase fixa, sem inventar explicações detalhadas ou deduções:
+     "Acesso não autorizado ao Hermes para este município ou usuário."
+   - Oriente a pessoa a procurar o administrador municipal ou o superadmin da plataforma para liberar o acesso do seu cargo.
+
+5. RESPEITO AO ESCOPO DOS DADOS:
+   - Jamais invente ou deduza dados municipais ou jurídicos. Toda informação deve vir estritamente dos retornos oficiais dos endpoints da Bússola.
+   - Respeite o perfil do usuário retornado por GET /info (administradores têm visão completa; servidores comuns têm visão focada nos seus projetos e prazos).
+
+6. ENDPOINTS DISPONÍVEIS:
+   - GET ${botApiBaseUrl}/ping -> Verificação de integridade da API
+   - GET ${botApiBaseUrl}/info -> Perfil do usuário operador, prefeitura e status
+   - GET ${botApiBaseUrl}/projects -> Projetos no Kanban (filtros: coluna, prioridade, busca)
+   - GET ${botApiBaseUrl}/projects/summary -> Resumo com contagem por coluna/prioridade (exclusivo Admins)
+   - GET ${botApiBaseUrl}/dfds -> DFDs (Documentos de Formalização de Demanda)
+   - GET ${botApiBaseUrl}/dfds/{id} -> Detalhes de um DFD específico
+   - GET ${botApiBaseUrl}/deadlines -> Prazos vencidos, da semana e futuros
+   - GET ${botApiBaseUrl}/users -> Lista de servidores municipais (exclusivo Admins)
+   - GET ${botApiBaseUrl}/notifications -> Notificações e avisos de gargalo
+"""
+================================================================================`
+  }
+=======
+    return `================================================================================
+CONFIGURAÇÃO COMPLETA DE INTEGRAÇÃO — AGENTE HERMES & BÚSSOLA JURÍDICA MUNICIPAL 2.0
+Município: ${tenantName || 'Prefeitura Vinculada'} (ID: ${tenantId})
+Modelo de Chaves: Chave Mestra por Prefeitura (Gerada exclusivamente pelo Superadmin)
+Autenticação Dinâmica: Cabeçalho X-Acting-User (E-mail cadastrado no Bússola)
+Autorização: Validada ao vivo no Bússola por cargo permitido (tenants.hermes_allowed_roles)
+Gerado por: ${user?.name || user?.email || 'Servidor Municipal'} (${userRoleLabel})
+================================================================================
+
+1. URL BASE DA API DO BOT
+--------------------------------------------------------------------------------
+URL Base: ${botApiBaseUrl}
+Status de Teste: ${botApiBaseUrl}/ping (responde {"status":"ok","message":"Bot Read API is active and healthy"})
+Cabeçalhos de Autenticação Obrigatórios:
+  - Authorization: Bearer <chave_mestra_da_prefeitura>  (ou X-API-Key: <chave_mestra>)
+  - X-Acting-User: <email_do_usuario_no_bussola>
+Isolamento: 100% Multi-tenant com validação ao vivo de prefeitura ativa + vínculo ativo + cargo liberado. O município é fixado pela chave mestra (nenhum dado cruza prefeituras).
+
+2. CHAVE MESTRA DA PREFEITURA (BUSSOLA_API_KEY)
+--------------------------------------------------------------------------------
+${rawKeyAvailable ? `Chave Mestra Gerada Nesta Sessão (Valor Completo):\n${createdKeyData!.raw_key}` : `Instrução para a Chave Mestra:\n${apiKeyValue}`}
+
+3. VARIÁVEIS DE AMBIENTE PARA O DOCKER DO HERMES (SEM TELEGRAM_ALLOWED_USERS)
+--------------------------------------------------------------------------------
+No painel do Gerenciador Docker do seu Hermes (ou arquivo docker-compose / .env), configure as variáveis em "Ambiente".
+NÃO use TELEGRAM_ALLOWED_USERS: o Hermes aceita qualquer usuário no Telegram e a validação de acesso é feita ao vivo pela API do Bússola via X-Acting-User.
+
+BUSSOLA_API_URL=${botApiBaseUrl}
+BUSSOLA_API_KEY=${rawKeyAvailable ? createdKeyData!.raw_key : '<COLE_AQUI_A_CHAVE_MESTRA_GERADA_PELO_SUPERADMIN>'}
+BUSSOLA_TENANT_ID=${tenantId || ''}
+
+4. DIRETRIZ CRÍTICA DE IDENTIDADE E AUTORIZAÇÃO (X-Acting-User)
+--------------------------------------------------------------------------------
+Como funciona o fluxo de autorização:
+- O bot Hermes aceita qualquer usuário que iniciar uma conversa no Telegram.
+- Na primeira mensagem / primeiro contato, o Hermes pergunta qual é o e-mail cadastrado pelo usuário na plataforma Bússola Jurídica.
+- O Hermes confirma o e-mail informado e passa a usá-lo no cabeçalho HTTP "X-Acting-User" em todas as chamadas à API da prefeitura.
+- Em cada requisição, a API do Bússola valida AO VIVO:
+  1. Se a integração Hermes está ativada na prefeitura (hermes_enabled).
+  2. Se o usuário existe, está ativo e possui vínculo ativo no município da chave mestra.
+  3. Se o papel do vínculo ativo (prefeito, vice-prefeito, secretário, gestor, procurador, servidor ou admin) está marcado nas permissões da prefeitura (tenants.hermes_allowed_roles).
+- Se qualquer uma dessas condições falhar, a API retorna HTTP 403 com a seguinte MENSAGEM GENÉRICA FIXA (sem diferenciar o motivo):
+  "Acesso não autorizado ao Hermes para este município ou usuário."
+- Sempre que receber HTTP 403 com essa mensagem genérica, o bot Hermes deve responder ao usuário no Telegram estritamente com essa mesma mensagem genérica:
+  "Acesso não autorizado ao Hermes para este município ou usuário."
+
+Exemplo de cabeçalho:
+  X-Acting-User: ${actingUserExample}
+
+5. CATÁLOGO DOS 9 ENDPOINTS COM EXEMPLOS DE CURL
+--------------------------------------------------------------------------------
+
+[1] Healthcheck / Ping
+Endpoint: GET ${botApiBaseUrl}/ping
+Permissão: Livre / Teste de conectividade da API
+curl -X GET "${botApiBaseUrl}/ping"
+
+[2] Informações de Identidade e Escopo do Usuário Operador
+Endpoint: GET ${botApiBaseUrl}/info
+Permissão: Chave mestra ativa + usuário com vínculo e cargo liberado
+curl -X GET "${botApiBaseUrl}/info" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[3] Listagem de Projetos do Kanban
+Endpoint: GET ${botApiBaseUrl}/projects[?coluna=...&prioridade=...&busca=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User (Admin/Prefeito/Secretário conforme RBAC; Servidor Comum vê os seus)
+curl -X GET "${botApiBaseUrl}/projects?coluna=Elaborar%20DFD" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[4] Resumo Agregado do Kanban (Totais por Coluna e Prioridade)
+Endpoint: GET ${botApiBaseUrl}/projects/summary
+Permissão: Exclusivo Administradores Municipais. Outros usuários recebem 403.
+curl -X GET "${botApiBaseUrl}/projects/summary" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[5] Listagem de Documentos de Formalização de Demanda (DFDs)
+Endpoint: GET ${botApiBaseUrl}/dfds[?status=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/dfds" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[6] Detalhe de um DFD por ID
+Endpoint: GET ${botApiBaseUrl}/dfds/{id}
+Permissão: Admin vê qualquer um da prefeitura; Servidor comum apenas se for responsável
+curl -X GET "${botApiBaseUrl}/dfds/SEU_ID_DFD" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[7] Monitoramento de Prazos e Gargalos
+Endpoint: GET ${botApiBaseUrl}/deadlines
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/deadlines" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[8] Servidores e Usuários do Município
+Endpoint: GET ${botApiBaseUrl}/users
+Permissão: Exclusivo Administradores Municipais. Outros perfis recebem 403.
+curl -X GET "${botApiBaseUrl}/users" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+[9] Notificações e Alertas Internos
+Endpoint: GET ${botApiBaseUrl}/notifications[?nao_lidas=true&tipo=...]
+Permissão: Escopado dinamicamente pelo X-Acting-User
+curl -X GET "${botApiBaseUrl}/notifications?nao_lidas=true" \\
+  -H "Authorization: Bearer ${curlToken}" \\
+  -H "X-Acting-User: ${actingUserExample}"
+
+6. SYSTEM PROMPT PRONTO PARA O AGENTE HERMES (EM PORTUGUÊS)
+--------------------------------------------------------------------------------
+Copie e cole as diretrizes abaixo no campo de System Prompt ou Instruções do seu Agente Hermes:
+
+"""
+Você é o Hermes, o assistente oficial de inteligência operacional da plataforma Bússola Jurídica Municipal 2.0 para a Prefeitura de ${tenantName || 'nosso município'}.
+
+DIRETRIZES FUNDAMENTAIS:
+1. IDIOMA E TONALIDADE:
+   - Responda sempre em português brasileiro de forma clara, profissional, objetiva e segura.
+   - Apresente informações organizadas com listas com marcadores, datas no padrão DD/MM/AAAA e destaques em negrito.
+
+2. FLUXO DE IDENTIFICAÇÃO E TELEGRAM (SEM LISTA FIXA DE IDs):
+   - Você aceita qualquer usuário que inicie conversa com você no Telegram.
+   - Na primeira conversa com uma pessoa (ou se ainda não souber o e-mail dela), pergunte educadamente qual é o seu e-mail cadastrado na plataforma Bússola Jurídica Municipal.
+   - Após a pessoa informar o e-mail, confirme-o e guarde-o na memória da sessão/conversa dessa pessoa.
+   - Utilize esse e-mail no cabeçalho HTTP "X-Acting-User" em TODAS as chamadas que fizer à API da prefeitura.
+
+3. COMUNICAÇÃO COM A API E CABEÇALHOS:
+   - Sua URL base é: ${botApiBaseUrl}
+   - Em todas as requisições HTTP aos endpoints da prefeitura, envie obrigatoriamente:
+     Authorization: Bearer ${rawKeyAvailable ? createdKeyData!.raw_key : '$BUSSOLA_API_KEY'}
+     X-Acting-User: <e-mail confirmado do usuário>
+
+4. TRATAMENTO DE ACESSO E HTTP 403 (REGRA CRÍTICA):
+   - A plataforma Bússola valida ao vivo no banco de dados se a prefeitura está ativada, se o usuário possui vínculo ativo neste município e se o seu cargo está autorizado pelo superadministrador (tenants.hermes_allowed_roles).
+   - Se a API retornar HTTP 403 (ou mensagem contendo 'Acesso não autorizado ao Hermes para este município ou usuário.'), você DEVE responder ao usuário no Telegram EXATAMENTE com esta frase fixa, sem inventar explicações detalhadas ou deduções:
+     "Acesso não autorizado ao Hermes para este município ou usuário."
+   - Oriente a pessoa a procurar o administrador municipal ou o superadmin da plataforma para liberar o acesso do seu cargo.
+
+5. RESPEITO AO ESCOPO DOS DADOS:
+   - Jamais invente ou deduza dados municipais ou jurídicos. Toda informação deve vir estritamente dos retornos oficiais dos endpoints da Bússola.
+   - Respeite o perfil do usuário retornado por GET /info (administradores têm visão completa; servidores comuns têm visão focada nos seus projetos e prazos).
+
+6. ENDPOINTS DISPONÍVEIS:
+   - GET ${botApiBaseUrl}/ping -> Verificação de integridade da API
+   - GET ${botApiBaseUrl}/info -> Perfil do usuário operador, prefeitura e status
+   - GET ${botApiBaseUrl}/projects -> Projetos no Kanban (filtros: coluna, prioridade, busca)
+   - GET ${botApiBaseUrl}/projects/summary -> Resumo com contagem por coluna/prioridade (exclusivo Admins)
+   - GET ${botApiBaseUrl}/dfds -> DFDs (Documentos de Formalização de Demanda)
+   - GET ${botApiBaseUrl}/dfds/{id} -> Detalhes de um DFD específico
+   - GET ${botApiBaseUrl}/deadlines -> Prazos vencidos, da semana e futuros
+   - GET ${botApiBaseUrl}/users -> Lista de servidores municipais (exclusivo Admins)
+   - GET ${botApiBaseUrl}/notifications -> Notificações e avisos de gargalo
+"""
+================================================================================`
 ================================================================================
 
 1. URL BASE DA API DO BOT
@@ -594,9 +1976,8 @@ DIRETRIZES FUNDAMENTAIS:
                 <span>Identidade Dinâmica (X-Acting-User ao vivo)</span>
               </div>
               <p className="text-[11px] text-purple-700 leading-relaxed">
-                O Hermes passa o e-mail ou ID de quem pergunta. Admin municipal vê tudo da
-                prefeitura; servidor comum vê estritamente os projetos e prazos sob sua
-                responsabilidade.
+                O Hermes passa o e-mail de quem pergunta. O Bússola valida prefeitura ativa, vínculo
+                ativo e cargo liberado no município. Se negado, devolve a mesma resposta genérica 403.
               </p>
             </div>
           </div>
@@ -638,11 +2019,10 @@ DIRETRIZES FUNDAMENTAIS:
                 <span className="w-5 h-5 rounded-full bg-[#1c2a3e] text-white text-[11px] font-bold flex items-center justify-center">
                   2
                 </span>
-                <span className="text-xs font-bold text-gray-800">Capturar Usuário Operador</span>
+                <span className="text-xs font-bold text-gray-800">Telegram: Qualquer Usuário</span>
               </div>
               <p className="text-[11px] text-gray-600 leading-relaxed">
-                No Telegram, o Hermes pergunta ou obtém o e-mail cadastrado do servidor no Bússola e
-                anexa o cabeçalho <code>X-Acting-User</code>.
+                Sem lista fixa (sem <code>TELEGRAM_ALLOWED_USERS</code>). Na primeira conversa, o bot pergunta o e-mail do Bússola, confirma-o e envia no <code>X-Acting-User</code>.
               </p>
             </div>
 
@@ -651,11 +2031,10 @@ DIRETRIZES FUNDAMENTAIS:
                 <span className="w-5 h-5 rounded-full bg-[#1c2a3e] text-white text-[11px] font-bold flex items-center justify-center">
                   3
                 </span>
-                <span className="text-xs font-bold text-gray-800">Permissões em Tempo Real</span>
+                <span className="text-xs font-bold text-gray-800">Liberação por Cargo ao Vivo</span>
               </div>
               <p className="text-[11px] text-gray-600 leading-relaxed">
-                A API valida o usuário ao vivo no município. Cada resposta é estritamente
-                personalizada às atribuições dele.
+                A API valida prefeitura ativa + vínculo ativo + cargo autorizado. Se não autorizado, retorna HTTP 403 com resposta genérica fixa.
               </p>
             </div>
           </div>
@@ -1009,7 +2388,7 @@ DIRETRIZES FUNDAMENTAIS:
                 <p className="text-[11px] text-blue-700">
                   • Prefeituras: <strong>{tenantName || 'Selecionada'}</strong>
                   <br />• Chave única mestra. O Hermes informará <strong>X-Acting-User</strong> a
-                  cada consulta.
+                  cada consulta e a API validará os cargos liberados.
                 </p>
               </div>
             </div>

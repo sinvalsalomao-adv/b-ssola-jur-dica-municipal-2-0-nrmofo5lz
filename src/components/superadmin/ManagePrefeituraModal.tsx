@@ -56,8 +56,21 @@ export const ManagePrefeituraModal: React.FC<Props> = ({ prefeitura, open, onOpe
   const [cidade, setCidade] = useState(prefeitura.cidade)
   const [estado, setEstado] = useState(prefeitura.estado)
   const [hermesEnabled, setHermesEnabled] = useState(Boolean(prefeitura.hermesEnabled))
+  const [hermesAllowedRoles, setHermesAllowedRoles] = useState<string[]>(
+    Array.isArray(prefeitura.hermesAllowedRoles) ? prefeitura.hermesAllowedRoles : [],
+  )
   const [logoDialogOpen, setLogoDialogOpen] = useState(false)
   const [logoUrl, setLogoUrl] = useState<string | null>(getLogoUrl(prefeitura))
+
+  const HERMES_ROLE_OPTIONS: { id: string; label: string; desc: string }[] = [
+    { id: 'prefeito', label: 'Prefeito', desc: 'Chefe do Executivo Municipal' },
+    { id: 'vice-prefeito', label: 'Vice-Prefeito', desc: 'Gabinete do Vice-Prefeito' },
+    { id: 'secretario', label: 'Secretário', desc: 'Secretários e Diretores de pasta' },
+    { id: 'gestor', label: 'Gestor', desc: 'Gestores e fiscais de contratos' },
+    { id: 'servidor', label: 'Servidor', desc: 'Servidores municipais operacionais' },
+    { id: 'procurador', label: 'Procurador', desc: 'Procuradores e corpo jurídico' },
+    { id: 'admin', label: 'Admin Municipal', desc: 'Administradores locais da plataforma' },
+  ]
 
   // Gestão da chave mestra da prefeitura
   const [botKeys, setBotKeys] = useState<BotApiKey[]>([])
@@ -87,6 +100,9 @@ export const ManagePrefeituraModal: React.FC<Props> = ({ prefeitura, open, onOpe
       setCidade(prefeitura.cidade)
       setEstado(prefeitura.estado)
       setHermesEnabled(Boolean(prefeitura.hermesEnabled))
+      setHermesAllowedRoles(
+        Array.isArray(prefeitura.hermesAllowedRoles) ? prefeitura.hermesAllowedRoles : [],
+      )
       setNewlyCreatedKey(null)
       loadBotKeys()
     }
@@ -144,13 +160,20 @@ export const ManagePrefeituraModal: React.FC<Props> = ({ prefeitura, open, onOpe
     (u: any) => u.prefeituraSlug === prefeitura.slug && u.role === 'admin',
   )
 
+  const toggleRolePermission = (roleId: string) => {
+    setHermesAllowedRoles((prev) =>
+      prev.includes(roleId) ? prev.filter((r) => r !== roleId) : [...prev, roleId],
+    )
+  }
+
   const handleSave = () => {
     updatePrefeitura(prefeitura.id, {
       adminName: adminName.trim(),
       cidade: cidade.trim(),
       estado: estado.trim(),
       hermesEnabled,
-    })
+      hermesAllowedRoles,
+    } as any)
     if (adminUser && adminName.trim() !== prefeitura.adminName) {
       updateUser(adminUser.id, { name: adminName.trim() })
     }
@@ -197,20 +220,65 @@ export const ManagePrefeituraModal: React.FC<Props> = ({ prefeitura, open, onOpe
               </div>
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-slate-50/60">
-              <div className="space-y-0.5">
-                <Label htmlFor="hermes-toggle" className="text-sm font-semibold text-gray-800">
-                  Integração Hermes
-                </Label>
-                <p className="text-xs text-gray-500">
-                  Habilita o bot Telegram/Hermes e a emissão da chave mestra desta prefeitura.
-                </p>
+            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50/60 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="hermes-toggle" className="text-sm font-semibold text-gray-800">
+                    Integração Hermes
+                  </Label>
+                  <p className="text-xs text-gray-500">
+                    Habilita o bot Telegram/Hermes e a emissão da chave mestra desta prefeitura.
+                  </p>
+                </div>
+                <Switch
+                  id="hermes-toggle"
+                  checked={hermesEnabled}
+                  onCheckedChange={setHermesEnabled}
+                />
               </div>
-              <Switch
-                id="hermes-toggle"
-                checked={hermesEnabled}
-                onCheckedChange={setHermesEnabled}
-              />
+
+              {hermesEnabled && (
+                <div className="pt-2 border-t border-slate-200/80 space-y-2">
+                  <div>
+                    <Label className="text-xs font-bold text-gray-800">
+                      Cargos Autorizados a Usar o Hermes
+                    </Label>
+                    <p className="text-[11px] text-gray-500">
+                      O bot aceita qualquer usuário do Telegram e o Bússola valida ao vivo se o
+                      papel do vínculo ativo nesta prefeitura está liberado abaixo.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5 pt-1">
+                    {HERMES_ROLE_OPTIONS.map((opt) => {
+                      const isAllowed = hermesAllowedRoles.includes(opt.id)
+                      return (
+                        <div
+                          key={opt.id}
+                          className="flex items-center justify-between p-2 rounded-md bg-white border border-slate-200/70 hover:border-slate-300 transition-colors"
+                        >
+                          <div className="space-y-0.5">
+                            <span className="text-xs font-semibold text-gray-800 block">
+                              {opt.label}
+                            </span>
+                            <span className="text-[10px] text-gray-500 block">{opt.desc}</span>
+                          </div>
+                          <Switch
+                            checked={isAllowed}
+                            onCheckedChange={() => toggleRolePermission(opt.id)}
+                            aria-label={`Permitir ${opt.label} no Hermes`}
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {hermesAllowedRoles.length === 0 && (
+                    <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+                      Nenhum cargo selecionado. Usuários que chamarem o Hermes receberão resposta
+                      genérica de não autorizado até que pelo menos um cargo seja liberado.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Bloco de Gestão da Chave Mestra da Prefeitura */}

@@ -84,7 +84,15 @@ routerAdd(
     }
 
     // 4. Validação de Role permitida (NUNCA superadmin)
-    const allowedRoles = ['servidor', 'gestor', 'secretario', 'procurador', 'admin']
+    const allowedRoles = [
+      'servidor',
+      'gestor',
+      'secretario',
+      'procurador',
+      'admin',
+      'prefeito',
+      'vice-prefeito',
+    ]
     if (allowedRoles.indexOf(requestedRole) === -1) {
       return e.badRequestError('Papel inválido especificado.')
     }

@@ -33,11 +33,13 @@ interface Props {
 }
 
 const ROLES: { value: UserRole; label: string }[] = [
+  { value: 'prefeito', label: 'Prefeito' },
+  { value: 'vice-prefeito', label: 'Vice-Prefeito' },
   { value: 'admin', label: 'Admin (Administrador Local)' },
-  { value: 'servidor', label: 'Servidor Público' },
-  { value: 'gestor', label: 'Gestor de Contratos' },
   { value: 'secretario', label: 'Secretário / Diretor' },
+  { value: 'gestor', label: 'Gestor de Contratos' },
   { value: 'procurador', label: 'Procurador / Jurídico' },
+  { value: 'servidor', label: 'Servidor Público' },
 ]
 
 export function TenantUserCreateModal({ open, onOpenChange, onCreated, defaultTenantId }: Props) {

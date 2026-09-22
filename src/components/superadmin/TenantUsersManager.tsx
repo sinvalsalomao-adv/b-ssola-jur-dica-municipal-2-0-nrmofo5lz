@@ -48,6 +48,8 @@ import { TenantUserEditModal } from '@/components/superadmin/TenantUserEditModal
 import { TenantUserDeleteDialog } from '@/components/superadmin/TenantUserDeleteDialog'
 
 const ROLE_COLORS: Record<string, string> = {
+  prefeito: 'bg-emerald-600 text-white',
+  'vice-prefeito': 'bg-teal-600 text-white',
   admin: 'bg-blue-500 text-white',
   servidor: 'bg-slate-400 text-white',
   gestor: 'bg-green-500 text-white',
@@ -56,6 +58,8 @@ const ROLE_COLORS: Record<string, string> = {
 }
 
 const ROLE_LABELS: Record<string, string> = {
+  prefeito: 'Prefeito',
+  'vice-prefeito': 'Vice-Prefeito',
   admin: 'Admin',
   servidor: 'Servidor',
   gestor: 'Gestor',

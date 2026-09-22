@@ -28,6 +28,8 @@ import { UserRole, GlobalUser } from '@/types/superadmin'
 
 const ROLE_LABELS: Record<UserRole, string> = {
   superadmin: 'Superadmin',
+  prefeito: 'Prefeito',
+  'vice-prefeito': 'Vice-Prefeito',
   admin: 'Admin',
   servidor: 'Servidor',
   gestor: 'Gestor',
@@ -37,6 +39,8 @@ const ROLE_LABELS: Record<UserRole, string> = {
 
 const ROLE_COLORS: Record<UserRole, string> = {
   superadmin: 'bg-purple-500 text-white',
+  prefeito: 'bg-emerald-600 text-white',
+  'vice-prefeito': 'bg-teal-600 text-white',
   admin: 'bg-blue-500 text-white',
   servidor: 'bg-slate-400 text-white',
   gestor: 'bg-green-500 text-white',
@@ -173,6 +177,8 @@ export const GlobalUsersTab: React.FC = () => {
           <SelectContent>
             <SelectItem value="all">Todos os Perfis</SelectItem>
             <SelectItem value="superadmin">Superadmin</SelectItem>
+            <SelectItem value="prefeito">Prefeito</SelectItem>
+            <SelectItem value="vice-prefeito">Vice-Prefeito</SelectItem>
             <SelectItem value="admin">Admin</SelectItem>
             <SelectItem value="servidor">Servidor</SelectItem>
             <SelectItem value="gestor">Gestor</SelectItem>

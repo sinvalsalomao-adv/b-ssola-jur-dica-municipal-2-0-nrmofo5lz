@@ -392,7 +392,15 @@ routerAdd(
       return e.json(403, { code: 403, message: 'Papel de superadministrador não é permitido.' })
     }
 
-    const allowedRoles = ['admin', 'servidor', 'gestor', 'secretario', 'procurador']
+    const allowedRoles = [
+      'admin',
+      'servidor',
+      'gestor',
+      'secretario',
+      'procurador',
+      'prefeito',
+      'vice-prefeito',
+    ]
     if (allowedRoles.indexOf(newRole) === -1) {
       return e.json(400, { code: 400, message: 'Papel inválido especificado.' })
     }
@@ -718,11 +726,18 @@ routerAdd(
       return e.json(403, { code: 403, message: 'Papel de superadministrador não é permitido.' })
     }
 
-    const allowedRoles = ['admin', 'servidor', 'gestor', 'secretario', 'procurador']
+    const allowedRoles = [
+      'admin',
+      'servidor',
+      'gestor',
+      'secretario',
+      'procurador',
+      'prefeito',
+      'vice-prefeito',
+    ]
     if (allowedRoles.indexOf(finalRole) === -1) {
-      return e.json(400, { code: 400, message: 'Papel inválido especificado.' })
+      return e.json(400, { code: 400, message: 'Papel inválido especificado para aprovação.' })
     }
-
     try {
       targetMem.set('status', 'ativo')
       targetMem.set('role', finalRole)

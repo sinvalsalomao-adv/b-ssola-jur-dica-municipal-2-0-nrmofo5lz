@@ -1,4 +1,12 @@
-export type UserRole = 'superadmin' | 'admin' | 'servidor' | 'gestor' | 'secretario' | 'procurador'
+export type UserRole =
+  | 'superadmin'
+  | 'admin'
+  | 'servidor'
+  | 'gestor'
+  | 'secretario'
+  | 'procurador'
+  | 'prefeito'
+  | 'vice-prefeito'
 export type PrefeituraStatus = 'ativa' | 'inativa'
 export type UserStatus = 'ativo' | 'inativo'
 
@@ -13,6 +21,7 @@ export interface Prefeitura {
   estado: string
   status: PrefeituraStatus
   hermesEnabled?: boolean
+  hermesAllowedRoles?: string[]
   createdAt: string
 }
 

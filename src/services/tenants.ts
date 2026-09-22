@@ -2,6 +2,22 @@ import pb from '@/lib/pocketbase/client'
 import type { Prefeitura } from '@/types/superadmin'
 import { sanitizeInput } from '@/lib/sanitize'
 
+function parseHermesAllowedRoles(raw: any): string[] {
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw.map(String)
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim()
+    if (!trimmed) return []
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (Array.isArray(parsed)) return parsed.map(String)
+    } catch {
+      /* intentionally ignored */
+    }
+  }
+  return []
+}
+
 export function normalizeTenant(r: any): Prefeitura {
   return {
     id: r.id,
@@ -14,6 +30,7 @@ export function normalizeTenant(r: any): Prefeitura {
     estado: r.estado || '',
     status: r.status || 'ativa',
     hermesEnabled: Boolean(r.hermes_enabled),
+    hermesAllowedRoles: parseHermesAllowedRoles(r.hermes_allowed_roles),
     createdAt: r.created || '',
   }
 }
@@ -36,6 +53,12 @@ export const updateTenant = async (id: string, data: Record<string, any>) => {
   if (payload.hermesEnabled !== undefined && payload.hermes_enabled === undefined) {
     payload.hermes_enabled = Boolean(payload.hermesEnabled)
     delete payload.hermesEnabled
+  }
+  if (payload.hermesAllowedRoles !== undefined && payload.hermes_allowed_roles === undefined) {
+    payload.hermes_allowed_roles = Array.isArray(payload.hermesAllowedRoles)
+      ? payload.hermesAllowedRoles
+      : []
+    delete payload.hermesAllowedRoles
   }
   return normalizeTenant(await pb.collection('tenants').update(id, payload))
 }

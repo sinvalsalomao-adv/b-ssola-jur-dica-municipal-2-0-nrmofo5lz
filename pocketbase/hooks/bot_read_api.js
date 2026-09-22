@@ -3,18 +3,22 @@
 // 1. Chave Mestra da Prefeitura via Authorization: Bearer <chave> ou X-API-Key: <chave>
 // 2. Identidade do Usuário Operador via cabeçalho X-Acting-User (e-mail ou ID do usuário no Bússola)
 // O município é estritamente derivado da chave mestra (nenhum dado cruza prefeituras).
-// O usuário operador é resolvido ao vivo no banco: admin municipal (ou superadmin com vínculo) -> visão total;
-// servidor comum -> estritamente o que é dele; usuário de outro município ou inexistente -> negado.
-// Implementação 100% inline por rota, compatível com JSVM PocketBase 0.26 / goja.
+// Validação ao vivo:
+// - prefeitura ativada (tenants.hermes_enabled === true)
+// - usuário ativo com vínculo ativo no município da chave mestra
+// - papel do vínculo ativo (liveRole) presente em tenants.hermes_allowed_roles
+// Se qualquer uma dessas condições falhar: 403 com mensagem genérica fixa:
+// "Acesso não autorizado ao Hermes para este município ou usuário."
+// Em conformidade com o Skip Cloud JSVM: cada rota encapsula internamente sua validação de autorização.
 
-console.log('[BOT_READ_API] Loading bot_read_api.js file into JSVM (v0.0.109)...')
+console.log('[BOT_READ_API] Loading bot_read_api.js file into JSVM (v0.0.112)...')
 
 // --- 0. PING / HEALTH TEST & BASE INFO ---
 routerAdd('GET', '/backend/v1/bot', (e) => {
   return e.json(200, {
     status: 'ok',
     message: 'Bússola Jurídica Municipal 2.0 - Bot Read API (Hermes)',
-    version: '0.0.109',
+    version: '0.0.112',
     auth_model: 'tenant_master_key_with_acting_user',
     required_headers: [
       'Authorization: Bearer <chave_mestra> (ou X-API-Key: <chave_mestra>)',
@@ -40,17 +44,36 @@ routerAdd('GET', '/backend/v1/bot/ping', (e) => {
   return e.json(200, {
     status: 'ok',
     message: 'Bot Read API is active and healthy',
-    version: '0.0.109',
+    version: '0.0.112',
     timestamp: new Date().toISOString(),
   })
 })
 
 // --- 1. GET /backend/v1/bot/info ---
 routerAdd('GET', '/backend/v1/bot/info', (e) => {
+  var GERAL_403 = {
+    code: 403,
+    error: 'FORBIDDEN',
+    message: 'Acesso não autorizado ao Hermes para este município ou usuário.',
+  }
+
+  function parseAllowedRoles(raw) {
+    if (!raw) return []
+    if (Array.isArray(raw)) return raw
+    if (typeof raw === 'string') {
+      var trimmed = raw.trim()
+      if (!trimmed) return []
+      try {
+        var parsed = JSON.parse(trimmed)
+        if (Array.isArray(parsed)) return parsed
+      } catch (_) {}
+    }
+    return []
+  }
+
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
 
-  // Autenticação da Chave Mestra
   var rawAuthHeader = String(headers['authorization'] || '').trim()
   var rawApiKeyHeader = String(headers['x_api_key'] || headers['x-api-key'] || '').trim()
   var rawKey = ''
@@ -86,11 +109,7 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
   }
 
   if (keyRecord.getString('status') !== 'ativa') {
-    return e.json(403, {
-      code: 403,
-      error: 'KEY_REVOKED',
-      message: 'Esta chave de API mestra foi revogada.',
-    })
+    return e.json(403, GERAL_403)
   }
 
   var tenantId = keyRecord.getString('tenant')
@@ -98,22 +117,13 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
   try {
     tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
   } catch (_) {
-    return e.json(404, {
-      code: 404,
-      error: 'TENANT_NOT_FOUND',
-      message: 'Município associado à chave não encontrado.',
-    })
+    return e.json(403, GERAL_403)
   }
 
   if (!tenantRec.getBool('hermes_enabled')) {
-    return e.json(403, {
-      code: 403,
-      error: 'HERMES_DISABLED',
-      message: 'Integração Hermes desativada para esta prefeitura.',
-    })
+    return e.json(403, GERAL_403)
   }
 
-  // Identidade do Usuário Operador via X-Acting-User (e-mail ou ID)
   var rawActingUser = String(headers['x_acting_user'] || headers['x-acting-user'] || '').trim()
   if (!rawActingUser) {
     return e.json(401, {
@@ -136,14 +146,9 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
   }
 
   if (!userRec || userRec.getString('status') === 'inativo') {
-    return e.json(403, {
-      code: 403,
-      error: 'ACTING_USER_NOT_FOUND',
-      message: 'Usuário operador não encontrado ou inativo no Bússola.',
-    })
+    return e.json(403, GERAL_403)
   }
 
-  // Validar se o usuário possui vínculo ativo com o município da chave mestra (nenhum dado cruza prefeituras)
   var memRec = null
   var memFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
   var memParams = { userId: userRec.id, tenantId: tenantId, status: 'ativo' }
@@ -155,14 +160,24 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
   } catch (_) {}
 
   if (!memRec) {
-    return e.json(403, {
-      code: 403,
-      error: 'ACTING_USER_TENANT_MISMATCH',
-      message: 'O usuário operador não possui vínculo ativo com esta prefeitura.',
-    })
+    return e.json(403, GERAL_403)
   }
 
-  // Rate limit por chave
+  var liveRole = memRec.getString('role') || 'servidor'
+  var allowedRoles = parseAllowedRoles(tenantRec.get('hermes_allowed_roles'))
+  var roleAllowed = false
+  for (var rIdx = 0; rIdx < allowedRoles.length; rIdx++) {
+    if (allowedRoles[rIdx] === liveRole) {
+      roleAllowed = true
+      break
+    }
+  }
+
+  if (!roleAllowed) {
+    return e.json(403, GERAL_403)
+  }
+
+  // Rate limit
   var now = Date.now()
   var cache = $app.store()
   var rateKey = 'bot_rate_' + keyRecord.id
@@ -194,14 +209,13 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
     $app.save(keyRecord)
   } catch (_) {}
 
-  var liveRole = memRec.getString('role') || 'servidor'
   var isSuperadmin = userRec.getString('role') === 'superadmin'
   var isAdmin = isSuperadmin || liveRole === 'admin'
 
   return e.json(200, {
     status: 'ok',
     sistema: 'Bússola Jurídica Municipal 2.0',
-    versao: '0.0.109',
+    versao: '0.0.112',
     municipio: {
       id: tenantRec.id,
       nome: tenantRec.getString('name'),
@@ -243,6 +257,26 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
 
 // --- 2. GET /backend/v1/bot/projects ---
 routerAdd('GET', '/backend/v1/bot/projects', (e) => {
+  var GERAL_403 = {
+    code: 403,
+    error: 'FORBIDDEN',
+    message: 'Acesso não autorizado ao Hermes para este município ou usuário.',
+  }
+
+  function parseAllowedRoles(raw) {
+    if (!raw) return []
+    if (Array.isArray(raw)) return raw
+    if (typeof raw === 'string') {
+      var trimmed = raw.trim()
+      if (!trimmed) return []
+      try {
+        var parsed = JSON.parse(trimmed)
+        if (Array.isArray(parsed)) return parsed
+      } catch (_) {}
+    }
+    return []
+  }
+
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
 
@@ -263,7 +297,8 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
     return e.json(401, {
       code: 401,
       error: 'UNAUTHORIZED',
-      message: 'Chave de API mestra ausente.',
+      message:
+        'Chave de API mestra ausente. Forneça o header Authorization: Bearer <chave> ou X-API-Key: <chave>.',
     })
   }
 
@@ -272,11 +307,15 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
-    return e.json(401, { code: 401, error: 'INVALID_KEY', message: 'Chave de API inválida.' })
+    return e.json(401, {
+      code: 401,
+      error: 'INVALID_KEY',
+      message: 'Chave de API inválida ou não reconhecida.',
+    })
   }
 
   if (keyRecord.getString('status') !== 'ativa') {
-    return e.json(403, { code: 403, error: 'KEY_REVOKED', message: 'Chave revogada.' })
+    return e.json(403, GERAL_403)
   }
 
   var tenantId = keyRecord.getString('tenant')
@@ -284,28 +323,20 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
   try {
     tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
   } catch (_) {
-    return e.json(404, {
-      code: 404,
-      error: 'TENANT_NOT_FOUND',
-      message: 'Município não encontrado.',
-    })
+    return e.json(403, GERAL_403)
   }
 
   if (!tenantRec.getBool('hermes_enabled')) {
-    return e.json(403, {
-      code: 403,
-      error: 'HERMES_DISABLED',
-      message: 'Integração Hermes desativada para esta prefeitura.',
-    })
+    return e.json(403, GERAL_403)
   }
 
-  // X-Acting-User
   var rawActingUser = String(headers['x_acting_user'] || headers['x-acting-user'] || '').trim()
   if (!rawActingUser) {
     return e.json(401, {
       code: 401,
       error: 'ACTING_USER_REQUIRED',
-      message: 'Cabeçalho X-Acting-User obrigatório.',
+      message:
+        'Cabeçalho X-Acting-User ausente. Envie o e-mail ou ID do usuário operador do Bússola.',
     })
   }
 
@@ -321,16 +352,12 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
   }
 
   if (!userRec || userRec.getString('status') === 'inativo') {
-    return e.json(403, {
-      code: 403,
-      error: 'ACTING_USER_NOT_FOUND',
-      message: 'Usuário operador não encontrado ou inativo.',
-    })
+    return e.json(403, GERAL_403)
   }
 
+  var memRec = null
   var memFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
   var memParams = { userId: userRec.id, tenantId: tenantId, status: 'ativo' }
-  var memRec = null
   try {
     var mems = $app.findRecordsByFilter('user_memberships', memFilter, '', 1, 0, memParams)
     if (mems.length > 0) {
@@ -339,14 +366,55 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
   } catch (_) {}
 
   if (!memRec) {
-    return e.json(403, {
-      code: 403,
-      error: 'ACTING_USER_TENANT_MISMATCH',
-      message: 'Usuário sem vínculo ativo com esta prefeitura.',
-    })
+    return e.json(403, GERAL_403)
   }
 
   var liveRole = memRec.getString('role') || 'servidor'
+  var allowedRoles = parseAllowedRoles(tenantRec.get('hermes_allowed_roles'))
+  var roleAllowed = false
+  for (var rIdx = 0; rIdx < allowedRoles.length; rIdx++) {
+    if (allowedRoles[rIdx] === liveRole) {
+      roleAllowed = true
+      break
+    }
+  }
+
+  if (!roleAllowed) {
+    return e.json(403, GERAL_403)
+  }
+
+  // Rate limit
+  var now = Date.now()
+  var cache = $app.store()
+  var rateKey = 'bot_rate_' + keyRecord.id
+  var resetKey = 'bot_rate_reset_' + keyRecord.id
+  var resetAt = 0
+  if (cache.has(resetKey)) {
+    resetAt = Number(cache.get(resetKey)) || 0
+  }
+  if (now > resetAt) {
+    cache.set(rateKey, 0)
+    cache.set(resetKey, now + 60000)
+  }
+  var attempts = 0
+  if (cache.has(rateKey)) {
+    attempts = Number(cache.get(rateKey)) || 0
+  }
+  if (attempts >= 60) {
+    return e.json(429, {
+      code: 429,
+      error: 'RATE_LIMIT_EXCEEDED',
+      message: 'Limite de requisições excedido. Aguarde um instante.',
+    })
+  }
+  cache.set(rateKey, attempts + 1)
+
+  try {
+    var nowIso = new Date().toISOString().replace('T', ' ').slice(0, 19)
+    keyRecord.set('last_used_at', nowIso)
+    $app.save(keyRecord)
+  } catch (_) {}
+
   var isSuperadmin = userRec.getString('role') === 'superadmin'
   var isAdmin = isSuperadmin || liveRole === 'admin'
 
@@ -429,12 +497,36 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
     })
   } catch (err) {
     $app.logger().error('Erro ao consultar projetos bot', 'error', String(err))
-    return e.json(500, { code: 500, error: 'QUERY_ERROR', message: 'Erro ao consultar projetos.' })
+    return e.json(500, {
+      code: 500,
+      error: 'QUERY_ERROR',
+      message: 'Erro ao consultar projetos.',
+    })
   }
 })
 
 // --- 3. GET /backend/v1/bot/projects/summary (Exclusivo Admin / Superadmin com vínculo) ---
 routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
+  var GERAL_403 = {
+    code: 403,
+    error: 'FORBIDDEN',
+    message: 'Acesso não autorizado ao Hermes para este município ou usuário.',
+  }
+
+  function parseAllowedRoles(raw) {
+    if (!raw) return []
+    if (Array.isArray(raw)) return raw
+    if (typeof raw === 'string') {
+      var trimmed = raw.trim()
+      if (!trimmed) return []
+      try {
+        var parsed = JSON.parse(trimmed)
+        if (Array.isArray(parsed)) return parsed
+      } catch (_) {}
+    }
+    return []
+  }
+
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
 
@@ -452,7 +544,12 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
   }
 
   if (!rawKey) {
-    return e.json(401, { code: 401, error: 'UNAUTHORIZED', message: 'Chave de API ausente.' })
+    return e.json(401, {
+      code: 401,
+      error: 'UNAUTHORIZED',
+      message:
+        'Chave de API mestra ausente. Forneça o header Authorization: Bearer <chave> ou X-API-Key: <chave>.',
+    })
   }
 
   var keyHash = $security.sha256(rawKey)
@@ -460,11 +557,15 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
-    return e.json(401, { code: 401, error: 'INVALID_KEY', message: 'Chave inválida.' })
+    return e.json(401, {
+      code: 401,
+      error: 'INVALID_KEY',
+      message: 'Chave de API inválida ou não reconhecida.',
+    })
   }
 
   if (keyRecord.getString('status') !== 'ativa') {
-    return e.json(403, { code: 403, error: 'KEY_REVOKED', message: 'Chave revogada.' })
+    return e.json(403, GERAL_403)
   }
 
   var tenantId = keyRecord.getString('tenant')
@@ -472,19 +573,11 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
   try {
     tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
   } catch (_) {
-    return e.json(404, {
-      code: 404,
-      error: 'TENANT_NOT_FOUND',
-      message: 'Município não encontrado.',
-    })
+    return e.json(403, GERAL_403)
   }
 
   if (!tenantRec.getBool('hermes_enabled')) {
-    return e.json(403, {
-      code: 403,
-      error: 'HERMES_DISABLED',
-      message: 'Integração Hermes desativada para esta prefeitura.',
-    })
+    return e.json(403, GERAL_403)
   }
 
   var rawActingUser = String(headers['x_acting_user'] || headers['x-acting-user'] || '').trim()
@@ -492,7 +585,8 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
     return e.json(401, {
       code: 401,
       error: 'ACTING_USER_REQUIRED',
-      message: 'Cabeçalho X-Acting-User obrigatório.',
+      message:
+        'Cabeçalho X-Acting-User ausente. Envie o e-mail ou ID do usuário operador do Bússola.',
     })
   }
 
@@ -508,16 +602,12 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
   }
 
   if (!userRec || userRec.getString('status') === 'inativo') {
-    return e.json(403, {
-      code: 403,
-      error: 'ACTING_USER_NOT_FOUND',
-      message: 'Usuário operador não encontrado ou inativo.',
-    })
+    return e.json(403, GERAL_403)
   }
 
+  var memRec = null
   var memFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
   var memParams = { userId: userRec.id, tenantId: tenantId, status: 'ativo' }
-  var memRec = null
   try {
     var mems = $app.findRecordsByFilter('user_memberships', memFilter, '', 1, 0, memParams)
     if (mems.length > 0) {
@@ -526,14 +616,55 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
   } catch (_) {}
 
   if (!memRec) {
-    return e.json(403, {
-      code: 403,
-      error: 'ACTING_USER_TENANT_MISMATCH',
-      message: 'Usuário sem vínculo ativo com esta prefeitura.',
-    })
+    return e.json(403, GERAL_403)
   }
 
   var liveRole = memRec.getString('role') || 'servidor'
+  var allowedRoles = parseAllowedRoles(tenantRec.get('hermes_allowed_roles'))
+  var roleAllowed = false
+  for (var rIdx = 0; rIdx < allowedRoles.length; rIdx++) {
+    if (allowedRoles[rIdx] === liveRole) {
+      roleAllowed = true
+      break
+    }
+  }
+
+  if (!roleAllowed) {
+    return e.json(403, GERAL_403)
+  }
+
+  // Rate limit
+  var now = Date.now()
+  var cache = $app.store()
+  var rateKey = 'bot_rate_' + keyRecord.id
+  var resetKey = 'bot_rate_reset_' + keyRecord.id
+  var resetAt = 0
+  if (cache.has(resetKey)) {
+    resetAt = Number(cache.get(resetKey)) || 0
+  }
+  if (now > resetAt) {
+    cache.set(rateKey, 0)
+    cache.set(resetKey, now + 60000)
+  }
+  var attempts = 0
+  if (cache.has(rateKey)) {
+    attempts = Number(cache.get(rateKey)) || 0
+  }
+  if (attempts >= 60) {
+    return e.json(429, {
+      code: 429,
+      error: 'RATE_LIMIT_EXCEEDED',
+      message: 'Limite de requisições excedido. Aguarde um instante.',
+    })
+  }
+  cache.set(rateKey, attempts + 1)
+
+  try {
+    var nowIso = new Date().toISOString().replace('T', ' ').slice(0, 19)
+    keyRecord.set('last_used_at', nowIso)
+    $app.save(keyRecord)
+  } catch (_) {}
+
   var isSuperadmin = userRec.getString('role') === 'superadmin'
   var isAdmin = isSuperadmin || liveRole === 'admin'
 
@@ -611,6 +742,26 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
 
 // --- 4. GET /backend/v1/bot/dfds ---
 routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
+  var GERAL_403 = {
+    code: 403,
+    error: 'FORBIDDEN',
+    message: 'Acesso não autorizado ao Hermes para este município ou usuário.',
+  }
+
+  function parseAllowedRoles(raw) {
+    if (!raw) return []
+    if (Array.isArray(raw)) return raw
+    if (typeof raw === 'string') {
+      var trimmed = raw.trim()
+      if (!trimmed) return []
+      try {
+        var parsed = JSON.parse(trimmed)
+        if (Array.isArray(parsed)) return parsed
+      } catch (_) {}
+    }
+    return []
+  }
+
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
 
@@ -628,7 +779,12 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
   }
 
   if (!rawKey) {
-    return e.json(401, { code: 401, error: 'UNAUTHORIZED', message: 'Chave ausente.' })
+    return e.json(401, {
+      code: 401,
+      error: 'UNAUTHORIZED',
+      message:
+        'Chave de API mestra ausente. Forneça o header Authorization: Bearer <chave> ou X-API-Key: <chave>.',
+    })
   }
 
   var keyHash = $security.sha256(rawKey)
@@ -636,11 +792,15 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
-    return e.json(401, { code: 401, error: 'INVALID_KEY', message: 'Chave inválida.' })
+    return e.json(401, {
+      code: 401,
+      error: 'INVALID_KEY',
+      message: 'Chave de API inválida ou não reconhecida.',
+    })
   }
 
   if (keyRecord.getString('status') !== 'ativa') {
-    return e.json(403, { code: 403, error: 'KEY_REVOKED', message: 'Chave revogada.' })
+    return e.json(403, GERAL_403)
   }
 
   var tenantId = keyRecord.getString('tenant')
@@ -648,19 +808,11 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
   try {
     tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
   } catch (_) {
-    return e.json(404, {
-      code: 404,
-      error: 'TENANT_NOT_FOUND',
-      message: 'Município não encontrado.',
-    })
+    return e.json(403, GERAL_403)
   }
 
   if (!tenantRec.getBool('hermes_enabled')) {
-    return e.json(403, {
-      code: 403,
-      error: 'HERMES_DISABLED',
-      message: 'Integração Hermes desativada para esta prefeitura.',
-    })
+    return e.json(403, GERAL_403)
   }
 
   var rawActingUser = String(headers['x_acting_user'] || headers['x-acting-user'] || '').trim()
@@ -668,7 +820,8 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
     return e.json(401, {
       code: 401,
       error: 'ACTING_USER_REQUIRED',
-      message: 'Cabeçalho X-Acting-User obrigatório.',
+      message:
+        'Cabeçalho X-Acting-User ausente. Envie o e-mail ou ID do usuário operador do Bússola.',
     })
   }
 
@@ -684,16 +837,12 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
   }
 
   if (!userRec || userRec.getString('status') === 'inativo') {
-    return e.json(403, {
-      code: 403,
-      error: 'ACTING_USER_NOT_FOUND',
-      message: 'Usuário operador não encontrado ou inativo.',
-    })
+    return e.json(403, GERAL_403)
   }
 
+  var memRec = null
   var memFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
   var memParams = { userId: userRec.id, tenantId: tenantId, status: 'ativo' }
-  var memRec = null
   try {
     var mems = $app.findRecordsByFilter('user_memberships', memFilter, '', 1, 0, memParams)
     if (mems.length > 0) {
@@ -702,14 +851,55 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
   } catch (_) {}
 
   if (!memRec) {
-    return e.json(403, {
-      code: 403,
-      error: 'ACTING_USER_TENANT_MISMATCH',
-      message: 'Usuário sem vínculo ativo com esta prefeitura.',
-    })
+    return e.json(403, GERAL_403)
   }
 
   var liveRole = memRec.getString('role') || 'servidor'
+  var allowedRoles = parseAllowedRoles(tenantRec.get('hermes_allowed_roles'))
+  var roleAllowed = false
+  for (var rIdx = 0; rIdx < allowedRoles.length; rIdx++) {
+    if (allowedRoles[rIdx] === liveRole) {
+      roleAllowed = true
+      break
+    }
+  }
+
+  if (!roleAllowed) {
+    return e.json(403, GERAL_403)
+  }
+
+  // Rate limit
+  var now = Date.now()
+  var cache = $app.store()
+  var rateKey = 'bot_rate_' + keyRecord.id
+  var resetKey = 'bot_rate_reset_' + keyRecord.id
+  var resetAt = 0
+  if (cache.has(resetKey)) {
+    resetAt = Number(cache.get(resetKey)) || 0
+  }
+  if (now > resetAt) {
+    cache.set(rateKey, 0)
+    cache.set(resetKey, now + 60000)
+  }
+  var attempts = 0
+  if (cache.has(rateKey)) {
+    attempts = Number(cache.get(rateKey)) || 0
+  }
+  if (attempts >= 60) {
+    return e.json(429, {
+      code: 429,
+      error: 'RATE_LIMIT_EXCEEDED',
+      message: 'Limite de requisições excedido. Aguarde um instante.',
+    })
+  }
+  cache.set(rateKey, attempts + 1)
+
+  try {
+    var nowIso = new Date().toISOString().replace('T', ' ').slice(0, 19)
+    keyRecord.set('last_used_at', nowIso)
+    $app.save(keyRecord)
+  } catch (_) {}
+
   var isSuperadmin = userRec.getString('role') === 'superadmin'
   var isAdmin = isSuperadmin || liveRole === 'admin'
 
@@ -784,6 +974,26 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
 
 // --- 5. GET /backend/v1/bot/dfds/{id} ---
 routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
+  var GERAL_403 = {
+    code: 403,
+    error: 'FORBIDDEN',
+    message: 'Acesso não autorizado ao Hermes para este município ou usuário.',
+  }
+
+  function parseAllowedRoles(raw) {
+    if (!raw) return []
+    if (Array.isArray(raw)) return raw
+    if (typeof raw === 'string') {
+      var trimmed = raw.trim()
+      if (!trimmed) return []
+      try {
+        var parsed = JSON.parse(trimmed)
+        if (Array.isArray(parsed)) return parsed
+      } catch (_) {}
+    }
+    return []
+  }
+
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
 
@@ -801,7 +1011,12 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
   }
 
   if (!rawKey) {
-    return e.json(401, { code: 401, error: 'UNAUTHORIZED', message: 'Chave ausente.' })
+    return e.json(401, {
+      code: 401,
+      error: 'UNAUTHORIZED',
+      message:
+        'Chave de API mestra ausente. Forneça o header Authorization: Bearer <chave> ou X-API-Key: <chave>.',
+    })
   }
 
   var keyHash = $security.sha256(rawKey)
@@ -809,11 +1024,15 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
-    return e.json(401, { code: 401, error: 'INVALID_KEY', message: 'Chave inválida.' })
+    return e.json(401, {
+      code: 401,
+      error: 'INVALID_KEY',
+      message: 'Chave de API inválida ou não reconhecida.',
+    })
   }
 
   if (keyRecord.getString('status') !== 'ativa') {
-    return e.json(403, { code: 403, error: 'KEY_REVOKED', message: 'Chave revogada.' })
+    return e.json(403, GERAL_403)
   }
 
   var tenantId = keyRecord.getString('tenant')
@@ -821,19 +1040,11 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
   try {
     tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
   } catch (_) {
-    return e.json(404, {
-      code: 404,
-      error: 'TENANT_NOT_FOUND',
-      message: 'Município não encontrado.',
-    })
+    return e.json(403, GERAL_403)
   }
 
   if (!tenantRec.getBool('hermes_enabled')) {
-    return e.json(403, {
-      code: 403,
-      error: 'HERMES_DISABLED',
-      message: 'Integração Hermes desativada para esta prefeitura.',
-    })
+    return e.json(403, GERAL_403)
   }
 
   var rawActingUser = String(headers['x_acting_user'] || headers['x-acting-user'] || '').trim()
@@ -841,7 +1052,8 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
     return e.json(401, {
       code: 401,
       error: 'ACTING_USER_REQUIRED',
-      message: 'Cabeçalho X-Acting-User obrigatório.',
+      message:
+        'Cabeçalho X-Acting-User ausente. Envie o e-mail ou ID do usuário operador do Bússola.',
     })
   }
 
@@ -857,16 +1069,12 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
   }
 
   if (!userRec || userRec.getString('status') === 'inativo') {
-    return e.json(403, {
-      code: 403,
-      error: 'ACTING_USER_NOT_FOUND',
-      message: 'Usuário operador não encontrado ou inativo.',
-    })
+    return e.json(403, GERAL_403)
   }
 
+  var memRec = null
   var memFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
   var memParams = { userId: userRec.id, tenantId: tenantId, status: 'ativo' }
-  var memRec = null
   try {
     var mems = $app.findRecordsByFilter('user_memberships', memFilter, '', 1, 0, memParams)
     if (mems.length > 0) {
@@ -875,14 +1083,55 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
   } catch (_) {}
 
   if (!memRec) {
-    return e.json(403, {
-      code: 403,
-      error: 'ACTING_USER_TENANT_MISMATCH',
-      message: 'Usuário sem vínculo ativo com esta prefeitura.',
-    })
+    return e.json(403, GERAL_403)
   }
 
   var liveRole = memRec.getString('role') || 'servidor'
+  var allowedRoles = parseAllowedRoles(tenantRec.get('hermes_allowed_roles'))
+  var roleAllowed = false
+  for (var rIdx = 0; rIdx < allowedRoles.length; rIdx++) {
+    if (allowedRoles[rIdx] === liveRole) {
+      roleAllowed = true
+      break
+    }
+  }
+
+  if (!roleAllowed) {
+    return e.json(403, GERAL_403)
+  }
+
+  // Rate limit
+  var now = Date.now()
+  var cache = $app.store()
+  var rateKey = 'bot_rate_' + keyRecord.id
+  var resetKey = 'bot_rate_reset_' + keyRecord.id
+  var resetAt = 0
+  if (cache.has(resetKey)) {
+    resetAt = Number(cache.get(resetKey)) || 0
+  }
+  if (now > resetAt) {
+    cache.set(rateKey, 0)
+    cache.set(resetKey, now + 60000)
+  }
+  var attempts = 0
+  if (cache.has(rateKey)) {
+    attempts = Number(cache.get(rateKey)) || 0
+  }
+  if (attempts >= 60) {
+    return e.json(429, {
+      code: 429,
+      error: 'RATE_LIMIT_EXCEEDED',
+      message: 'Limite de requisições excedido. Aguarde um instante.',
+    })
+  }
+  cache.set(rateKey, attempts + 1)
+
+  try {
+    var nowIso = new Date().toISOString().replace('T', ' ').slice(0, 19)
+    keyRecord.set('last_used_at', nowIso)
+    $app.save(keyRecord)
+  } catch (_) {}
+
   var isSuperadmin = userRec.getString('role') === 'superadmin'
   var isAdmin = isSuperadmin || liveRole === 'admin'
 
@@ -898,7 +1147,6 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
     return e.json(404, { code: 404, error: 'NOT_FOUND', message: 'DFD não encontrado.' })
   }
 
-  // ISOLAMENTO RIGOROSO 1: Garantir que o DFD pertence ao mesmo tenant da chave mestra
   if (dfdRec.getString('tenant') !== tenantId) {
     return e.json(404, {
       code: 404,
@@ -907,7 +1155,6 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
     })
   }
 
-  // ISOLAMENTO RIGOROSO 2 (RBAC Servidor Comum): Se não for admin, só pode acessar se for o responsável
   if (!isAdmin && dfdRec.getString('responsible_user') !== userRec.id) {
     return e.json(404, {
       code: 404,
@@ -963,6 +1210,26 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
 
 // --- 6. GET /backend/v1/bot/deadlines ---
 routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
+  var GERAL_403 = {
+    code: 403,
+    error: 'FORBIDDEN',
+    message: 'Acesso não autorizado ao Hermes para este município ou usuário.',
+  }
+
+  function parseAllowedRoles(raw) {
+    if (!raw) return []
+    if (Array.isArray(raw)) return raw
+    if (typeof raw === 'string') {
+      var trimmed = raw.trim()
+      if (!trimmed) return []
+      try {
+        var parsed = JSON.parse(trimmed)
+        if (Array.isArray(parsed)) return parsed
+      } catch (_) {}
+    }
+    return []
+  }
+
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
 
@@ -980,7 +1247,12 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
   }
 
   if (!rawKey) {
-    return e.json(401, { code: 401, error: 'UNAUTHORIZED', message: 'Chave ausente.' })
+    return e.json(401, {
+      code: 401,
+      error: 'UNAUTHORIZED',
+      message:
+        'Chave de API mestra ausente. Forneça o header Authorization: Bearer <chave> ou X-API-Key: <chave>.',
+    })
   }
 
   var keyHash = $security.sha256(rawKey)
@@ -988,11 +1260,15 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
-    return e.json(401, { code: 401, error: 'INVALID_KEY', message: 'Chave inválida.' })
+    return e.json(401, {
+      code: 401,
+      error: 'INVALID_KEY',
+      message: 'Chave de API inválida ou não reconhecida.',
+    })
   }
 
   if (keyRecord.getString('status') !== 'ativa') {
-    return e.json(403, { code: 403, error: 'KEY_REVOKED', message: 'Chave revogada.' })
+    return e.json(403, GERAL_403)
   }
 
   var tenantId = keyRecord.getString('tenant')
@@ -1000,19 +1276,11 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
   try {
     tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
   } catch (_) {
-    return e.json(404, {
-      code: 404,
-      error: 'TENANT_NOT_FOUND',
-      message: 'Município não encontrado.',
-    })
+    return e.json(403, GERAL_403)
   }
 
   if (!tenantRec.getBool('hermes_enabled')) {
-    return e.json(403, {
-      code: 403,
-      error: 'HERMES_DISABLED',
-      message: 'Integração Hermes desativada para esta prefeitura.',
-    })
+    return e.json(403, GERAL_403)
   }
 
   var rawActingUser = String(headers['x_acting_user'] || headers['x-acting-user'] || '').trim()
@@ -1020,7 +1288,8 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
     return e.json(401, {
       code: 401,
       error: 'ACTING_USER_REQUIRED',
-      message: 'Cabeçalho X-Acting-User obrigatório.',
+      message:
+        'Cabeçalho X-Acting-User ausente. Envie o e-mail ou ID do usuário operador do Bússola.',
     })
   }
 
@@ -1036,16 +1305,12 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
   }
 
   if (!userRec || userRec.getString('status') === 'inativo') {
-    return e.json(403, {
-      code: 403,
-      error: 'ACTING_USER_NOT_FOUND',
-      message: 'Usuário operador não encontrado ou inativo.',
-    })
+    return e.json(403, GERAL_403)
   }
 
+  var memRec = null
   var memFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
   var memParams = { userId: userRec.id, tenantId: tenantId, status: 'ativo' }
-  var memRec = null
   try {
     var mems = $app.findRecordsByFilter('user_memberships', memFilter, '', 1, 0, memParams)
     if (mems.length > 0) {
@@ -1054,14 +1319,55 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
   } catch (_) {}
 
   if (!memRec) {
-    return e.json(403, {
-      code: 403,
-      error: 'ACTING_USER_TENANT_MISMATCH',
-      message: 'Usuário sem vínculo ativo com esta prefeitura.',
-    })
+    return e.json(403, GERAL_403)
   }
 
   var liveRole = memRec.getString('role') || 'servidor'
+  var allowedRoles = parseAllowedRoles(tenantRec.get('hermes_allowed_roles'))
+  var roleAllowed = false
+  for (var rIdx = 0; rIdx < allowedRoles.length; rIdx++) {
+    if (allowedRoles[rIdx] === liveRole) {
+      roleAllowed = true
+      break
+    }
+  }
+
+  if (!roleAllowed) {
+    return e.json(403, GERAL_403)
+  }
+
+  // Rate limit
+  var now = Date.now()
+  var cache = $app.store()
+  var rateKey = 'bot_rate_' + keyRecord.id
+  var resetKey = 'bot_rate_reset_' + keyRecord.id
+  var resetAt = 0
+  if (cache.has(resetKey)) {
+    resetAt = Number(cache.get(resetKey)) || 0
+  }
+  if (now > resetAt) {
+    cache.set(rateKey, 0)
+    cache.set(resetKey, now + 60000)
+  }
+  var attempts = 0
+  if (cache.has(rateKey)) {
+    attempts = Number(cache.get(rateKey)) || 0
+  }
+  if (attempts >= 60) {
+    return e.json(429, {
+      code: 429,
+      error: 'RATE_LIMIT_EXCEEDED',
+      message: 'Limite de requisições excedido. Aguarde um instante.',
+    })
+  }
+  cache.set(rateKey, attempts + 1)
+
+  try {
+    var nowIso = new Date().toISOString().replace('T', ' ').slice(0, 19)
+    keyRecord.set('last_used_at', nowIso)
+    $app.save(keyRecord)
+  } catch (_) {}
+
   var isSuperadmin = userRec.getString('role') === 'superadmin'
   var isAdmin = isSuperadmin || liveRole === 'admin'
 
@@ -1135,12 +1441,36 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
       proximos: futuros,
     })
   } catch (err) {
-    return e.json(500, { code: 500, error: 'DEADLINE_ERROR', message: 'Erro ao consultar prazos.' })
+    return e.json(500, {
+      code: 500,
+      error: 'DEADLINE_ERROR',
+      message: 'Erro ao consultar prazos.',
+    })
   }
 })
 
 // --- 7. GET /backend/v1/bot/users (Exclusivo Admin / Superadmin com vínculo) ---
 routerAdd('GET', '/backend/v1/bot/users', (e) => {
+  var GERAL_403 = {
+    code: 403,
+    error: 'FORBIDDEN',
+    message: 'Acesso não autorizado ao Hermes para este município ou usuário.',
+  }
+
+  function parseAllowedRoles(raw) {
+    if (!raw) return []
+    if (Array.isArray(raw)) return raw
+    if (typeof raw === 'string') {
+      var trimmed = raw.trim()
+      if (!trimmed) return []
+      try {
+        var parsed = JSON.parse(trimmed)
+        if (Array.isArray(parsed)) return parsed
+      } catch (_) {}
+    }
+    return []
+  }
+
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
 
@@ -1158,7 +1488,12 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
   }
 
   if (!rawKey) {
-    return e.json(401, { code: 401, error: 'UNAUTHORIZED', message: 'Chave ausente.' })
+    return e.json(401, {
+      code: 401,
+      error: 'UNAUTHORIZED',
+      message:
+        'Chave de API mestra ausente. Forneça o header Authorization: Bearer <chave> ou X-API-Key: <chave>.',
+    })
   }
 
   var keyHash = $security.sha256(rawKey)
@@ -1166,11 +1501,15 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
-    return e.json(401, { code: 401, error: 'INVALID_KEY', message: 'Chave inválida.' })
+    return e.json(401, {
+      code: 401,
+      error: 'INVALID_KEY',
+      message: 'Chave de API inválida ou não reconhecida.',
+    })
   }
 
   if (keyRecord.getString('status') !== 'ativa') {
-    return e.json(403, { code: 403, error: 'KEY_REVOKED', message: 'Chave revogada.' })
+    return e.json(403, GERAL_403)
   }
 
   var tenantId = keyRecord.getString('tenant')
@@ -1178,19 +1517,11 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
   try {
     tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
   } catch (_) {
-    return e.json(404, {
-      code: 404,
-      error: 'TENANT_NOT_FOUND',
-      message: 'Município não encontrado.',
-    })
+    return e.json(403, GERAL_403)
   }
 
   if (!tenantRec.getBool('hermes_enabled')) {
-    return e.json(403, {
-      code: 403,
-      error: 'HERMES_DISABLED',
-      message: 'Integração Hermes desativada para esta prefeitura.',
-    })
+    return e.json(403, GERAL_403)
   }
 
   var rawActingUser = String(headers['x_acting_user'] || headers['x-acting-user'] || '').trim()
@@ -1198,7 +1529,8 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
     return e.json(401, {
       code: 401,
       error: 'ACTING_USER_REQUIRED',
-      message: 'Cabeçalho X-Acting-User obrigatório.',
+      message:
+        'Cabeçalho X-Acting-User ausente. Envie o e-mail ou ID do usuário operador do Bússola.',
     })
   }
 
@@ -1214,16 +1546,12 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
   }
 
   if (!userRec || userRec.getString('status') === 'inativo') {
-    return e.json(403, {
-      code: 403,
-      error: 'ACTING_USER_NOT_FOUND',
-      message: 'Usuário operador não encontrado ou inativo.',
-    })
+    return e.json(403, GERAL_403)
   }
 
+  var memRec = null
   var memFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
   var memParams = { userId: userRec.id, tenantId: tenantId, status: 'ativo' }
-  var memRec = null
   try {
     var mems = $app.findRecordsByFilter('user_memberships', memFilter, '', 1, 0, memParams)
     if (mems.length > 0) {
@@ -1232,14 +1560,55 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
   } catch (_) {}
 
   if (!memRec) {
-    return e.json(403, {
-      code: 403,
-      error: 'ACTING_USER_TENANT_MISMATCH',
-      message: 'Usuário sem vínculo ativo com esta prefeitura.',
-    })
+    return e.json(403, GERAL_403)
   }
 
   var liveRole = memRec.getString('role') || 'servidor'
+  var allowedRoles = parseAllowedRoles(tenantRec.get('hermes_allowed_roles'))
+  var roleAllowed = false
+  for (var rIdx = 0; rIdx < allowedRoles.length; rIdx++) {
+    if (allowedRoles[rIdx] === liveRole) {
+      roleAllowed = true
+      break
+    }
+  }
+
+  if (!roleAllowed) {
+    return e.json(403, GERAL_403)
+  }
+
+  // Rate limit
+  var now = Date.now()
+  var cache = $app.store()
+  var rateKey = 'bot_rate_' + keyRecord.id
+  var resetKey = 'bot_rate_reset_' + keyRecord.id
+  var resetAt = 0
+  if (cache.has(resetKey)) {
+    resetAt = Number(cache.get(resetKey)) || 0
+  }
+  if (now > resetAt) {
+    cache.set(rateKey, 0)
+    cache.set(resetKey, now + 60000)
+  }
+  var attempts = 0
+  if (cache.has(rateKey)) {
+    attempts = Number(cache.get(rateKey)) || 0
+  }
+  if (attempts >= 60) {
+    return e.json(429, {
+      code: 429,
+      error: 'RATE_LIMIT_EXCEEDED',
+      message: 'Limite de requisições excedido. Aguarde um instante.',
+    })
+  }
+  cache.set(rateKey, attempts + 1)
+
+  try {
+    var nowIso = new Date().toISOString().replace('T', ' ').slice(0, 19)
+    keyRecord.set('last_used_at', nowIso)
+    $app.save(keyRecord)
+  } catch (_) {}
+
   var isSuperadmin = userRec.getString('role') === 'superadmin'
   var isAdmin = isSuperadmin || liveRole === 'admin'
 
@@ -1284,12 +1653,36 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
       usuarios: users,
     })
   } catch (err) {
-    return e.json(500, { code: 500, error: 'USERS_ERROR', message: 'Erro ao consultar usuários.' })
+    return e.json(500, {
+      code: 500,
+      error: 'USERS_ERROR',
+      message: 'Erro ao consultar usuários.',
+    })
   }
 })
 
 // --- 8. GET /backend/v1/bot/notifications ---
 routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
+  var GERAL_403 = {
+    code: 403,
+    error: 'FORBIDDEN',
+    message: 'Acesso não autorizado ao Hermes para este município ou usuário.',
+  }
+
+  function parseAllowedRoles(raw) {
+    if (!raw) return []
+    if (Array.isArray(raw)) return raw
+    if (typeof raw === 'string') {
+      var trimmed = raw.trim()
+      if (!trimmed) return []
+      try {
+        var parsed = JSON.parse(trimmed)
+        if (Array.isArray(parsed)) return parsed
+      } catch (_) {}
+    }
+    return []
+  }
+
   var reqInfo = e.requestInfo()
   var headers = reqInfo.headers || {}
 
@@ -1307,7 +1700,12 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
   }
 
   if (!rawKey) {
-    return e.json(401, { code: 401, error: 'UNAUTHORIZED', message: 'Chave ausente.' })
+    return e.json(401, {
+      code: 401,
+      error: 'UNAUTHORIZED',
+      message:
+        'Chave de API mestra ausente. Forneça o header Authorization: Bearer <chave> ou X-API-Key: <chave>.',
+    })
   }
 
   var keyHash = $security.sha256(rawKey)
@@ -1315,11 +1713,15 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
-    return e.json(401, { code: 401, error: 'INVALID_KEY', message: 'Chave inválida.' })
+    return e.json(401, {
+      code: 401,
+      error: 'INVALID_KEY',
+      message: 'Chave de API inválida ou não reconhecida.',
+    })
   }
 
   if (keyRecord.getString('status') !== 'ativa') {
-    return e.json(403, { code: 403, error: 'KEY_REVOKED', message: 'Chave revogada.' })
+    return e.json(403, GERAL_403)
   }
 
   var tenantId = keyRecord.getString('tenant')
@@ -1327,19 +1729,11 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
   try {
     tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
   } catch (_) {
-    return e.json(404, {
-      code: 404,
-      error: 'TENANT_NOT_FOUND',
-      message: 'Município não encontrado.',
-    })
+    return e.json(403, GERAL_403)
   }
 
   if (!tenantRec.getBool('hermes_enabled')) {
-    return e.json(403, {
-      code: 403,
-      error: 'HERMES_DISABLED',
-      message: 'Integração Hermes desativada para esta prefeitura.',
-    })
+    return e.json(403, GERAL_403)
   }
 
   var rawActingUser = String(headers['x_acting_user'] || headers['x-acting-user'] || '').trim()
@@ -1347,7 +1741,8 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
     return e.json(401, {
       code: 401,
       error: 'ACTING_USER_REQUIRED',
-      message: 'Cabeçalho X-Acting-User obrigatório.',
+      message:
+        'Cabeçalho X-Acting-User ausente. Envie o e-mail ou ID do usuário operador do Bússola.',
     })
   }
 
@@ -1363,16 +1758,12 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
   }
 
   if (!userRec || userRec.getString('status') === 'inativo') {
-    return e.json(403, {
-      code: 403,
-      error: 'ACTING_USER_NOT_FOUND',
-      message: 'Usuário operador não encontrado ou inativo.',
-    })
+    return e.json(403, GERAL_403)
   }
 
+  var memRec = null
   var memFilter = 'user = {:userId} && tenant = {:tenantId} && status = {:status}'
   var memParams = { userId: userRec.id, tenantId: tenantId, status: 'ativo' }
-  var memRec = null
   try {
     var mems = $app.findRecordsByFilter('user_memberships', memFilter, '', 1, 0, memParams)
     if (mems.length > 0) {
@@ -1381,14 +1772,55 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
   } catch (_) {}
 
   if (!memRec) {
-    return e.json(403, {
-      code: 403,
-      error: 'ACTING_USER_TENANT_MISMATCH',
-      message: 'Usuário sem vínculo ativo com esta prefeitura.',
-    })
+    return e.json(403, GERAL_403)
   }
 
   var liveRole = memRec.getString('role') || 'servidor'
+  var allowedRoles = parseAllowedRoles(tenantRec.get('hermes_allowed_roles'))
+  var roleAllowed = false
+  for (var rIdx = 0; rIdx < allowedRoles.length; rIdx++) {
+    if (allowedRoles[rIdx] === liveRole) {
+      roleAllowed = true
+      break
+    }
+  }
+
+  if (!roleAllowed) {
+    return e.json(403, GERAL_403)
+  }
+
+  // Rate limit
+  var now = Date.now()
+  var cache = $app.store()
+  var rateKey = 'bot_rate_' + keyRecord.id
+  var resetKey = 'bot_rate_reset_' + keyRecord.id
+  var resetAt = 0
+  if (cache.has(resetKey)) {
+    resetAt = Number(cache.get(resetKey)) || 0
+  }
+  if (now > resetAt) {
+    cache.set(rateKey, 0)
+    cache.set(resetKey, now + 60000)
+  }
+  var attempts = 0
+  if (cache.has(rateKey)) {
+    attempts = Number(cache.get(rateKey)) || 0
+  }
+  if (attempts >= 60) {
+    return e.json(429, {
+      code: 429,
+      error: 'RATE_LIMIT_EXCEEDED',
+      message: 'Limite de requisições excedido. Aguarde um instante.',
+    })
+  }
+  cache.set(rateKey, attempts + 1)
+
+  try {
+    var nowIso = new Date().toISOString().replace('T', ' ').slice(0, 19)
+    keyRecord.set('last_used_at', nowIso)
+    $app.save(keyRecord)
+  } catch (_) {}
+
   var isSuperadmin = userRec.getString('role') === 'superadmin'
   var isAdmin = isSuperadmin || liveRole === 'admin'
 

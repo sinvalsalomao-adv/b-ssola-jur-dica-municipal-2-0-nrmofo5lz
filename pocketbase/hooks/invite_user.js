@@ -77,7 +77,15 @@ routerAdd(
       }
     }
 
-    const allowedRoles = ['servidor', 'gestor', 'secretario', 'procurador', 'admin']
+    const allowedRoles = [
+      'servidor',
+      'gestor',
+      'secretario',
+      'procurador',
+      'admin',
+      'prefeito',
+      'vice-prefeito',
+    ]
     if (allowedRoles.indexOf(requestedRole) === -1) {
       return e.badRequestError('Papel inválido especificado.')
     }
