@@ -137,11 +137,39 @@ routerAdd(
 
     const tgId = targetUser.getString('telegram_id')
     if (!tgId) {
-      return e.json(400, {
-        code: 400,
-        message:
-          'Usuário não possui Telegram ID vinculado. Peça a ele para enviar seu e-mail ao bot do Telegram.',
-      })
+      // Teste de conectividade bot (getMe e webhook info) caso usuário ainda não tenha telegram_id
+      try {
+        const getMeRes = $http.send({
+          url: 'https://api.telegram.org/bot' + token + '/getMe',
+          method: 'GET',
+          timeout: 10,
+        })
+        const botInfo = getMeRes.statusCode === 200 ? JSON.parse(getMeRes.raw) : null
+        return e.json(200, {
+          success: true,
+          tested: 'connectivity_only',
+          bot: botInfo?.result
+            ? {
+                id: botInfo.result.id,
+                username: botInfo.result.username,
+                first_name: botInfo.result.first_name,
+              }
+            : null,
+          message:
+            'Bot ativo e conectado com sucesso no Telegram (@' +
+            (botInfo?.result?.username || 'bot') +
+            ')! Porém o usuário ' +
+            (targetUser.getString('name') || targetUser.getString('email')) +
+            ' ainda não possui Telegram ID vinculado. Para receber mensagens diretas, basta enviar o e-mail cadastrado no chat do bot.',
+        })
+      } catch (connErr) {
+        return e.json(400, {
+          code: 400,
+          message:
+            'Usuário não possui Telegram ID vinculado e houve falha no handshake com a API do Telegram: ' +
+            String(connErr),
+        })
+      }
     }
 
     // Criar um aviso de teste

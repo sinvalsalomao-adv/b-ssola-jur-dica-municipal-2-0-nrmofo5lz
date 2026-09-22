@@ -483,6 +483,12 @@ cronAdd('avisos_telegram_polling', '* * * * *', () => {
     if (res.statusCode >= 200 && res.statusCode < 300) {
       const data = JSON.parse(res.raw)
       const updates = data.result || []
+      console.log(
+        '[AVISOS_POLLING] Resposta getUpdates: status=' +
+          res.statusCode +
+          ', updates=' +
+          updates.length,
+      )
       let highestId = lastUpdateId
 
       for (let i = 0; i < updates.length; i++) {
