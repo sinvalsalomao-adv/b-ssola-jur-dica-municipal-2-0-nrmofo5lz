@@ -3,7 +3,6 @@ import { Plus, ArrowLeftRight, Pencil, History, Loader2 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { AuditActionType } from '@/types/controle'
-import { MOCK_AUDIT_LOG } from '@/data/mockControle'
 import { getAllAuditLogs } from '@/services/projects'
 import { useAuth } from '@/context/AuthContext'
 import { useRealtime } from '@/hooks/use-realtime'
@@ -37,15 +36,11 @@ export const AuditLogSection: React.FC = () => {
   const loadLogs = async () => {
     try {
       const data = await getAllAuditLogs(
-        user?.role === 'superadmin' ? undefined : user?.tenantId || undefined,
+        user?.role === 'superadmin' ? undefined : (user?.tenantId ?? undefined),
       )
-      if (data.length > 0) {
-        setLogs(data)
-      } else {
-        setLogs(MOCK_AUDIT_LOG)
-      }
+      setLogs(data || [])
     } catch {
-      setLogs(MOCK_AUDIT_LOG)
+      setLogs([])
     } finally {
       setLoading(false)
     }

@@ -12,8 +12,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { PREFEITURAS, USERS } from '@/types/project'
-import { StallLimits } from '@/types/controle'
-import { MOCK_NOTIFICATIONS } from '@/data/mockControle'
+import { StallLimits, NotificationItem } from '@/types/controle'
+import { getNotifications } from '@/services/controle'
 import { StallLimitsModal } from '@/components/controle/StallLimitsModal'
 
 interface NotificacoesTabProps {
@@ -31,15 +31,30 @@ export const NotificacoesTab: React.FC<NotificacoesTabProps> = ({
   const [filterResp, setFilterResp] = useState('Todos')
   const [filterType, setFilterType] = useState('Todos')
   const [modalOpen, setModalOpen] = useState(false)
+  const [notifications, setNotifications] = useState<NotificationItem[]>([])
+
+  React.useEffect(() => {
+    let active = true
+    getNotifications()
+      .then((data) => {
+        if (active) setNotifications(data)
+      })
+      .catch((err) => {
+        console.error('Falha ao carregar notificações:', err)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
 
   const filtered = useMemo(() => {
-    return MOCK_NOTIFICATIONS.filter((n) => {
+    return notifications.filter((n) => {
       if (filterPref !== 'Todas' && n.prefeitura !== filterPref) return false
       if (filterResp !== 'Todos' && n.responsible !== filterResp) return false
       if (filterType !== 'Todos' && n.alertType !== filterType) return false
       return true
     })
-  }, [filterPref, filterResp, filterType])
+  }, [filterPref, filterResp, filterType, notifications])
 
   return (
     <div className="space-y-4">

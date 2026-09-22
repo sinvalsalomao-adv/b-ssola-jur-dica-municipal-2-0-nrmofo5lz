@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { MOCK_CALENDAR_EVENTS } from '@/data/mockControle'
+import { CalendarEvent } from '@/types/controle'
+import { getAgendaEvents } from '@/services/controle'
 
 interface AgendaTabProps {
   proximityDays: number
@@ -40,6 +41,21 @@ export const AgendaTab: React.FC<AgendaTabProps> = ({ proximityDays }) => {
   const today = new Date()
   const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1))
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [events, setEvents] = useState<CalendarEvent[]>([])
+
+  React.useEffect(() => {
+    let active = true
+    getAgendaEvents()
+      .then((data) => {
+        if (active) setEvents(data)
+      })
+      .catch((err) => {
+        console.error('Falha ao buscar eventos da agenda:', err)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
 
   const year = viewDate.getFullYear()
   const month = viewDate.getMonth()
@@ -57,9 +73,7 @@ export const AgendaTab: React.FC<AgendaTabProps> = ({ proximityDays }) => {
   const formatDateStr = (day: number) =>
     `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 
-  const selectedEvents = selectedDate
-    ? MOCK_CALENDAR_EVENTS.filter((e) => e.date === selectedDate)
-    : []
+  const selectedEvents = selectedDate ? events.filter((e) => e.date === selectedDate) : []
 
   const todayStr = formatDateStr(today.getDate())
 
@@ -106,7 +120,7 @@ export const AgendaTab: React.FC<AgendaTabProps> = ({ proximityDays }) => {
             {cells.map((day, idx) => {
               if (day === null) return <div key={idx} />
               const dateStr = formatDateStr(day)
-              const dayEvents = MOCK_CALENDAR_EVENTS.filter((e) => e.date === dateStr)
+              const dayEvents = events.filter((e) => e.date === dateStr)
               const isToday = dateStr === todayStr
               const isSelected = dateStr === selectedDate
               return (

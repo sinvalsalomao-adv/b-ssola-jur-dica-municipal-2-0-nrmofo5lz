@@ -7,9 +7,10 @@ import { Badge } from '@/components/ui/badge'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { useEducation } from '@/context/EducationContext'
-import { MOCK_USER_NAME } from '@/data/mockEducation'
+import { useAuth } from '@/context/AuthContext'
 
 export default function QuizPage() {
+  const { user } = useAuth()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { tracks, setQuizResult, resetQuiz } = useEducation()
@@ -183,7 +184,7 @@ export default function QuizPage() {
                   <p className="text-xs text-gray-400 uppercase tracking-wider">
                     Este certificado é concedido a
                   </p>
-                  <p className="text-lg font-bold text-[#1c2a3e]">{MOCK_USER_NAME}</p>
+                  <p className="text-lg font-bold text-[#1c2a3e]">{user?.name || 'Usuário'}</p>
                   <p className="text-xs text-gray-400 uppercase tracking-wider pt-3">
                     pela conclusão da trilha de aprendizagem
                   </p>

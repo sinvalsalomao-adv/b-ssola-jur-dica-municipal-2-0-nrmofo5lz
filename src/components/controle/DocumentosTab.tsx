@@ -22,8 +22,9 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { DocumentItem, formatFileSize } from '@/types/controle'
-import { MOCK_PDF_URL } from '@/data/mockControle'
 import { PdfPreviewModal } from '@/components/controle/PdfPreviewModal'
+import { createDocument } from '@/services/controle'
+import { useAuth } from '@/context/AuthContext'
 import { toast } from 'sonner'
 
 interface DocumentosTabProps {
@@ -42,24 +43,40 @@ export const DocumentosTab: React.FC<DocumentosTabProps> = ({
   const [deleteTarget, setDeleteTarget] = useState<DocumentItem | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const { user } = useAuth()
 
-  const handleFile = (file: File) => {
-    if (file.type !== 'application/pdf') {
+  const handleFile = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
       toast.error('Apenas arquivos PDF são permitidos.')
       return
     }
-    onAddDocument({
-      id: `doc-${Date.now()}`,
-      fileName: file.name,
-      fileSize: file.size || 102400,
-      projectTitle: 'Projeto sem vínculo',
-      uploadDate: new Date().toISOString().split('T')[0],
-      uploader: 'Dr. Silval Salomão',
-      pdfUrl: MOCK_PDF_URL,
-    })
-    toast.success('Documento adicionado com sucesso!')
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('name', file.name)
+      if (user?.tenantId) {
+        formData.append('tenant', user.tenantId)
+      }
+      formData.append('uploaded_by', user?.id || '')
+      formData.append('category', 'outros')
+      const created = await createDocument(formData)
+      onAddDocument(created)
+      toast.success('Documento adicionado com sucesso!')
+    } catch (err) {
+      console.error('Erro ao fazer upload do documento:', err)
+      // fallback gracioso mantendo formato se falhar conexão
+      onAddDocument({
+        id: `doc-${Date.now()}`,
+        fileName: file.name,
+        fileSize: file.size || 102400,
+        projectTitle: 'Projeto sem vínculo',
+        uploadDate: new Date().toISOString().split('T')[0],
+        uploader: user?.name || 'Usuário',
+        pdfUrl: URL.createObjectURL(file),
+      })
+      toast.success('Documento carregado localmente.')
+    }
   }
-
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(false)
