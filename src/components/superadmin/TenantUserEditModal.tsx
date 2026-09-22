@@ -16,12 +16,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2 } from 'lucide-react'
+import { Loader2, CheckCircle2, XCircle } from 'lucide-react'
 import { extractFieldErrors, getErrorMessage, type FieldErrors } from '@/lib/pocketbase/errors'
 import { toast } from 'sonner'
 import type { GlobalUser, UserRole } from '@/types/superadmin'
 import { sanitizeInput } from '@/lib/sanitize'
 import { updateTenantUser } from '@/services/users'
+import pb from '@/lib/pocketbase/client'
+import { Switch } from '@/components/ui/switch'
 
 interface Props {
   user: GlobalUser | null
@@ -46,6 +48,8 @@ export function TenantUserEditModal({ user, tenantId, open, onOpenChange, onSave
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<UserRole>('servidor')
   const [status, setStatus] = useState<'ativo' | 'inativo'>('ativo')
+  const [receberAvisos, setReceberAvisos] = useState(false)
+  const [telegramId, setTelegramId] = useState('')
   const [errors, setErrors] = useState<FieldErrors>({})
   const [submitting, setSubmitting] = useState(false)
 
@@ -55,7 +59,18 @@ export function TenantUserEditModal({ user, tenantId, open, onOpenChange, onSave
       setEmail(user.email)
       setRole(user.role)
       setStatus(user.status)
+      setReceberAvisos(Boolean((user as any).receber_avisos_telegram))
+      setTelegramId((user as any).telegram_id || '')
       setErrors({})
+
+      // Carregar dados atualizados do PocketBase para campos de Telegram
+      pb.collection('users')
+        .getOne(user.id)
+        .then((rec) => {
+          setReceberAvisos(Boolean(rec.receber_avisos_telegram))
+          setTelegramId(rec.telegram_id || '')
+        })
+        .catch(() => {})
     }
   }, [open, user])
 
@@ -86,6 +101,16 @@ export function TenantUserEditModal({ user, tenantId, open, onOpenChange, onSave
         role,
         status,
       })
+
+      // Atualizar preferências de avisos do Telegram
+      try {
+        await pb.collection('users').update(user.id, {
+          receber_avisos_telegram: receberAvisos,
+          telegram_id: telegramId.trim() || '',
+        })
+      } catch (tgErr) {
+        console.warn('Erro ao atualizar campos de Telegram no user:', tgErr)
+      }
 
       toast.success('Usuário atualizado com sucesso!')
       onOpenChange(false)
@@ -155,6 +180,55 @@ export function TenantUserEditModal({ user, tenantId, open, onOpenChange, onSave
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          {/* Seção Telegram & Avisos */}
+          <div className="pt-3 border-t border-gray-100 space-y-3">
+            <h4 className="text-xs font-bold text-[#1c2a3e] uppercase">
+              Notificações Telegram & Avisos Diários
+            </h4>
+
+            <div className="flex items-center justify-between p-2.5 rounded-lg border border-gray-100 bg-slate-50/60">
+              <div className="space-y-0.5">
+                <Label className="text-xs font-semibold text-gray-800">
+                  Receber avisos pelo Telegram
+                </Label>
+                <p className="text-[11px] text-gray-500">
+                  Habilita envio matinal e alertas extraordinários de prazos.
+                </p>
+              </div>
+              <Switch checked={receberAvisos} onCheckedChange={setReceberAvisos} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs font-semibold text-gray-700">Telegram Vinculado?</Label>
+                <div className="mt-1 h-9 px-3 flex items-center gap-1.5 rounded-md border border-gray-200 bg-gray-50 text-xs">
+                  {telegramId ? (
+                    <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> SIM
+                    </span>
+                  ) : (
+                    <span className="text-gray-500 flex items-center gap-1">
+                      <XCircle className="w-3.5 h-3.5" /> NÃO
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs font-semibold text-gray-700">Telegram ID</Label>
+                <Input
+                  value={telegramId}
+                  onChange={(e) => setTelegramId(e.target.value)}
+                  placeholder="Ex: 123456789"
+                  className="mt-1 font-mono text-xs"
+                />
+              </div>
+            </div>
+            <p className="text-[11px] text-gray-400">
+              O vínculo é realizado automaticamente quando o servidor envia seu e-mail ao bot no
+              Telegram, mas pode ser ajustado manualmente se necessário.
+            </p>
           </div>
 
           <DialogFooter className="pt-3 border-t">

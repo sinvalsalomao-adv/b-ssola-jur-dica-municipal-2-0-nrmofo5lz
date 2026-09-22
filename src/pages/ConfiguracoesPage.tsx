@@ -23,6 +23,7 @@ import { TenantRequiredNotice } from '@/components/TenantRequiredNotice'
 import { PageHeader } from '@/components/common/PageHeader'
 import { SubmitButton } from '@/components/common/StateDisplay'
 import { BotIntegrationSection } from '@/components/BotIntegrationSection'
+import { AvisosConfigSection } from '@/components/controle/AvisosConfigSection'
 
 export default function ConfiguracoesPage() {
   const { user } = useAuth()
@@ -204,13 +205,23 @@ export default function ConfiguracoesPage() {
       <Tabs defaultValue={defaultTab} className="w-full">
         <TabsList
           className={`grid ${
-            isAdmin && canSeeHermesTab ? 'grid-cols-2 max-w-sm' : 'grid-cols-1 max-w-[200px]'
+            isAdmin && canSeeHermesTab
+              ? 'grid-cols-3 max-w-lg'
+              : isAdmin
+                ? 'grid-cols-2 max-w-sm'
+                : 'grid-cols-1 max-w-[200px]'
           } mb-4`}
         >
           {isAdmin && (
             <TabsTrigger value="geral" className="text-xs gap-1.5">
               <Settings className="w-3.5 h-3.5" />
               Parâmetros & SMTP
+            </TabsTrigger>
+          )}
+          {isAdmin && (
+            <TabsTrigger value="avisos" className="text-xs gap-1.5">
+              <Zap className="w-3.5 h-3.5" />
+              Avisos & Ciência
             </TabsTrigger>
           )}
           {canSeeHermesTab && (
@@ -355,6 +366,12 @@ export default function ConfiguracoesPage() {
                 </SubmitButton>
               </CardContent>
             </Card>
+          </TabsContent>
+        )}
+
+        {isAdmin && user?.tenantId && (
+          <TabsContent value="avisos">
+            <AvisosConfigSection tenantId={user.tenantId} />
           </TabsContent>
         )}
 

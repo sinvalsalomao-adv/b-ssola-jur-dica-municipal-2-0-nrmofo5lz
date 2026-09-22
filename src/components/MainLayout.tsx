@@ -49,6 +49,7 @@ import { NewProjectModal } from '@/components/NewProjectModal'
 import { NotificationBell } from '@/components/NotificationBell'
 import { ProfileSwitcherDialog } from '@/components/ProfileSwitcherDialog'
 import { MandatoryNotificationModal } from '@/components/MandatoryNotificationModal'
+import { BloqueioCienciaScreen } from '@/components/BloqueioCienciaScreen'
 import { useUnsavedChanges } from '@/context/UnsavedChangesContext'
 import { Building2, Globe, Undo2, SlidersHorizontal, Check } from 'lucide-react'
 
@@ -127,6 +128,9 @@ export const MainLayout: React.FC = () => {
     { label: 'Academia', path: '/academia', icon: BookOpen },
     { label: 'Notificações', path: '/notificacoes', icon: Bell },
     ...(isAdminOrSuperadmin ? [{ label: 'Usuários', path: '/usuarios', icon: Users }] : []),
+    ...(isAdminOrSuperadmin
+      ? [{ label: 'Avisos & Ciência', path: '/controle-avisos', icon: Bell }]
+      : []),
     ...(isAdminOrSuperadmin ? [{ label: 'Relatórios', path: '/relatorios', icon: BarChart3 }] : []),
     ...(isAdminOrSuperadmin
       ? [{ label: 'Logs de Auditoria', path: '/audit-logs', icon: History }]
@@ -146,6 +150,7 @@ export const MainLayout: React.FC = () => {
     '/educacao/grupos': 'Academia — Gestão de Grupos de Acesso',
     '/academia': 'Academia — Grupos de Acesso e Secretarias',
     '/usuarios': 'Gestão de Usuários',
+    '/controle-avisos': 'Controle de Avisos & Ciência',
     '/novo-dfd': 'Novo DFD',
     '/superadmin': 'Painel do Superadministrador',
     '/relatorios': 'Relatórios Comparativos',
@@ -237,6 +242,11 @@ export const MainLayout: React.FC = () => {
     }
 
     return button
+  }
+
+  // Bloquear acesso se usuário estiver com status_bloqueio = bloqueado_ciencia
+  if (user?.statusBloqueio === 'bloqueado_ciencia') {
+    return <BloqueioCienciaScreen />
   }
 
   return (

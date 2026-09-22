@@ -30,6 +30,7 @@ import EducacaoPage from '@/pages/EducacaoPage'
 import UsuariosPage from '@/pages/UsuariosPage'
 import RelatoriosPage from '@/pages/RelatoriosPage'
 import NotificacoesPage from '@/pages/NotificacoesPage'
+import ControleAvisosPage from '@/pages/ControleAvisosPage'
 import ConfiguracoesPage from '@/pages/ConfiguracoesPage'
 import PerfilPage from '@/pages/PerfilPage'
 import NotFound from '@/pages/NotFound'
@@ -97,6 +98,14 @@ const App = () => (
                       }
                     />
                     <Route path="/notificacoes" element={<NotificacoesPage />} />
+                    <Route
+                      path="/controle-avisos"
+                      element={
+                        <ProtectedRoute allowedRoles={['admin', 'superadmin']}>
+                          <ControleAvisosPage />
+                        </ProtectedRoute>
+                      }
+                    />
                     <Route
                       path="/configuracoes"
                       element={

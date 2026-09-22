@@ -15,6 +15,7 @@ export interface AuthUser {
   tenantId: string | null
   tenantSlug?: string | null
   membershipId?: string | null
+  statusBloqueio?: string | null
 }
 
 interface AuthContextType {
@@ -130,6 +131,7 @@ async function resolveAuthUser(
         tenantId: selectedMembership.tenant || tenant?.id || null,
         tenantSlug: tenant?.slug || null,
         membershipId: selectedMembership.id,
+        statusBloqueio: userRecord.status_bloqueio || selectedMembership.status_bloqueio || 'ativo',
       }
     } else if (isSuperadminDirect) {
       try {
@@ -145,6 +147,7 @@ async function resolveAuthUser(
           tenantId: activeTenant ? activeTenant.id : null,
           tenantSlug: activeTenant ? activeTenant.slug : null,
           membershipId: null,
+          statusBloqueio: userRecord.status_bloqueio || 'ativo',
         }
       } catch {
         sessionStorage.removeItem('activeTenantId')
@@ -211,6 +214,8 @@ async function resolveAuthUser(
         tenantId: firstActiveMembership.tenant || tenant?.id || null,
         tenantSlug: tenant?.slug || null,
         membershipId: firstActiveMembership.id,
+        statusBloqueio:
+          userRecord.status_bloqueio || firstActiveMembership.status_bloqueio || 'ativo',
       }
     } else if (userRecord.role && userRecord.tenant) {
       // Fallback para campos legados diretos caso não tenha membership ainda
@@ -226,6 +231,7 @@ async function resolveAuthUser(
         tenantId: userRecord.tenant || null,
         tenantSlug: userRecord.expand?.tenant?.slug || null,
         membershipId: null,
+        statusBloqueio: userRecord.status_bloqueio || 'ativo',
       }
     } else {
       // Usuário cadastrado sem vínculo ativo aprovado
