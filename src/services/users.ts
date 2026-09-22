@@ -152,7 +152,10 @@ export const deleteTenantUser = async (payload: {
 export const updateUser = async (id: string, data: Record<string, any>) => {
   const payload: Record<string, any> = { ...data }
   if (payload.name !== undefined) payload.name = sanitizeInput(payload.name)
-  if (payload.email !== undefined) payload.email = sanitizeInput(payload.email)
+  if (payload.email !== undefined) {
+    payload.email = sanitizeInput(payload.email)
+    payload.emailVisibility = true
+  }
   if (payload.cargo !== undefined) payload.cargo = sanitizeInput(payload.cargo)
   return normalizeUser(await pb.collection('users').update(id, payload, { expand: 'tenant' }))
 }

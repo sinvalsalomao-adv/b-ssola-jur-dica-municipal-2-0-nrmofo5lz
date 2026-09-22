@@ -268,15 +268,17 @@ export const SuperadminProvider: React.FC<{ children: ReactNode }> = ({ children
         passwordConfirm: pwd,
       })
     } else {
-      // Se usuário já existia, atualizar nome se fornecido
+      // Se usuário já existia, atualizar nome se fornecido e garantir emailVisibility = true
+      const updatePayload: Record<string, any> = {
+        emailVisibility: true,
+      }
       if (data.name && data.name.trim()) {
-        try {
-          await pb.collection('users').update(userRecord.id, {
-            name: data.name.trim(),
-          })
-        } catch {
-          /* ignore */
-        }
+        updatePayload.name = data.name.trim()
+      }
+      try {
+        await pb.collection('users').update(userRecord.id, updatePayload)
+      } catch {
+        /* ignore */
       }
     }
 
