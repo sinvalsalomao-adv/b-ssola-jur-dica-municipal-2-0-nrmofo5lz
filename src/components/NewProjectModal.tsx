@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useProjects } from '@/context/ProjectContext'
 import { useAuth } from '@/context/AuthContext'
 import { COLUMNS, PREFEITURAS, ColumnType, Priority } from '@/types/project'
@@ -31,6 +32,7 @@ import { useUnsavedChanges } from '@/context/UnsavedChangesContext'
 export const NewProjectModal: React.FC = () => {
   const { isNewModalOpen, setIsNewModalOpen, addProject, saving, tenants } = useProjects()
   const { user } = useAuth()
+  const navigate = useNavigate()
   const { registerGuard } = useUnsavedChanges()
   const isSuperadmin = user?.role === 'superadmin'
 
@@ -38,6 +40,7 @@ export const NewProjectModal: React.FC = () => {
   const [description, setDescription] = useState('')
   const [responsibleUserId, setResponsibleUserId] = useState('')
   const [users, setUsers] = useState<{ id: string; name: string }[]>([])
+  const [loadingUsers, setLoadingUsers] = useState(false)
   const [deadline, setDeadline] = useState('')
   const [column, setColumn] = useState<ColumnType>('Ideação')
   // Para Superadmin sem impersonação: iniciar vazio (sem seleção padrão). Para Admin/Servidor: usar a prefeitura do usuário autenticado.
@@ -108,30 +111,52 @@ export const NewProjectModal: React.FC = () => {
     registerGuard,
   ])
 
+  // Quando o modal abre, inicializa o tenant selecionado
   useEffect(() => {
     if (isNewModalOpen) {
-      const effectiveTenant = isSuperadmin ? selectedTenantId || user?.tenantId : user?.tenantId
-      const fetchPromise = effectiveTenant
-        ? getUsersByTenant(effectiveTenant)
-        : isSuperadmin
-          ? getUsers()
-          : Promise.resolve([])
-
-      fetchPromise
-        .then((data) => {
-          setUsers(
-            data.filter((u) => u.status === 'ativo').map((u) => ({ id: u.id, name: u.name })),
-          )
-        })
-        .catch(() => {})
-
-      if (isSuperadmin) {
-        setSelectedTenantId(user?.tenantId || '')
-      } else {
-        setSelectedTenantId(user?.tenantId || '')
-      }
+      setSelectedTenantId(user?.tenantId || '')
     }
-  }, [isNewModalOpen, user?.tenantId, isSuperadmin])
+  }, [isNewModalOpen, user?.tenantId])
+
+  // Recarrega os servidores disponíveis sempre que o modal abre ou selectedTenantId muda
+  useEffect(() => {
+    if (!isNewModalOpen) return
+
+    const effectiveTenant = isSuperadmin ? selectedTenantId : user?.tenantId
+    if (effectiveTenant) {
+      setLoadingUsers(true)
+      getUsersByTenant(effectiveTenant)
+        .then((data) => {
+          const mapped = data
+            .filter((u) => u.status === 'ativo')
+            .map((u) => ({ id: u.id, name: u.name }))
+          setUsers(mapped)
+          // Se o responsável atual não pertencer à nova lista (ou for diferente de 'none'), limpa
+          setResponsibleUserId((prev) => {
+            if (prev && prev !== 'none' && mapped.some((m) => m.id === prev)) {
+              return prev
+            }
+            return ''
+          })
+        })
+        .catch((err) => {
+          console.error('Erro ao buscar usuários do tenant no modal:', err)
+          toast.error('Erro ao carregar usuários da prefeitura selecionada.')
+          setUsers([])
+        })
+        .finally(() => {
+          setLoadingUsers(false)
+        })
+    } else if (isSuperadmin && !selectedTenantId) {
+      // Superadmin sem selecionar prefeitura: não busca usuários de outros municípios
+      setUsers([])
+      setResponsibleUserId('')
+      setLoadingUsers(false)
+    } else {
+      setUsers([])
+      setLoadingUsers(false)
+    }
+  }, [isNewModalOpen, selectedTenantId, user?.tenantId, isSuperadmin])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -224,22 +249,67 @@ export const NewProjectModal: React.FC = () => {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs font-semibold text-gray-700">Responsável</Label>
-              <Select value={responsibleUserId} onValueChange={setResponsibleUserId}>
-                <SelectTrigger className="mt-1 text-xs">
-                  <SelectValue placeholder="Selecione um responsável..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Nenhum Responsável</SelectItem>
-                  {users.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold text-gray-700">Responsável</Label>
+                {user?.id && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setResponsibleUserId(user.id)
+                      if (!users.some((u) => u.id === user.id)) {
+                        setUsers((prev) => [{ id: user.id, name: user.name || 'Você' }, ...prev])
+                      }
+                    }}
+                    className="text-[11px] text-[#3b82f6] hover:underline font-medium"
+                  >
+                    Atribuir a mim
+                  </button>
+                )}
+              </div>
+
+              {isSuperadmin && !selectedTenantId ? (
+                <div className="mt-1 p-2 bg-slate-50 border border-slate-200 rounded-md text-xs text-gray-500">
+                  Selecione a prefeitura abaixo para carregar os servidores disponíveis.
+                </div>
+              ) : loadingUsers ? (
+                <div className="mt-1 flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-md text-xs text-gray-500">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Carregando responsáveis...
+                </div>
+              ) : users.length === 0 ? (
+                <div className="mt-1 p-2.5 bg-amber-50 border border-amber-200 rounded-md text-xs text-amber-800 space-y-1.5">
+                  <p>
+                    Nenhum usuário cadastrado nesta prefeitura — cadastre usuários para atribuir
+                    responsáveis.
+                  </p>
+                  <div className="flex items-center gap-2 pt-0.5">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigate(isSuperadmin ? '/superadmin' : '/usuarios')}
+                      className="h-7 text-xs border-amber-300 bg-white hover:bg-amber-100/50 text-amber-900"
+                    >
+                      {isSuperadmin ? 'Ir para Superadmin' : 'Cadastrar Usuários'}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Select value={responsibleUserId} onValueChange={setResponsibleUserId}>
+                  <SelectTrigger className="mt-1 text-xs">
+                    <SelectValue placeholder="Selecione um responsável..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Nenhum Responsável</SelectItem>
+                    {users.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.name} {user?.id === u.id ? '(Você)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             <div>

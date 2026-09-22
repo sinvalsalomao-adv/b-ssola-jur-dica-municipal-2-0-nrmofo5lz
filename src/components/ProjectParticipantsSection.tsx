@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/select'
 import { Project, ProjectParticipant } from '@/types/project'
 import { useAuth } from '@/context/AuthContext'
+import { useProjects } from '@/context/ProjectContext'
 import {
   getProjectParticipants,
   addProjectParticipant,
@@ -35,12 +36,19 @@ export const ProjectParticipantsSection: React.FC<Props> = ({
   onHistoryUpdate,
 }) => {
   const { user } = useAuth()
+  const { tenants } = useProjects()
   const [participants, setParticipants] = useState<ProjectParticipant[]>([])
   const [loading, setLoading] = useState(false)
   const [adding, setAdding] = useState(false)
   const [selectedUserId, setSelectedUserId] = useState('')
 
-  const effectiveTenant = project.tenantId || user?.tenantId || ''
+  const effectiveTenant =
+    project.tenantId ||
+    tenants.find(
+      (t) => t.name.toLowerCase().trim() === (project.prefeitura || '').toLowerCase().trim(),
+    )?.id ||
+    user?.tenantId ||
+    ''
 
   const loadParticipants = async () => {
     if (!project.id) return

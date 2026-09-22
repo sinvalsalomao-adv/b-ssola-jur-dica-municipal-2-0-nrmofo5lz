@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useProjects } from '@/context/ProjectContext'
 import { useAuth } from '@/context/AuthContext'
 import { COLUMNS, PREFEITURAS, ColumnType, Priority } from '@/types/project'
@@ -75,8 +76,10 @@ export const ProjectSidePanel: React.FC = () => {
     updateProject,
     deleteProject,
     saving,
+    tenants,
   } = useProjects()
   const { user } = useAuth()
+  const navigate = useNavigate()
   const isSuperadmin = user?.role === 'superadmin'
 
   const [activeTab, setActiveTab] = useState<
@@ -95,6 +98,7 @@ export const ProjectSidePanel: React.FC = () => {
       status?: string
     }[]
   >([])
+  const [loadingUsers, setLoadingUsers] = useState(false)
   const [deadline, setDeadline] = useState('')
   const [priority, setPriority] = useState<Priority>('Média')
   const [prefeitura, setPrefeitura] = useState('Florânia')
@@ -105,32 +109,73 @@ export const ProjectSidePanel: React.FC = () => {
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
 
+  // Resolução robusta do tenant (selectedProject.tenantId -> match por prefeitura -> user.tenantId)
+  const resolvedTenantId =
+    selectedProject?.tenantId ||
+    tenants.find(
+      (t) =>
+        t.name.toLowerCase().trim() ===
+        (prefeitura || selectedProject?.prefeitura || '').toLowerCase().trim(),
+    )?.id ||
+    user?.tenantId ||
+    ''
+
   useEffect(() => {
     if (isSidePanelOpen) {
-      const effectiveTenant = selectedProject?.tenantId || user?.tenantId
-      const fetchUsersPromise = effectiveTenant
-        ? getUsersByTenant(effectiveTenant)
-        : isSuperadmin
-          ? getUsers()
-          : Promise.resolve([])
-
-      fetchUsersPromise
-        .then((data) =>
-          setUsers(
-            data
-              .filter((u) => u.status === 'ativo')
-              .map((u) => ({
-                id: u.id,
-                name: u.name,
-                email: u.email,
-                role: u.role,
-                status: u.status,
-              })),
-          ),
-        )
-        .catch(() => {})
+      if (resolvedTenantId) {
+        setLoadingUsers(true)
+        getUsersByTenant(resolvedTenantId)
+          .then((data) =>
+            setUsers(
+              data
+                .filter((u) => u.status === 'ativo')
+                .map((u) => ({
+                  id: u.id,
+                  name: u.name,
+                  email: u.email,
+                  role: u.role,
+                  status: u.status,
+                })),
+            ),
+          )
+          .catch((err) => {
+            console.error('Erro ao buscar usuários do tenant:', err)
+            toast.error('Erro ao carregar usuários da prefeitura.')
+            setUsers([])
+          })
+          .finally(() => {
+            setLoadingUsers(false)
+          })
+      } else if (isSuperadmin) {
+        setLoadingUsers(true)
+        getUsers()
+          .then((data) =>
+            setUsers(
+              data
+                .filter((u) => u.status === 'ativo')
+                .map((u) => ({
+                  id: u.id,
+                  name: u.name,
+                  email: u.email,
+                  role: u.role,
+                  status: u.status,
+                })),
+            ),
+          )
+          .catch((err) => {
+            console.error('Erro ao buscar todos os usuários:', err)
+            toast.error('Erro ao carregar lista de usuários.')
+            setUsers([])
+          })
+          .finally(() => {
+            setLoadingUsers(false)
+          })
+      } else {
+        setUsers([])
+        setLoadingUsers(false)
+      }
     }
-  }, [isSidePanelOpen, selectedProject?.tenantId, user?.tenantId, isSuperadmin])
+  }, [isSidePanelOpen, resolvedTenantId, isSuperadmin])
 
   useEffect(() => {
     if (selectedProject) {
@@ -334,23 +379,71 @@ export const ProjectSidePanel: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
-                    <User className="w-3.5 h-3.5 text-gray-500" /> Responsável Principal
-                  </Label>
-                  <Select value={responsibleUserId} onValueChange={setResponsibleUserId}>
-                    <SelectTrigger className="mt-1 text-xs">
-                      <SelectValue placeholder="Selecione..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {users.map((u) => (
-                        <SelectItem key={u.id} value={u.id}>
-                          {u.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                      <User className="w-3.5 h-3.5 text-gray-500" /> Responsável Principal
+                    </Label>
+                    {user?.id && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setResponsibleUserId(user.id)
+                          if (!users.some((u) => u.id === user.id)) {
+                            setUsers((prev) => [
+                              { id: user.id, name: user.name || 'Você', status: 'ativo' },
+                              ...prev,
+                            ])
+                          }
+                        }}
+                        className="text-[11px] text-[#3b82f6] hover:underline font-medium"
+                      >
+                        Atribuir a mim
+                      </button>
+                    )}
+                  </div>
+
+                  {loadingUsers ? (
+                    <div className="mt-1 flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-md text-xs text-gray-500">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Carregando responsáveis...
+                    </div>
+                  ) : users.length === 0 ? (
+                    <div className="mt-1 p-2.5 bg-amber-50 border border-amber-200 rounded-md text-xs text-amber-800 space-y-1.5">
+                      <p>
+                        Nenhum usuário cadastrado nesta prefeitura — cadastre usuários para atribuir
+                        responsáveis.
+                      </p>
+                      <div className="flex items-center gap-2 pt-0.5">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => navigate(isSuperadmin ? '/superadmin' : '/usuarios')}
+                          className="h-7 text-xs border-amber-300 bg-white hover:bg-amber-100/50 text-amber-900"
+                        >
+                          {isSuperadmin ? 'Ir para Superadmin' : 'Cadastrar Usuários'}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Select
+                      value={responsibleUserId || 'none'}
+                      onValueChange={(val) => setResponsibleUserId(val === 'none' ? '' : val)}
+                    >
+                      <SelectTrigger className="mt-1 text-xs">
+                        <SelectValue placeholder="Selecione..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Nenhum Responsável</SelectItem>
+                        {users.map((u) => (
+                          <SelectItem key={u.id} value={u.id}>
+                            {u.name} {user?.id === u.id ? '(Você)' : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
                 <div>
                   <Label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
@@ -377,7 +470,15 @@ export const ProjectSidePanel: React.FC = () => {
                   <Label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
                     <Building2 className="w-3.5 h-3.5 text-gray-500" /> Prefeitura
                   </Label>
-                  <Select value={prefeitura} onValueChange={setPrefeitura} disabled={!isSuperadmin}>
+                  <Select
+                    value={prefeitura}
+                    onValueChange={(val) => {
+                      setPrefeitura(val)
+                      // Limpar responsável caso mude a prefeitura
+                      setResponsibleUserId('')
+                    }}
+                    disabled={!isSuperadmin}
+                  >
                     <SelectTrigger className="mt-1 text-xs">
                       <SelectValue />
                     </SelectTrigger>
