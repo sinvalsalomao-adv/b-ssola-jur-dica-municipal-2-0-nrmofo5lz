@@ -87,7 +87,12 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
     }
   }
 
+  var safePrefix = rawKey.length >= 7 ? rawKey.substring(0, 7) + '...' : 'curta_ou_vazia'
+
   if (!rawKey) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/info | Falha: chave_ausente | rawKey: ausente',
+    )
     return e.json(401, {
       code: 401,
       error: 'UNAUTHORIZED',
@@ -101,6 +106,10 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/info | Falha: chave_invalida | key_prefix: ' +
+        safePrefix,
+    )
     return e.json(401, {
       code: 401,
       error: 'INVALID_KEY',
@@ -108,7 +117,17 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
     })
   }
 
-  if (keyRecord.getString('status') !== 'ativa') {
+  var keyPrefixDb = keyRecord.getString('key_prefix') || safePrefix
+  var keyStatus = keyRecord.getString('status')
+  if (keyStatus !== 'ativa') {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/info | Falha: chave_revogada_ou_inativa | key_prefix: ' +
+        keyPrefixDb +
+        ' | status_chave: ' +
+        keyStatus +
+        ' | tenant_id: ' +
+        keyRecord.getString('tenant'),
+    )
     return e.json(403, GERAL_403)
   }
 
@@ -117,15 +136,34 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
   try {
     tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
   } catch (_) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/info | Falha: tenant_nao_encontrado | key_prefix: ' +
+        keyPrefixDb +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, GERAL_403)
   }
 
   if (!tenantRec.getBool('hermes_enabled')) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/info | Falha: hermes_enabled_false | key_prefix: ' +
+        keyPrefixDb +
+        ' | tenant_id: ' +
+        tenantId +
+        ' | hermes_enabled: false',
+    )
     return e.json(403, GERAL_403)
   }
 
   var rawActingUser = String(headers['x_acting_user'] || headers['x-acting-user'] || '').trim()
   if (!rawActingUser) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/info | Falha: x_acting_user_ausente | key_prefix: ' +
+        keyPrefixDb +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(401, {
       code: 401,
       error: 'ACTING_USER_REQUIRED',
@@ -145,7 +183,29 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
     } catch (_) {}
   }
 
-  if (!userRec || userRec.getString('status') === 'inativo') {
+  if (!userRec) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/info | Falha: usuario_nao_encontrado | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_recebido: ' +
+        rawActingUser +
+        ' | tenant_id: ' +
+        tenantId,
+    )
+    return e.json(403, GERAL_403)
+  }
+
+  if (userRec.getString('status') === 'inativo') {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/info | Falha: usuario_inativo | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | user_id: ' +
+        userRec.id +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, GERAL_403)
   }
 
@@ -160,11 +220,28 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
   } catch (_) {}
 
   if (!memRec) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/info | Falha: sem_membership_ativa | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | user_id: ' +
+        userRec.id +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, GERAL_403)
   }
 
   var liveRole = memRec.getString('role') || 'servidor'
-  var allowedRoles = parseAllowedRoles(tenantRec.get('hermes_allowed_roles'))
+  var rawAllowedRoles = tenantRec.get('hermes_allowed_roles')
+  var allowedRolesType = typeof rawAllowedRoles
+  if (Array.isArray(rawAllowedRoles)) {
+    allowedRolesType = 'array'
+  } else if (rawAllowedRoles === null) {
+    allowedRolesType = 'null'
+  }
+  var allowedRoles = parseAllowedRoles(rawAllowedRoles)
   var roleAllowed = false
   for (var rIdx = 0; rIdx < allowedRoles.length; rIdx++) {
     if (allowedRoles[rIdx] === liveRole) {
@@ -174,6 +251,20 @@ routerAdd('GET', '/backend/v1/bot/info', (e) => {
   }
 
   if (!roleAllowed) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/info | Falha: role_nao_permitida | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | liveRole: ' +
+        liveRole +
+        ' | tenant_id: ' +
+        tenantId +
+        ' | allowedRoles: ' +
+        JSON.stringify(allowedRoles) +
+        ' | rawType: ' +
+        allowedRolesType,
+    )
     return e.json(403, GERAL_403)
   }
 
@@ -293,7 +384,12 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
     }
   }
 
+  var safePrefix = rawKey.length >= 7 ? rawKey.substring(0, 7) + '...' : 'curta_ou_vazia'
+
   if (!rawKey) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/projects | Falha: chave_ausente | rawKey: ausente',
+    )
     return e.json(401, {
       code: 401,
       error: 'UNAUTHORIZED',
@@ -307,6 +403,10 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/projects | Falha: chave_invalida | key_prefix: ' +
+        safePrefix,
+    )
     return e.json(401, {
       code: 401,
       error: 'INVALID_KEY',
@@ -314,7 +414,17 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
     })
   }
 
-  if (keyRecord.getString('status') !== 'ativa') {
+  var keyPrefixDb = keyRecord.getString('key_prefix') || safePrefix
+  var keyStatus = keyRecord.getString('status')
+  if (keyStatus !== 'ativa') {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/projects | Falha: chave_revogada_ou_inativa | key_prefix: ' +
+        keyPrefixDb +
+        ' | status_chave: ' +
+        keyStatus +
+        ' | tenant_id: ' +
+        keyRecord.getString('tenant'),
+    )
     return e.json(403, GERAL_403)
   }
 
@@ -323,15 +433,34 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
   try {
     tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
   } catch (_) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/projects | Falha: tenant_nao_encontrado | key_prefix: ' +
+        keyPrefixDb +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, GERAL_403)
   }
 
   if (!tenantRec.getBool('hermes_enabled')) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/projects | Falha: hermes_enabled_false | key_prefix: ' +
+        keyPrefixDb +
+        ' | tenant_id: ' +
+        tenantId +
+        ' | hermes_enabled: false',
+    )
     return e.json(403, GERAL_403)
   }
 
   var rawActingUser = String(headers['x_acting_user'] || headers['x-acting-user'] || '').trim()
   if (!rawActingUser) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/projects | Falha: x_acting_user_ausente | key_prefix: ' +
+        keyPrefixDb +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(401, {
       code: 401,
       error: 'ACTING_USER_REQUIRED',
@@ -351,7 +480,29 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
     } catch (_) {}
   }
 
-  if (!userRec || userRec.getString('status') === 'inativo') {
+  if (!userRec) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/projects | Falha: usuario_nao_encontrado | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_recebido: ' +
+        rawActingUser +
+        ' | tenant_id: ' +
+        tenantId,
+    )
+    return e.json(403, GERAL_403)
+  }
+
+  if (userRec.getString('status') === 'inativo') {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/projects | Falha: usuario_inativo | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | user_id: ' +
+        userRec.id +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, GERAL_403)
   }
 
@@ -366,11 +517,28 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
   } catch (_) {}
 
   if (!memRec) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/projects | Falha: sem_membership_ativa | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | user_id: ' +
+        userRec.id +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, GERAL_403)
   }
 
   var liveRole = memRec.getString('role') || 'servidor'
-  var allowedRoles = parseAllowedRoles(tenantRec.get('hermes_allowed_roles'))
+  var rawAllowedRoles = tenantRec.get('hermes_allowed_roles')
+  var allowedRolesType = typeof rawAllowedRoles
+  if (Array.isArray(rawAllowedRoles)) {
+    allowedRolesType = 'array'
+  } else if (rawAllowedRoles === null) {
+    allowedRolesType = 'null'
+  }
+  var allowedRoles = parseAllowedRoles(rawAllowedRoles)
   var roleAllowed = false
   for (var rIdx = 0; rIdx < allowedRoles.length; rIdx++) {
     if (allowedRoles[rIdx] === liveRole) {
@@ -380,6 +548,20 @@ routerAdd('GET', '/backend/v1/bot/projects', (e) => {
   }
 
   if (!roleAllowed) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/projects | Falha: role_nao_permitida | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | liveRole: ' +
+        liveRole +
+        ' | tenant_id: ' +
+        tenantId +
+        ' | allowedRoles: ' +
+        JSON.stringify(allowedRoles) +
+        ' | rawType: ' +
+        allowedRolesType,
+    )
     return e.json(403, GERAL_403)
   }
 
@@ -543,7 +725,12 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
     }
   }
 
+  var safePrefix = rawKey.length >= 7 ? rawKey.substring(0, 7) + '...' : 'curta_ou_vazia'
+
   if (!rawKey) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/projects/summary | Falha: chave_ausente | rawKey: ausente',
+    )
     return e.json(401, {
       code: 401,
       error: 'UNAUTHORIZED',
@@ -557,6 +744,10 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/projects/summary | Falha: chave_invalida | key_prefix: ' +
+        safePrefix,
+    )
     return e.json(401, {
       code: 401,
       error: 'INVALID_KEY',
@@ -564,7 +755,17 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
     })
   }
 
-  if (keyRecord.getString('status') !== 'ativa') {
+  var keyPrefixDb = keyRecord.getString('key_prefix') || safePrefix
+  var keyStatus = keyRecord.getString('status')
+  if (keyStatus !== 'ativa') {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/projects/summary | Falha: chave_revogada_ou_inativa | key_prefix: ' +
+        keyPrefixDb +
+        ' | status_chave: ' +
+        keyStatus +
+        ' | tenant_id: ' +
+        keyRecord.getString('tenant'),
+    )
     return e.json(403, GERAL_403)
   }
 
@@ -573,15 +774,34 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
   try {
     tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
   } catch (_) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/projects/summary | Falha: tenant_nao_encontrado | key_prefix: ' +
+        keyPrefixDb +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, GERAL_403)
   }
 
   if (!tenantRec.getBool('hermes_enabled')) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/projects/summary | Falha: hermes_enabled_false | key_prefix: ' +
+        keyPrefixDb +
+        ' | tenant_id: ' +
+        tenantId +
+        ' | hermes_enabled: false',
+    )
     return e.json(403, GERAL_403)
   }
 
   var rawActingUser = String(headers['x_acting_user'] || headers['x-acting-user'] || '').trim()
   if (!rawActingUser) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/projects/summary | Falha: x_acting_user_ausente | key_prefix: ' +
+        keyPrefixDb +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(401, {
       code: 401,
       error: 'ACTING_USER_REQUIRED',
@@ -601,7 +821,29 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
     } catch (_) {}
   }
 
-  if (!userRec || userRec.getString('status') === 'inativo') {
+  if (!userRec) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/projects/summary | Falha: usuario_nao_encontrado | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_recebido: ' +
+        rawActingUser +
+        ' | tenant_id: ' +
+        tenantId,
+    )
+    return e.json(403, GERAL_403)
+  }
+
+  if (userRec.getString('status') === 'inativo') {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/projects/summary | Falha: usuario_inativo | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | user_id: ' +
+        userRec.id +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, GERAL_403)
   }
 
@@ -616,11 +858,28 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
   } catch (_) {}
 
   if (!memRec) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/projects/summary | Falha: sem_membership_ativa | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | user_id: ' +
+        userRec.id +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, GERAL_403)
   }
 
   var liveRole = memRec.getString('role') || 'servidor'
-  var allowedRoles = parseAllowedRoles(tenantRec.get('hermes_allowed_roles'))
+  var rawAllowedRoles = tenantRec.get('hermes_allowed_roles')
+  var allowedRolesType = typeof rawAllowedRoles
+  if (Array.isArray(rawAllowedRoles)) {
+    allowedRolesType = 'array'
+  } else if (rawAllowedRoles === null) {
+    allowedRolesType = 'null'
+  }
+  var allowedRoles = parseAllowedRoles(rawAllowedRoles)
   var roleAllowed = false
   for (var rIdx = 0; rIdx < allowedRoles.length; rIdx++) {
     if (allowedRoles[rIdx] === liveRole) {
@@ -630,6 +889,20 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
   }
 
   if (!roleAllowed) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/projects/summary | Falha: role_nao_permitida | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | liveRole: ' +
+        liveRole +
+        ' | tenant_id: ' +
+        tenantId +
+        ' | allowedRoles: ' +
+        JSON.stringify(allowedRoles) +
+        ' | rawType: ' +
+        allowedRolesType,
+    )
     return e.json(403, GERAL_403)
   }
 
@@ -669,6 +942,16 @@ routerAdd('GET', '/backend/v1/bot/projects/summary', (e) => {
   var isAdmin = isSuperadmin || liveRole === 'admin'
 
   if (!isAdmin) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/projects/summary | Falha: endpoint_restrito_a_admin | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | liveRole: ' +
+        liveRole +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, {
       code: 403,
       error: 'FORBIDDEN',
@@ -778,7 +1061,12 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
     }
   }
 
+  var safePrefix = rawKey.length >= 7 ? rawKey.substring(0, 7) + '...' : 'curta_ou_vazia'
+
   if (!rawKey) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/dfds | Falha: chave_ausente | rawKey: ausente',
+    )
     return e.json(401, {
       code: 401,
       error: 'UNAUTHORIZED',
@@ -792,6 +1080,10 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/dfds | Falha: chave_invalida | key_prefix: ' +
+        safePrefix,
+    )
     return e.json(401, {
       code: 401,
       error: 'INVALID_KEY',
@@ -799,7 +1091,17 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
     })
   }
 
-  if (keyRecord.getString('status') !== 'ativa') {
+  var keyPrefixDb = keyRecord.getString('key_prefix') || safePrefix
+  var keyStatus = keyRecord.getString('status')
+  if (keyStatus !== 'ativa') {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/dfds | Falha: chave_revogada_ou_inativa | key_prefix: ' +
+        keyPrefixDb +
+        ' | status_chave: ' +
+        keyStatus +
+        ' | tenant_id: ' +
+        keyRecord.getString('tenant'),
+    )
     return e.json(403, GERAL_403)
   }
 
@@ -808,15 +1110,34 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
   try {
     tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
   } catch (_) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/dfds | Falha: tenant_nao_encontrado | key_prefix: ' +
+        keyPrefixDb +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, GERAL_403)
   }
 
   if (!tenantRec.getBool('hermes_enabled')) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/dfds | Falha: hermes_enabled_false | key_prefix: ' +
+        keyPrefixDb +
+        ' | tenant_id: ' +
+        tenantId +
+        ' | hermes_enabled: false',
+    )
     return e.json(403, GERAL_403)
   }
 
   var rawActingUser = String(headers['x_acting_user'] || headers['x-acting-user'] || '').trim()
   if (!rawActingUser) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/dfds | Falha: x_acting_user_ausente | key_prefix: ' +
+        keyPrefixDb +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(401, {
       code: 401,
       error: 'ACTING_USER_REQUIRED',
@@ -836,7 +1157,29 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
     } catch (_) {}
   }
 
-  if (!userRec || userRec.getString('status') === 'inativo') {
+  if (!userRec) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/dfds | Falha: usuario_nao_encontrado | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_recebido: ' +
+        rawActingUser +
+        ' | tenant_id: ' +
+        tenantId,
+    )
+    return e.json(403, GERAL_403)
+  }
+
+  if (userRec.getString('status') === 'inativo') {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/dfds | Falha: usuario_inativo | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | user_id: ' +
+        userRec.id +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, GERAL_403)
   }
 
@@ -851,11 +1194,28 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
   } catch (_) {}
 
   if (!memRec) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/dfds | Falha: sem_membership_ativa | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | user_id: ' +
+        userRec.id +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, GERAL_403)
   }
 
   var liveRole = memRec.getString('role') || 'servidor'
-  var allowedRoles = parseAllowedRoles(tenantRec.get('hermes_allowed_roles'))
+  var rawAllowedRoles = tenantRec.get('hermes_allowed_roles')
+  var allowedRolesType = typeof rawAllowedRoles
+  if (Array.isArray(rawAllowedRoles)) {
+    allowedRolesType = 'array'
+  } else if (rawAllowedRoles === null) {
+    allowedRolesType = 'null'
+  }
+  var allowedRoles = parseAllowedRoles(rawAllowedRoles)
   var roleAllowed = false
   for (var rIdx = 0; rIdx < allowedRoles.length; rIdx++) {
     if (allowedRoles[rIdx] === liveRole) {
@@ -865,6 +1225,20 @@ routerAdd('GET', '/backend/v1/bot/dfds', (e) => {
   }
 
   if (!roleAllowed) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/dfds | Falha: role_nao_permitida | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | liveRole: ' +
+        liveRole +
+        ' | tenant_id: ' +
+        tenantId +
+        ' | allowedRoles: ' +
+        JSON.stringify(allowedRoles) +
+        ' | rawType: ' +
+        allowedRolesType,
+    )
     return e.json(403, GERAL_403)
   }
 
@@ -1010,7 +1384,12 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
     }
   }
 
+  var safePrefix = rawKey.length >= 7 ? rawKey.substring(0, 7) + '...' : 'curta_ou_vazia'
+
   if (!rawKey) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/dfds/{id} | Falha: chave_ausente | rawKey: ausente',
+    )
     return e.json(401, {
       code: 401,
       error: 'UNAUTHORIZED',
@@ -1024,6 +1403,10 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/dfds/{id} | Falha: chave_invalida | key_prefix: ' +
+        safePrefix,
+    )
     return e.json(401, {
       code: 401,
       error: 'INVALID_KEY',
@@ -1031,7 +1414,17 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
     })
   }
 
-  if (keyRecord.getString('status') !== 'ativa') {
+  var keyPrefixDb = keyRecord.getString('key_prefix') || safePrefix
+  var keyStatus = keyRecord.getString('status')
+  if (keyStatus !== 'ativa') {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/dfds/{id} | Falha: chave_revogada_ou_inativa | key_prefix: ' +
+        keyPrefixDb +
+        ' | status_chave: ' +
+        keyStatus +
+        ' | tenant_id: ' +
+        keyRecord.getString('tenant'),
+    )
     return e.json(403, GERAL_403)
   }
 
@@ -1040,15 +1433,34 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
   try {
     tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
   } catch (_) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/dfds/{id} | Falha: tenant_nao_encontrado | key_prefix: ' +
+        keyPrefixDb +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, GERAL_403)
   }
 
   if (!tenantRec.getBool('hermes_enabled')) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/dfds/{id} | Falha: hermes_enabled_false | key_prefix: ' +
+        keyPrefixDb +
+        ' | tenant_id: ' +
+        tenantId +
+        ' | hermes_enabled: false',
+    )
     return e.json(403, GERAL_403)
   }
 
   var rawActingUser = String(headers['x_acting_user'] || headers['x-acting-user'] || '').trim()
   if (!rawActingUser) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/dfds/{id} | Falha: x_acting_user_ausente | key_prefix: ' +
+        keyPrefixDb +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(401, {
       code: 401,
       error: 'ACTING_USER_REQUIRED',
@@ -1068,7 +1480,29 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
     } catch (_) {}
   }
 
-  if (!userRec || userRec.getString('status') === 'inativo') {
+  if (!userRec) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/dfds/{id} | Falha: usuario_nao_encontrado | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_recebido: ' +
+        rawActingUser +
+        ' | tenant_id: ' +
+        tenantId,
+    )
+    return e.json(403, GERAL_403)
+  }
+
+  if (userRec.getString('status') === 'inativo') {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/dfds/{id} | Falha: usuario_inativo | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | user_id: ' +
+        userRec.id +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, GERAL_403)
   }
 
@@ -1083,11 +1517,28 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
   } catch (_) {}
 
   if (!memRec) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/dfds/{id} | Falha: sem_membership_ativa | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | user_id: ' +
+        userRec.id +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, GERAL_403)
   }
 
   var liveRole = memRec.getString('role') || 'servidor'
-  var allowedRoles = parseAllowedRoles(tenantRec.get('hermes_allowed_roles'))
+  var rawAllowedRoles = tenantRec.get('hermes_allowed_roles')
+  var allowedRolesType = typeof rawAllowedRoles
+  if (Array.isArray(rawAllowedRoles)) {
+    allowedRolesType = 'array'
+  } else if (rawAllowedRoles === null) {
+    allowedRolesType = 'null'
+  }
+  var allowedRoles = parseAllowedRoles(rawAllowedRoles)
   var roleAllowed = false
   for (var rIdx = 0; rIdx < allowedRoles.length; rIdx++) {
     if (allowedRoles[rIdx] === liveRole) {
@@ -1097,6 +1548,20 @@ routerAdd('GET', '/backend/v1/bot/dfds/{id}', (e) => {
   }
 
   if (!roleAllowed) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/dfds/{id} | Falha: role_nao_permitida | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | liveRole: ' +
+        liveRole +
+        ' | tenant_id: ' +
+        tenantId +
+        ' | allowedRoles: ' +
+        JSON.stringify(allowedRoles) +
+        ' | rawType: ' +
+        allowedRolesType,
+    )
     return e.json(403, GERAL_403)
   }
 
@@ -1246,7 +1711,12 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
     }
   }
 
+  var safePrefix = rawKey.length >= 7 ? rawKey.substring(0, 7) + '...' : 'curta_ou_vazia'
+
   if (!rawKey) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/deadlines | Falha: chave_ausente | rawKey: ausente',
+    )
     return e.json(401, {
       code: 401,
       error: 'UNAUTHORIZED',
@@ -1260,6 +1730,10 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/deadlines | Falha: chave_invalida | key_prefix: ' +
+        safePrefix,
+    )
     return e.json(401, {
       code: 401,
       error: 'INVALID_KEY',
@@ -1267,7 +1741,17 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
     })
   }
 
-  if (keyRecord.getString('status') !== 'ativa') {
+  var keyPrefixDb = keyRecord.getString('key_prefix') || safePrefix
+  var keyStatus = keyRecord.getString('status')
+  if (keyStatus !== 'ativa') {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/deadlines | Falha: chave_revogada_ou_inativa | key_prefix: ' +
+        keyPrefixDb +
+        ' | status_chave: ' +
+        keyStatus +
+        ' | tenant_id: ' +
+        keyRecord.getString('tenant'),
+    )
     return e.json(403, GERAL_403)
   }
 
@@ -1276,15 +1760,34 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
   try {
     tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
   } catch (_) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/deadlines | Falha: tenant_nao_encontrado | key_prefix: ' +
+        keyPrefixDb +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, GERAL_403)
   }
 
   if (!tenantRec.getBool('hermes_enabled')) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/deadlines | Falha: hermes_enabled_false | key_prefix: ' +
+        keyPrefixDb +
+        ' | tenant_id: ' +
+        tenantId +
+        ' | hermes_enabled: false',
+    )
     return e.json(403, GERAL_403)
   }
 
   var rawActingUser = String(headers['x_acting_user'] || headers['x-acting-user'] || '').trim()
   if (!rawActingUser) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/deadlines | Falha: x_acting_user_ausente | key_prefix: ' +
+        keyPrefixDb +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(401, {
       code: 401,
       error: 'ACTING_USER_REQUIRED',
@@ -1304,7 +1807,29 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
     } catch (_) {}
   }
 
-  if (!userRec || userRec.getString('status') === 'inativo') {
+  if (!userRec) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/deadlines | Falha: usuario_nao_encontrado | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_recebido: ' +
+        rawActingUser +
+        ' | tenant_id: ' +
+        tenantId,
+    )
+    return e.json(403, GERAL_403)
+  }
+
+  if (userRec.getString('status') === 'inativo') {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/deadlines | Falha: usuario_inativo | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | user_id: ' +
+        userRec.id +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, GERAL_403)
   }
 
@@ -1319,11 +1844,28 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
   } catch (_) {}
 
   if (!memRec) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/deadlines | Falha: sem_membership_ativa | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | user_id: ' +
+        userRec.id +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, GERAL_403)
   }
 
   var liveRole = memRec.getString('role') || 'servidor'
-  var allowedRoles = parseAllowedRoles(tenantRec.get('hermes_allowed_roles'))
+  var rawAllowedRoles = tenantRec.get('hermes_allowed_roles')
+  var allowedRolesType = typeof rawAllowedRoles
+  if (Array.isArray(rawAllowedRoles)) {
+    allowedRolesType = 'array'
+  } else if (rawAllowedRoles === null) {
+    allowedRolesType = 'null'
+  }
+  var allowedRoles = parseAllowedRoles(rawAllowedRoles)
   var roleAllowed = false
   for (var rIdx = 0; rIdx < allowedRoles.length; rIdx++) {
     if (allowedRoles[rIdx] === liveRole) {
@@ -1333,6 +1875,20 @@ routerAdd('GET', '/backend/v1/bot/deadlines', (e) => {
   }
 
   if (!roleAllowed) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/deadlines | Falha: role_nao_permitida | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | liveRole: ' +
+        liveRole +
+        ' | tenant_id: ' +
+        tenantId +
+        ' | allowedRoles: ' +
+        JSON.stringify(allowedRoles) +
+        ' | rawType: ' +
+        allowedRolesType,
+    )
     return e.json(403, GERAL_403)
   }
 
@@ -1487,7 +2043,12 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
     }
   }
 
+  var safePrefix = rawKey.length >= 7 ? rawKey.substring(0, 7) + '...' : 'curta_ou_vazia'
+
   if (!rawKey) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/users | Falha: chave_ausente | rawKey: ausente',
+    )
     return e.json(401, {
       code: 401,
       error: 'UNAUTHORIZED',
@@ -1501,6 +2062,10 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/users | Falha: chave_invalida | key_prefix: ' +
+        safePrefix,
+    )
     return e.json(401, {
       code: 401,
       error: 'INVALID_KEY',
@@ -1508,7 +2073,17 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
     })
   }
 
-  if (keyRecord.getString('status') !== 'ativa') {
+  var keyPrefixDb = keyRecord.getString('key_prefix') || safePrefix
+  var keyStatus = keyRecord.getString('status')
+  if (keyStatus !== 'ativa') {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/users | Falha: chave_revogada_ou_inativa | key_prefix: ' +
+        keyPrefixDb +
+        ' | status_chave: ' +
+        keyStatus +
+        ' | tenant_id: ' +
+        keyRecord.getString('tenant'),
+    )
     return e.json(403, GERAL_403)
   }
 
@@ -1517,15 +2092,34 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
   try {
     tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
   } catch (_) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/users | Falha: tenant_nao_encontrado | key_prefix: ' +
+        keyPrefixDb +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, GERAL_403)
   }
 
   if (!tenantRec.getBool('hermes_enabled')) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/users | Falha: hermes_enabled_false | key_prefix: ' +
+        keyPrefixDb +
+        ' | tenant_id: ' +
+        tenantId +
+        ' | hermes_enabled: false',
+    )
     return e.json(403, GERAL_403)
   }
 
   var rawActingUser = String(headers['x_acting_user'] || headers['x-acting-user'] || '').trim()
   if (!rawActingUser) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/users | Falha: x_acting_user_ausente | key_prefix: ' +
+        keyPrefixDb +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(401, {
       code: 401,
       error: 'ACTING_USER_REQUIRED',
@@ -1545,7 +2139,29 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
     } catch (_) {}
   }
 
-  if (!userRec || userRec.getString('status') === 'inativo') {
+  if (!userRec) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/users | Falha: usuario_nao_encontrado | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_recebido: ' +
+        rawActingUser +
+        ' | tenant_id: ' +
+        tenantId,
+    )
+    return e.json(403, GERAL_403)
+  }
+
+  if (userRec.getString('status') === 'inativo') {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/users | Falha: usuario_inativo | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | user_id: ' +
+        userRec.id +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, GERAL_403)
   }
 
@@ -1560,11 +2176,28 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
   } catch (_) {}
 
   if (!memRec) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/users | Falha: sem_membership_ativa | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | user_id: ' +
+        userRec.id +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, GERAL_403)
   }
 
   var liveRole = memRec.getString('role') || 'servidor'
-  var allowedRoles = parseAllowedRoles(tenantRec.get('hermes_allowed_roles'))
+  var rawAllowedRoles = tenantRec.get('hermes_allowed_roles')
+  var allowedRolesType = typeof rawAllowedRoles
+  if (Array.isArray(rawAllowedRoles)) {
+    allowedRolesType = 'array'
+  } else if (rawAllowedRoles === null) {
+    allowedRolesType = 'null'
+  }
+  var allowedRoles = parseAllowedRoles(rawAllowedRoles)
   var roleAllowed = false
   for (var rIdx = 0; rIdx < allowedRoles.length; rIdx++) {
     if (allowedRoles[rIdx] === liveRole) {
@@ -1574,6 +2207,20 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
   }
 
   if (!roleAllowed) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/users | Falha: role_nao_permitida | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | liveRole: ' +
+        liveRole +
+        ' | tenant_id: ' +
+        tenantId +
+        ' | allowedRoles: ' +
+        JSON.stringify(allowedRoles) +
+        ' | rawType: ' +
+        allowedRolesType,
+    )
     return e.json(403, GERAL_403)
   }
 
@@ -1613,6 +2260,16 @@ routerAdd('GET', '/backend/v1/bot/users', (e) => {
   var isAdmin = isSuperadmin || liveRole === 'admin'
 
   if (!isAdmin) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/users | Falha: endpoint_restrito_a_admin | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | liveRole: ' +
+        liveRole +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, {
       code: 403,
       error: 'FORBIDDEN',
@@ -1699,7 +2356,12 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
     }
   }
 
+  var safePrefix = rawKey.length >= 7 ? rawKey.substring(0, 7) + '...' : 'curta_ou_vazia'
+
   if (!rawKey) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/notifications | Falha: chave_ausente | rawKey: ausente',
+    )
     return e.json(401, {
       code: 401,
       error: 'UNAUTHORIZED',
@@ -1713,6 +2375,10 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
   try {
     keyRecord = $app.findFirstRecordByData('bot_api_keys', 'key_hash', keyHash)
   } catch (_) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/notifications | Falha: chave_invalida | key_prefix: ' +
+        safePrefix,
+    )
     return e.json(401, {
       code: 401,
       error: 'INVALID_KEY',
@@ -1720,7 +2386,17 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
     })
   }
 
-  if (keyRecord.getString('status') !== 'ativa') {
+  var keyPrefixDb = keyRecord.getString('key_prefix') || safePrefix
+  var keyStatus = keyRecord.getString('status')
+  if (keyStatus !== 'ativa') {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/notifications | Falha: chave_revogada_ou_inativa | key_prefix: ' +
+        keyPrefixDb +
+        ' | status_chave: ' +
+        keyStatus +
+        ' | tenant_id: ' +
+        keyRecord.getString('tenant'),
+    )
     return e.json(403, GERAL_403)
   }
 
@@ -1729,15 +2405,34 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
   try {
     tenantRec = $app.findFirstRecordByData('tenants', 'id', tenantId)
   } catch (_) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/notifications | Falha: tenant_nao_encontrado | key_prefix: ' +
+        keyPrefixDb +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, GERAL_403)
   }
 
   if (!tenantRec.getBool('hermes_enabled')) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/notifications | Falha: hermes_enabled_false | key_prefix: ' +
+        keyPrefixDb +
+        ' | tenant_id: ' +
+        tenantId +
+        ' | hermes_enabled: false',
+    )
     return e.json(403, GERAL_403)
   }
 
   var rawActingUser = String(headers['x_acting_user'] || headers['x-acting-user'] || '').trim()
   if (!rawActingUser) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/notifications | Falha: x_acting_user_ausente | key_prefix: ' +
+        keyPrefixDb +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(401, {
       code: 401,
       error: 'ACTING_USER_REQUIRED',
@@ -1757,7 +2452,29 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
     } catch (_) {}
   }
 
-  if (!userRec || userRec.getString('status') === 'inativo') {
+  if (!userRec) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/notifications | Falha: usuario_nao_encontrado | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_recebido: ' +
+        rawActingUser +
+        ' | tenant_id: ' +
+        tenantId,
+    )
+    return e.json(403, GERAL_403)
+  }
+
+  if (userRec.getString('status') === 'inativo') {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/notifications | Falha: usuario_inativo | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | user_id: ' +
+        userRec.id +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, GERAL_403)
   }
 
@@ -1772,11 +2489,28 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
   } catch (_) {}
 
   if (!memRec) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/notifications | Falha: sem_membership_ativa | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | user_id: ' +
+        userRec.id +
+        ' | tenant_id: ' +
+        tenantId,
+    )
     return e.json(403, GERAL_403)
   }
 
   var liveRole = memRec.getString('role') || 'servidor'
-  var allowedRoles = parseAllowedRoles(tenantRec.get('hermes_allowed_roles'))
+  var rawAllowedRoles = tenantRec.get('hermes_allowed_roles')
+  var allowedRolesType = typeof rawAllowedRoles
+  if (Array.isArray(rawAllowedRoles)) {
+    allowedRolesType = 'array'
+  } else if (rawAllowedRoles === null) {
+    allowedRolesType = 'null'
+  }
+  var allowedRoles = parseAllowedRoles(rawAllowedRoles)
   var roleAllowed = false
   for (var rIdx = 0; rIdx < allowedRoles.length; rIdx++) {
     if (allowedRoles[rIdx] === liveRole) {
@@ -1786,6 +2520,20 @@ routerAdd('GET', '/backend/v1/bot/notifications', (e) => {
   }
 
   if (!roleAllowed) {
+    console.log(
+      '[BOT_AUTH_DEBUG] Endpoint: /backend/v1/bot/notifications | Falha: role_nao_permitida | key_prefix: ' +
+        keyPrefixDb +
+        ' | acting_user_email: ' +
+        userRec.getString('email') +
+        ' | liveRole: ' +
+        liveRole +
+        ' | tenant_id: ' +
+        tenantId +
+        ' | allowedRoles: ' +
+        JSON.stringify(allowedRoles) +
+        ' | rawType: ' +
+        allowedRolesType,
+    )
     return e.json(403, GERAL_403)
   }
 
