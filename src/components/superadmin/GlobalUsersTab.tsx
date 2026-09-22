@@ -75,12 +75,13 @@ export const GlobalUsersTab: React.FC = () => {
     return globalUsers.filter((u) => {
       if (filterPref !== 'all' && u.prefeituraSlug !== filterPref) return false
       if (filterRole !== 'all' && u.role !== filterRole) return false
-      if (
-        lowerQuery &&
-        !u.name.toLowerCase().includes(lowerQuery) &&
-        !u.email.toLowerCase().includes(lowerQuery)
-      )
-        return false
+      if (lowerQuery) {
+        const nameMatch = (u.name || '').toLowerCase().includes(lowerQuery)
+        const emailMatch = (u.email || '').toLowerCase().includes(lowerQuery)
+        if (!nameMatch && !emailMatch) {
+          return false
+        }
+      }
       return true
     })
   }, [globalUsers, filterPref, filterRole, searchQuery])

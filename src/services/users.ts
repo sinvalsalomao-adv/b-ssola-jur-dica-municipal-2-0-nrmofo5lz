@@ -19,6 +19,14 @@ export function normalizeUser(r: any): GlobalUser {
  * Consulta global exclusiva para Superadmin
  */
 export const getUsers = async (): Promise<GlobalUser[]> => {
+  try {
+    const res: any = await pb.send('/backend/v1/superadmin/users', { method: 'GET' })
+    if (res?.items && Array.isArray(res.items)) {
+      return res.items
+    }
+  } catch (_) {
+    // fallback para SDK padrão
+  }
   const records = await pb.collection('users').getFullList({ expand: 'tenant', sort: 'name' })
   return records.map(normalizeUser)
 }

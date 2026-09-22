@@ -96,16 +96,64 @@ export const SuperadminProvider: React.FC<{ children: ReactNode }> = ({ children
 
   const fetchUsers = useCallback(async () => {
     try {
+      // 1. Tentar carregar via endpoint dedicado superadmin que sempre traz e-mail real e vínculos
+      try {
+        const res: any = await pb.send('/backend/v1/superadmin/users', { method: 'GET' })
+        if (res?.items && Array.isArray(res.items)) {
+          setGlobalUsers(res.items)
+          return
+        }
+      } catch (endpointErr) {
+        console.warn(
+          'Endpoint /backend/v1/superadmin/users indisponível, fallback para SDK:',
+          endpointErr,
+        )
+      }
+
+      // 2. Fallback para SDK PocketBase direto na coleção users
       const records = await pb.collection('users').getFullList({
         expand: 'tenant',
         sort: 'created',
       })
-      setGlobalUsers(records.map(normalizeGlobalUser))
+
+      // Complementar com memberships para prefeitura e perfis municipais se tenant não estiver preenchido
+      let memberships: any[] = []
+      try {
+        memberships = await pb.collection('user_memberships').getFullList({
+          expand: 'tenant',
+          sort: '-created',
+        })
+      } catch {
+        /* intentionally ignored */
+      }
+
+      const userMembershipMap = new Map<string, any>()
+      for (const m of memberships) {
+        const uId = m.user
+        if (uId && (!userMembershipMap.has(uId) || m.status === 'ativo')) {
+          userMembershipMap.set(uId, m)
+        }
+      }
+
+      const mappedUsers = records.map((r: any) => {
+        const base = normalizeGlobalUser(r)
+        // Se usuário tem vínculo em user_memberships e não tem tenant no record principal
+        const mem = userMembershipMap.get(r.id)
+        if (mem && mem.expand?.tenant && (!base.prefeituraName || base.prefeituraName === '—')) {
+          base.prefeituraName = mem.expand.tenant.name || '—'
+          base.prefeituraSlug = mem.expand.tenant.slug || ''
+          if (base.role === 'servidor' && mem.role) {
+            base.role = mem.role as UserRole
+          }
+        }
+        return base
+      })
+
+      setGlobalUsers(mappedUsers)
     } catch (err) {
       console.error('Failed to fetch users:', err)
     }
   }, [])
-
   const fetchPlatformConfig = useCallback(async () => {
     try {
       const records = await pb.collection('platform_settings').getFullList()
@@ -212,6 +260,7 @@ export const SuperadminProvider: React.FC<{ children: ReactNode }> = ({ children
       userRecord = await pb.collection('users').create({
         name: data.name,
         email: cleanEmail,
+        emailVisibility: true,
         role: data.role,
         status: data.status || 'ativo',
         tenant: tId,

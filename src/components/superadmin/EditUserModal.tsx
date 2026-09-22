@@ -111,6 +111,7 @@ export const EditUserModal: React.FC<Props> = ({ user, open, onOpenChange }) => 
       const apiData: Record<string, any> = {
         name: sanitizeInput(name.trim()),
         email: sanitizeInput(email.trim()),
+        emailVisibility: true,
         role,
         status,
         tenant: tenantId || null,
